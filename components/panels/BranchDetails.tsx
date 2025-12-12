@@ -2,11 +2,11 @@ import React, { useState, useEffect, useRef } from 'react';
 import { useProject } from '../../context/ProjectContext';
 import { BranchStatus } from '../../types';
 import { STATUS_CONFIG } from '../../constants';
-import { X, Save, Trash2, CheckSquare, Square, ArrowUpLeft, Calendar, Plus, Link as LinkIcon, Unlink, PlayCircle, StopCircle, Clock, AlertTriangle, Archive, RefreshCw, Bold, Italic, List, Eye, Edit2, FileText } from 'lucide-react';
+import { X, Save, Trash2, CheckSquare, Square, ArrowUpLeft, Calendar, Plus, Link as LinkIcon, Unlink, PlayCircle, StopCircle, Clock, AlertTriangle, Archive, RefreshCw, Bold, Italic, List, Eye, Edit2, FileText, ChevronUp, ChevronDown } from 'lucide-react';
 import Avatar from '../ui/Avatar';
 
 const BranchDetails: React.FC = () => {
-  const { state, selectedBranchId, selectBranch, updateBranch, deleteBranch, linkBranch, unlinkBranch, addTask, updateTask, deleteTask, bulkUpdateTasks, toggleBranchArchive } = useProject();
+  const { state, selectedBranchId, selectBranch, updateBranch, deleteBranch, linkBranch, unlinkBranch, addTask, updateTask, deleteTask, moveTask, bulkUpdateTasks, toggleBranchArchive } = useProject();
   const [isBulkMode, setIsBulkMode] = useState(false);
   const [bulkText, setBulkText] = useState('');
   const [newTaskTitle, setNewTaskTitle] = useState('');
@@ -234,8 +234,8 @@ const BranchDetails: React.FC = () => {
                     {/* Task List */}
                     <ul className="space-y-2">
                         {branch.tasks.length === 0 && <p className="text-sm text-gray-400 italic text-center py-4">Nessun task.</p>}
-                        {branch.tasks.map(task => (
-                            <li key={task.id} className="group bg-white dark:bg-slate-800 border border-gray-100 dark:border-slate-700 rounded-md p-2 hover:shadow-sm transition-all">
+                        {branch.tasks.map((task, index) => (
+                            <li key={task.id} className="group bg-white dark:bg-slate-800 border border-gray-100 dark:border-slate-700 rounded-md p-2 hover:shadow-sm transition-all relative">
                                 <div className="flex items-start gap-2">
                                     <button 
                                         onClick={() => updateTask(branch.id, task.id, { completed: !task.completed })}
@@ -284,12 +284,34 @@ const BranchDetails: React.FC = () => {
                                         </div>
                                     </div>
 
-                                    <button 
-                                        onClick={() => deleteTask(branch.id, task.id)}
-                                        className="text-gray-300 hover:text-red-500 opacity-0 group-hover:opacity-100 transition-opacity"
-                                    >
-                                        <X className="w-3.5 h-3.5" />
-                                    </button>
+                                    {/* Action Buttons (Right side) */}
+                                    <div className="flex flex-col gap-1 opacity-0 group-hover:opacity-100 transition-opacity">
+                                        {index > 0 && (
+                                            <button 
+                                                onClick={() => moveTask(branch.id, task.id, 'up')}
+                                                className="text-slate-300 hover:text-indigo-500"
+                                                title="Sposta su"
+                                            >
+                                                <ChevronUp className="w-3.5 h-3.5" />
+                                            </button>
+                                        )}
+                                        {index < branch.tasks.length - 1 && (
+                                            <button 
+                                                onClick={() => moveTask(branch.id, task.id, 'down')}
+                                                className="text-slate-300 hover:text-indigo-500"
+                                                title="Sposta giù"
+                                            >
+                                                <ChevronDown className="w-3.5 h-3.5" />
+                                            </button>
+                                        )}
+                                        <button 
+                                            onClick={() => deleteTask(branch.id, task.id)}
+                                            className="text-slate-300 hover:text-red-500"
+                                            title="Elimina"
+                                        >
+                                            <X className="w-3.5 h-3.5" />
+                                        </button>
+                                    </div>
                                 </div>
                             </li>
                         ))}

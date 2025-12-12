@@ -20,6 +20,7 @@ export interface Task {
   assigneeId?: string;
   dueDate?: string; // ISO Date string YYYY-MM-DD
   completed: boolean;
+  position?: number; // Added for ordering
 }
 
 export interface Branch {

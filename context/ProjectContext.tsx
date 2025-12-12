@@ -24,9 +24,11 @@ interface ProjectContextType {
   linkBranch: (childId: string, parentId: string) => void;
   unlinkBranch: (childId: string, parentId: string) => void;
   deleteBranch: (branchId: string) => void;
+  moveBranch: (branchId: string, direction: 'left' | 'right') => void;
   addTask: (branchId: string, title: string) => void;
   updateTask: (branchId: string, taskId: string, data: Partial<Task>) => void;
   deleteTask: (branchId: string, taskId: string) => void;
+  moveTask: (branchId: string, taskId: string, direction: 'up' | 'down') => void;
   bulkUpdateTasks: (branchId: string, rawText: string) => void;
   addPerson: (name: string, email: string) => void;
   updatePerson: (id: string, data: Partial<Person>) => void;
@@ -143,9 +145,7 @@ export const ProjectProvider: React.FC<{ children: React.ReactNode }> = ({ child
       ...INITIAL_STATE,
       id: newId,
       name: `Nuovo Progetto ${projects.length + 1}`,
-      branches: { ...INITIAL_STATE.branches }, // Shallow copy isn't enough for deep objects, but keys are primitives. 
-      // Deep copy branches to avoid reference issues
-      // Simplifying deep copy for initial state:
+      branches: { ...INITIAL_STATE.branches }, 
       people: [...INITIAL_STATE.people]
     };
     
@@ -160,9 +160,6 @@ export const ProjectProvider: React.FC<{ children: React.ReactNode }> = ({ child
   const closeProject = useCallback((id: string) => {
     setProjects(prev => {
       if (prev.length <= 1) {
-        // Don't close the last project, just reset it maybe? Or do nothing.
-        // Let's prevent closing the last tab for simplicity
-        // alert("Impossibile chiudere l'ultimo progetto attivo.");
         return prev;
       }
       
@@ -410,12 +407,51 @@ export const ProjectProvider: React.FC<{ children: React.ReactNode }> = ({ child
     }
   }, [selectedBranchId, setProjectState]);
 
+  const moveBranch = useCallback((branchId: string, direction: 'left' | 'right') => {
+    setProjectState(prev => {
+      const branch = prev.branches[branchId];
+      // Can't move root or orphans easily without parent ref
+      if (!branch || branch.parentIds.length === 0) return prev;
+
+      const newBranches = { ...prev.branches };
+      let changed = false;
+
+      // Apply the move in ALL parent lists
+      branch.parentIds.forEach(parentId => {
+          const parent = newBranches[parentId];
+          if (!parent) return;
+
+          const currentIndex = parent.childrenIds.indexOf(branchId);
+          if (currentIndex === -1) return;
+
+          const newChildren = [...parent.childrenIds];
+
+          if (direction === 'left' && currentIndex > 0) {
+              const temp = newChildren[currentIndex - 1];
+              newChildren[currentIndex - 1] = newChildren[currentIndex];
+              newChildren[currentIndex] = temp;
+              newBranches[parentId] = { ...parent, childrenIds: newChildren };
+              changed = true;
+          } else if (direction === 'right' && currentIndex < newChildren.length - 1) {
+              const temp = newChildren[currentIndex + 1];
+              newChildren[currentIndex + 1] = newChildren[currentIndex];
+              newChildren[currentIndex] = temp;
+              newBranches[parentId] = { ...parent, childrenIds: newChildren };
+              changed = true;
+          }
+      });
+
+      return changed ? { ...prev, branches: newBranches } : prev;
+    });
+  }, [setProjectState]);
+
   const addTask = useCallback((branchId: string, title: string) => {
     if (!title.trim()) return;
     const newTask: Task = {
       id: generateId(),
       title: title.trim(),
       completed: false,
+      position: Date.now()
     };
 
     setProjectState(prev => ({
@@ -462,6 +498,33 @@ export const ProjectProvider: React.FC<{ children: React.ReactNode }> = ({ child
     });
   }, [setProjectState]);
 
+  const moveTask = useCallback((branchId: string, taskId: string, direction: 'up' | 'down') => {
+    setProjectState(prev => {
+        const branch = prev.branches[branchId];
+        if (!branch) return prev;
+        
+        const tasks = [...branch.tasks];
+        const index = tasks.findIndex(t => t.id === taskId);
+        if (index === -1) return prev;
+
+        if (direction === 'up' && index > 0) {
+            [tasks[index], tasks[index - 1]] = [tasks[index - 1], tasks[index]];
+        } else if (direction === 'down' && index < tasks.length - 1) {
+            [tasks[index], tasks[index + 1]] = [tasks[index + 1], tasks[index]];
+        } else {
+            return prev;
+        }
+        
+        return {
+            ...prev,
+            branches: {
+                ...prev.branches,
+                [branchId]: { ...branch, tasks }
+            }
+        };
+    });
+  }, [setProjectState]);
+
   const bulkUpdateTasks = useCallback((branchId: string, rawText: string) => {
     const lines = rawText.split('\n').map(l => l.trim()).filter(l => l.length > 0);
     
@@ -471,14 +534,15 @@ export const ProjectProvider: React.FC<{ children: React.ReactNode }> = ({ child
 
         const currentTasksMap = new Map(branch.tasks.map(t => [t.title, t]));
         
-        const newTasks: Task[] = lines.map(line => {
+        const newTasks: Task[] = lines.map((line, index) => {
             if (currentTasksMap.has(line)) {
-                return currentTasksMap.get(line)!;
+                return { ...currentTasksMap.get(line)!, position: index };
             }
             return {
                 id: generateId(),
                 title: line,
-                completed: false
+                completed: false,
+                position: index
             };
         });
 
@@ -517,8 +581,6 @@ export const ProjectProvider: React.FC<{ children: React.ReactNode }> = ({ child
         if (!current) return prev;
 
         let updates = { ...data };
-        
-        // Recalculate initials if name changes
         if (data.name) {
              updates.initials = data.name.split(' ').map(n => n[0]).join('').substring(0, 2).toUpperCase();
         }
@@ -543,20 +605,25 @@ export const ProjectProvider: React.FC<{ children: React.ReactNode }> = ({ child
     if (!supabaseClient) throw new Error("Client Supabase non inizializzato");
     
     const p = activeProject;
-    
-    // 0. Get user ID (optional but recommended for RLS)
     const { data: { user } } = await supabaseClient.auth.getUser();
 
     // 1. Save Project
     const { error: pError } = await supabaseClient.from('flowtask_projects').upsert({
         id: p.id,
         name: p.name,
-        owner_id: user?.id, // Link to auth user
+        owner_id: user?.id,
         created_at: new Date().toISOString()
     });
     if (pError) throw pError;
 
-    // 2. Save People
+    // 2. Sync People (Handle deletions)
+    const localPersonIds = p.people.map(person => person.id);
+    if (localPersonIds.length > 0) {
+        await supabaseClient.from('flowtask_people').delete().eq('project_id', p.id).not('id', 'in', `(${localPersonIds.join(',')})`);
+    } else {
+        await supabaseClient.from('flowtask_people').delete().eq('project_id', p.id);
+    }
+
     if (p.people.length > 0) {
         const peopleData = p.people.map(person => ({
             id: person.id,
@@ -566,11 +633,17 @@ export const ProjectProvider: React.FC<{ children: React.ReactNode }> = ({ child
             initials: person.initials,
             color: person.color
         }));
-        const { error: ppError } = await supabaseClient.from('flowtask_people').upsert(peopleData);
-        if (ppError) throw ppError;
+        await supabaseClient.from('flowtask_people').upsert(peopleData);
     }
 
-    // 3. Save Branches (Flattened)
+    // 3. Sync Branches (Handle deletions)
+    const localBranchIds = Object.keys(p.branches);
+    if (localBranchIds.length > 0) {
+         await supabaseClient.from('flowtask_branches').delete().eq('project_id', p.id).not('id', 'in', `(${localBranchIds.join(',')})`);
+    } else {
+         await supabaseClient.from('flowtask_branches').delete().eq('project_id', p.id);
+    }
+
     const branches = Object.values(p.branches);
     if (branches.length > 0) {
         const branchesData = branches.map(b => ({
@@ -584,20 +657,31 @@ export const ProjectProvider: React.FC<{ children: React.ReactNode }> = ({ child
             due_date: b.dueDate,
             archived: b.archived || false,
             parent_ids: b.parentIds,
-            children_ids: b.childrenIds
+            children_ids: b.childrenIds // Preserves sibling order
         }));
-        const { error: bError } = await supabaseClient.from('flowtask_branches').upsert(branchesData);
-        if (bError) throw bError;
+        await supabaseClient.from('flowtask_branches').upsert(branchesData);
     }
 
-    // 4. Save Tasks (Flattened)
-    const tasks = branches.flatMap(b => b.tasks.map(t => ({
+    // 4. Sync Tasks (Handle deletions)
+    // First, delete tasks that are in the kept branches but not in our local list
+    const allLocalTaskIds = branches.flatMap(b => b.tasks.map(t => t.id));
+    if (localBranchIds.length > 0) {
+        let query = supabaseClient.from('flowtask_tasks').delete().in('branch_id', localBranchIds);
+        if (allLocalTaskIds.length > 0) {
+            query = query.not('id', 'in', `(${allLocalTaskIds.join(',')})`);
+        }
+        await query;
+    }
+
+    // Upsert current tasks using current array index as position
+    const tasks = branches.flatMap(b => b.tasks.map((t, index) => ({
         id: t.id,
-        branch_id: b.id, // Link to branch
+        branch_id: b.id,
         title: t.title,
         assignee_id: t.assigneeId,
         due_date: t.dueDate,
-        completed: t.completed
+        completed: t.completed,
+        position: index // CRITICAL: Save current visual index as database position
     })));
 
     if (tasks.length > 0) {
@@ -629,9 +713,8 @@ export const ProjectProvider: React.FC<{ children: React.ReactNode }> = ({ child
     const { data: branchesData, error: bError } = await supabaseClient.from('flowtask_branches').select('*').eq('project_id', projectId);
     if (bError) throw bError;
 
-    // 4. Fetch Tasks (For all branches in this project)
+    // 4. Fetch Tasks
     const branchIds = branchesData.map((b: any) => b.id);
-    // If no branches, no tasks
     let tasksData: any[] = [];
     if (branchIds.length > 0) {
         const { data: tData, error: tError } = await supabaseClient.from('flowtask_tasks').select('*').in('branch_id', branchIds);
@@ -652,6 +735,7 @@ export const ProjectProvider: React.FC<{ children: React.ReactNode }> = ({ child
 
     // Map Tasks grouped by Branch ID
     const tasksByBranch: Record<string, Task[]> = {};
+    
     tasksData.forEach((t: any) => {
         if (!tasksByBranch[t.branch_id]) tasksByBranch[t.branch_id] = [];
         tasksByBranch[t.branch_id].push({
@@ -659,15 +743,19 @@ export const ProjectProvider: React.FC<{ children: React.ReactNode }> = ({ child
             title: t.title,
             assigneeId: t.assignee_id,
             dueDate: t.due_date,
-            completed: t.completed
+            completed: t.completed,
+            position: t.position
         });
     });
 
-    // Map Branches
+    // Map Branches and SORT tasks for each branch
     const branches: Record<string, Branch> = {};
-    let rootBranchId = 'root'; // Fallback
+    let rootBranchId = 'root';
     
     branchesData.forEach((b: any) => {
+        // Sort tasks for this branch based on position
+        const branchTasks = (tasksByBranch[b.id] || []).sort((a, b) => (a.position ?? 0) - (b.position ?? 0));
+
         branches[b.id] = {
             id: b.id,
             title: b.title,
@@ -676,8 +764,8 @@ export const ProjectProvider: React.FC<{ children: React.ReactNode }> = ({ child
             startDate: b.start_date,
             endDate: b.end_date,
             dueDate: b.due_date,
-            tasks: tasksByBranch[b.id] || [],
-            childrenIds: b.children_ids || [],
+            tasks: branchTasks,
+            childrenIds: b.children_ids || [], // Supabase preserves array order from upload
             parentIds: b.parent_ids || [],
             archived: b.archived
         };
@@ -706,16 +794,10 @@ export const ProjectProvider: React.FC<{ children: React.ReactNode }> = ({ child
             try {
                 const list = await listProjectsFromSupabase();
                 if (list && list.length > 0 && isMounted) {
-                    // Download the most recent one (index 0) and activate it.
-                    // IMPORTANT: Pass removeDefault = true to wipe the "Sample Project" 
-                    // if it is the only one present.
                     await downloadProjectFromSupabase(list[0].id, true, true);
-                    
-                    // Download others silently (background)
-                    const others = list.slice(1);
-                    if (others.length > 0) {
-                        await Promise.all(others.map(p => downloadProjectFromSupabase(p.id, false, false)));
-                    }
+                    // Background sync others if needed
+                    // const others = list.slice(1);
+                    // if (others.length > 0) Promise.all(others.map(p => downloadProjectFromSupabase(p.id, false, false)));
                 }
             } catch (e) {
                 console.error("Auto-sync failed", e);
@@ -723,10 +805,6 @@ export const ProjectProvider: React.FC<{ children: React.ReactNode }> = ({ child
         }
     };
     
-    // We run this when session becomes available.
-    // NOTE: This might run on every session refresh token update if not careful, 
-    // but React's ref comparison on session object usually handles it if reference is stable or we check ID.
-    // For simplicity, we rely on the session existence check.
     if (session?.user?.id) {
          sync();
     }
@@ -736,7 +814,7 @@ export const ProjectProvider: React.FC<{ children: React.ReactNode }> = ({ child
 
   return (
     <ProjectContext.Provider value={{
-      state: activeProject, // Expose only the active project so components don't break
+      state: activeProject,
       projects,
       activeProjectId,
       createProject,
@@ -750,9 +828,11 @@ export const ProjectProvider: React.FC<{ children: React.ReactNode }> = ({ child
       linkBranch,
       unlinkBranch,
       deleteBranch,
+      moveBranch,
       addTask,
       updateTask,
       deleteTask,
+      moveTask,
       bulkUpdateTasks,
       addPerson,
       updatePerson,

@@ -2,7 +2,7 @@ import React from 'react';
 import { Branch, BranchStatus } from '../../types';
 import { STATUS_CONFIG } from '../../constants';
 import { useProject } from '../../context/ProjectContext';
-import { MoreHorizontal, Plus, Calendar, Archive } from 'lucide-react';
+import { MoreHorizontal, Plus, Calendar, Archive, ChevronLeft, ChevronRight } from 'lucide-react';
 import Avatar from '../ui/Avatar';
 
 interface BranchNodeProps {
@@ -10,7 +10,7 @@ interface BranchNodeProps {
 }
 
 const BranchNode: React.FC<BranchNodeProps> = ({ branchId }) => {
-  const { state, addBranch, selectBranch, selectedBranchId } = useProject();
+  const { state, addBranch, selectBranch, selectedBranchId, moveBranch } = useProject();
   const branch = state.branches[branchId];
   
   if (!branch) return null;
@@ -23,8 +23,21 @@ const BranchNode: React.FC<BranchNodeProps> = ({ branchId }) => {
   const completedTasks = branch.tasks.filter(t => t.completed).length;
   const progress = totalTasks > 0 ? (completedTasks / totalTasks) * 100 : 0;
 
+  // Check movement possibilities (simplified to first parent)
+  let canMoveLeft = false;
+  let canMoveRight = false;
+  
+  if (branch.parentIds.length > 0) {
+      const firstParent = state.branches[branch.parentIds[0]];
+      if (firstParent) {
+          const idx = firstParent.childrenIds.indexOf(branchId);
+          if (idx > 0) canMoveLeft = true;
+          if (idx !== -1 && idx < firstParent.childrenIds.length - 1) canMoveRight = true;
+      }
+  }
+
   return (
-    <div className="flex flex-col items-center">
+    <div className="flex flex-col items-center group/node">
       <div 
         className={`
           relative w-72 bg-white dark:bg-slate-800 rounded-xl shadow-sm border-2 
@@ -40,7 +53,8 @@ const BranchNode: React.FC<BranchNodeProps> = ({ branchId }) => {
         }}
       >
         {/* Header */}
-        <div className={`p-3 border-b border-slate-100 dark:border-slate-700 flex justify-between items-start ${branch.archived ? 'bg-slate-50 dark:bg-slate-800' : ''}`}>
+        <div className={`p-3 border-b border-slate-100 dark:border-slate-700 flex justify-between items-start ${branch.archived ? 'bg-slate-50 dark:bg-slate-800' : ''} relative`}>
+          
           <div className="flex flex-col gap-1 overflow-hidden">
              <h3 className="font-bold text-slate-800 dark:text-slate-100 truncate text-sm flex items-center gap-2" title={branch.title}>
               {branch.title}
@@ -51,11 +65,43 @@ const BranchNode: React.FC<BranchNodeProps> = ({ branchId }) => {
               {statusConfig.label}
             </span>
           </div>
-          {branch.parentIds.length > 0 && (
-              <div className="text-slate-400">
-                  <MoreHorizontal className="w-4 h-4" />
-              </div>
-          )}
+
+          <div className="flex items-center gap-1">
+             {/* Left Arrow */}
+             {canMoveLeft && (
+                 <button 
+                    onClick={(e) => {
+                        e.stopPropagation();
+                        moveBranch(branchId, 'left');
+                    }}
+                    className="p-1 rounded hover:bg-slate-200 dark:hover:bg-slate-600 text-slate-400 dark:text-slate-500 opacity-0 group-hover/node:opacity-100 transition-opacity"
+                    title="Sposta a sinistra"
+                 >
+                     <ChevronLeft className="w-4 h-4" />
+                 </button>
+             )}
+             
+             {/* Right Arrow */}
+             {canMoveRight && (
+                 <button 
+                    onClick={(e) => {
+                        e.stopPropagation();
+                        moveBranch(branchId, 'right');
+                    }}
+                    className="p-1 rounded hover:bg-slate-200 dark:hover:bg-slate-600 text-slate-400 dark:text-slate-500 opacity-0 group-hover/node:opacity-100 transition-opacity"
+                    title="Sposta a destra"
+                 >
+                     <ChevronRight className="w-4 h-4" />
+                 </button>
+             )}
+             
+             {branch.parentIds.length > 0 && (
+                <div className="text-slate-400 pl-1">
+                    <MoreHorizontal className="w-4 h-4" />
+                </div>
+            )}
+          </div>
+
         </div>
 
         {/* Body */}

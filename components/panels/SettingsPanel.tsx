@@ -50,7 +50,8 @@ create table public.flowtask_tasks (
   title text not null,
   assignee_id text references public.flowtask_people(id) on delete set null,
   due_date text,
-  completed boolean default false
+  completed boolean default false,
+  position integer default 0
 );
 
 -- ENABLE ROW LEVEL SECURITY
