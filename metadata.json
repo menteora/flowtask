@@ -1,0 +1,5 @@
+{
+  "name": "FlowTask",
+  "description": "A visual project flow manager with branching logic, bulk task editing, and team management.",
+  "requestFramePermissions": []
+}
