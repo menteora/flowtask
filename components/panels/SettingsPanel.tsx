@@ -1,6 +1,6 @@
 import React, { useState, useEffect, useRef } from 'react';
 import { useProject } from '../../context/ProjectContext';
-import { Database, Save, Download, Key, ShieldCheck, Check, Copy, Terminal, Cloud, CloudRain, Loader2, AlertCircle, Upload, User, LogOut, LogIn, WifiOff, X } from 'lucide-react';
+import { Database, Save, Download, Key, ShieldCheck, Check, Copy, Terminal, Cloud, CloudRain, Loader2, AlertCircle, Upload, User, LogOut, LogIn, WifiOff, X, Share2, Link } from 'lucide-react';
 
 const SQL_SCHEMA = `
 -- CANCELLAZIONE VECCHIE TABELLE (Se esistono)
@@ -40,7 +40,8 @@ create table public.flowtask_branches (
   due_date text,
   archived boolean default false,
   parent_ids text[],
-  children_ids text[]
+  children_ids text[],
+  position integer default 0
 );
 
 -- Tasks
@@ -119,6 +120,7 @@ const SettingsPanel: React.FC = () => {
   const [url, setUrl] = useState(supabaseConfig.url);
   const [key, setKey] = useState(supabaseConfig.key);
   const [copied, setCopied] = useState(false);
+  const [shareLinkCopied, setShareLinkCopied] = useState(false);
   
   const [isSaving, setIsSaving] = useState(false);
   const [saveStatus, setSaveStatus] = useState<'idle' | 'success' | 'error'>('idle');
@@ -151,6 +153,22 @@ const SettingsPanel: React.FC = () => {
       navigator.clipboard.writeText(SQL_SCHEMA);
       setCopied(true);
       setTimeout(() => setCopied(false), 2000);
+  };
+
+  const handleGenerateShareLink = () => {
+      if (!url || !key) {
+          showNotification("Configurazione mancante. Impossibile generare link.", 'error');
+          return;
+      }
+      const config = { url, key };
+      // Base64 encode for simple obfuscation (avoiding plain text in URL history)
+      const encoded = btoa(JSON.stringify(config));
+      const link = `${window.location.origin}${window.location.pathname}?config=${encoded}`;
+      
+      navigator.clipboard.writeText(link);
+      setShareLinkCopied(true);
+      showNotification("Link di configurazione copiato negli appunti!", 'success');
+      setTimeout(() => setShareLinkCopied(false), 3000);
   };
 
   const handleExportConfig = () => {
@@ -314,10 +332,21 @@ const SettingsPanel: React.FC = () => {
           
           {/* Credentials Section */}
           <div className="bg-white dark:bg-slate-800 rounded-xl shadow-sm border border-slate-200 dark:border-slate-700 p-6">
-              <h3 className="text-lg font-semibold text-slate-800 dark:text-white mb-4 flex items-center gap-2">
-                  <Key className="w-5 h-5 text-indigo-500" />
-                  Credenziali API
-              </h3>
+              <div className="flex items-center justify-between mb-4">
+                  <h3 className="text-lg font-semibold text-slate-800 dark:text-white flex items-center gap-2">
+                      <Key className="w-5 h-5 text-indigo-500" />
+                      Credenziali API
+                  </h3>
+                  <button 
+                    onClick={handleGenerateShareLink}
+                    disabled={!url || !key}
+                    className="text-xs text-indigo-600 dark:text-indigo-400 hover:underline flex items-center gap-1 disabled:opacity-50"
+                  >
+                      {shareLinkCopied ? <Check className="w-3 h-3" /> : <Link className="w-3 h-3" />}
+                      {shareLinkCopied ? 'Link Copiato' : 'Condividi Configurazione'}
+                  </button>
+              </div>
+
               <div className="space-y-4">
                   <div>
                       <label className="block text-sm font-medium text-slate-700 dark:text-slate-300 mb-1">Project URL</label>

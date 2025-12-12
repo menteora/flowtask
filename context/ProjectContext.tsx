@@ -1,4 +1,4 @@
-import React, { createContext, useContext, useState, useCallback, useEffect } from 'react';
+import React, { createContext, useContext, useState, useCallback, useEffect, useRef } from 'react';
 import { ProjectState, Branch, BranchStatus, Task, Person } from '../types';
 import { INITIAL_STATE } from '../constants';
 import { createClient, SupabaseClient, Session } from '@supabase/supabase-js';
@@ -54,6 +54,8 @@ interface ProjectContextType {
   downloadProjectFromSupabase: (projectId: string, activate?: boolean, removeDefault?: boolean) => Promise<void>;
   listProjectsFromSupabase: () => Promise<Array<{ id: string, name: string, updated_at: string }>>;
   logout: () => Promise<void>;
+  
+  autoSaveStatus: 'idle' | 'saving' | 'saved' | 'error';
 }
 
 const ProjectContext = createContext<ProjectContextType | undefined>(undefined);
@@ -65,6 +67,9 @@ export const ProjectProvider: React.FC<{ children: React.ReactNode }> = ({ child
   
   const [selectedBranchId, setSelectedBranchId] = useState<string | null>(null);
   const [showArchived, setShowArchived] = useState(false);
+  
+  // Auto-save Status
+  const [autoSaveStatus, setAutoSaveStatus] = useState<'idle' | 'saving' | 'saved' | 'error'>('idle');
 
   // Supabase State
   const [supabaseConfig, setSupabaseState] = useState<{ url: string; key: string }>({
@@ -78,6 +83,28 @@ export const ProjectProvider: React.FC<{ children: React.ReactNode }> = ({ child
 
   const enableOfflineMode = useCallback(() => setIsOfflineMode(true), []);
   const disableOfflineMode = useCallback(() => setIsOfflineMode(false), []);
+
+  // Check URL for shared config on mount
+  useEffect(() => {
+    const params = new URLSearchParams(window.location.search);
+    const encodedConfig = params.get('config');
+    
+    if (encodedConfig) {
+        try {
+            const decoded = atob(encodedConfig);
+            const config = JSON.parse(decoded);
+            if (config.url && config.key) {
+                setSupabaseState({ url: config.url, key: config.key });
+                localStorage.setItem('supabase_url', config.url);
+                localStorage.setItem('supabase_key', config.key);
+                // Clean URL
+                window.history.replaceState({}, document.title, window.location.pathname);
+            }
+        } catch (e) {
+            console.error("Failed to parse shared config", e);
+        }
+    }
+  }, []);
 
   // Initialize Client when config changes
   useEffect(() => {
@@ -238,7 +265,8 @@ export const ProjectProvider: React.FC<{ children: React.ReactNode }> = ({ child
       tasks: [],
       childrenIds: [],
       parentIds: [parentId],
-      archived: false
+      archived: false,
+      position: 0
     };
 
     setProjectState(prev => {
@@ -447,23 +475,29 @@ export const ProjectProvider: React.FC<{ children: React.ReactNode }> = ({ child
 
   const addTask = useCallback((branchId: string, title: string) => {
     if (!title.trim()) return;
-    const newTask: Task = {
-      id: generateId(),
-      title: title.trim(),
-      completed: false,
-      position: Date.now()
-    };
 
-    setProjectState(prev => ({
-      ...prev,
-      branches: {
-        ...prev.branches,
-        [branchId]: {
-          ...prev.branches[branchId],
-          tasks: [...prev.branches[branchId].tasks, newTask],
+    setProjectState(prev => {
+      const branch = prev.branches[branchId];
+      if (!branch) return prev;
+      
+      const newTask: Task = {
+        id: generateId(),
+        title: title.trim(),
+        completed: false,
+        position: branch.tasks.length // Add to end based on length
+      };
+
+      return {
+        ...prev,
+        branches: {
+          ...prev.branches,
+          [branchId]: {
+            ...branch,
+            tasks: [...branch.tasks, newTask],
+          },
         },
-      },
-    }));
+      };
+    });
   }, [setProjectState]);
 
   const updateTask = useCallback((branchId: string, taskId: string, data: Partial<Task>) => {
@@ -507,6 +541,7 @@ export const ProjectProvider: React.FC<{ children: React.ReactNode }> = ({ child
         const index = tasks.findIndex(t => t.id === taskId);
         if (index === -1) return prev;
 
+        // Swap array elements
         if (direction === 'up' && index > 0) {
             [tasks[index], tasks[index - 1]] = [tasks[index - 1], tasks[index]];
         } else if (direction === 'down' && index < tasks.length - 1) {
@@ -514,12 +549,15 @@ export const ProjectProvider: React.FC<{ children: React.ReactNode }> = ({ child
         } else {
             return prev;
         }
+
+        // CRITICAL FIX: Re-assign 'position' property to all tasks to match new array order
+        const reorderedTasks = tasks.map((t, i) => ({ ...t, position: i }));
         
         return {
             ...prev,
             branches: {
                 ...prev.branches,
-                [branchId]: { ...branch, tasks }
+                [branchId]: { ...branch, tasks: reorderedTasks }
             }
         };
     });
@@ -646,19 +684,28 @@ export const ProjectProvider: React.FC<{ children: React.ReactNode }> = ({ child
 
     const branches = Object.values(p.branches);
     if (branches.length > 0) {
-        const branchesData = branches.map(b => ({
-            id: b.id,
-            project_id: p.id,
-            title: b.title,
-            description: b.description,
-            status: b.status,
-            start_date: b.startDate,
-            end_date: b.endDate,
-            due_date: b.dueDate,
-            archived: b.archived || false,
-            parent_ids: b.parentIds,
-            children_ids: b.childrenIds // Preserves sibling order
-        }));
+        const branchesData = branches.map(b => {
+             // Calculate position for the branch (find its index in first parent's childrenIds)
+             let pos = 0;
+             if(b.parentIds.length > 0 && p.branches[b.parentIds[0]]) {
+                 pos = p.branches[b.parentIds[0]].childrenIds.indexOf(b.id);
+             }
+
+             return {
+                id: b.id,
+                project_id: p.id,
+                title: b.title,
+                description: b.description,
+                status: b.status,
+                start_date: b.startDate,
+                end_date: b.endDate,
+                due_date: b.dueDate,
+                archived: b.archived || false,
+                parent_ids: b.parentIds,
+                children_ids: b.childrenIds,
+                position: pos // Save visual order index
+            };
+        });
         await supabaseClient.from('flowtask_branches').upsert(branchesData);
     }
 
@@ -674,6 +721,7 @@ export const ProjectProvider: React.FC<{ children: React.ReactNode }> = ({ child
     }
 
     // Upsert current tasks using current array index as position
+    // This is robust because we updated state.position in moveTask
     const tasks = branches.flatMap(b => b.tasks.map((t, index) => ({
         id: t.id,
         branch_id: b.id,
@@ -681,7 +729,7 @@ export const ProjectProvider: React.FC<{ children: React.ReactNode }> = ({ child
         assignee_id: t.assigneeId,
         due_date: t.dueDate,
         completed: t.completed,
-        position: index // CRITICAL: Save current visual index as database position
+        position: index // Enforce strict 0,1,2,3 order
     })));
 
     if (tasks.length > 0) {
@@ -717,7 +765,8 @@ export const ProjectProvider: React.FC<{ children: React.ReactNode }> = ({ child
     const branchIds = branchesData.map((b: any) => b.id);
     let tasksData: any[] = [];
     if (branchIds.length > 0) {
-        const { data: tData, error: tError } = await supabaseClient.from('flowtask_tasks').select('*').in('branch_id', branchIds);
+        // Order by position explicitly to respect saved order
+        const { data: tData, error: tError } = await supabaseClient.from('flowtask_tasks').select('*').in('branch_id', branchIds).order('position', { ascending: true });
         if (tError) throw tError;
         tasksData = tData || [];
     }
@@ -753,7 +802,7 @@ export const ProjectProvider: React.FC<{ children: React.ReactNode }> = ({ child
     let rootBranchId = 'root';
     
     branchesData.forEach((b: any) => {
-        // Sort tasks for this branch based on position
+        // Tasks already sorted by SQL query above, but safety sort doesn't hurt
         const branchTasks = (tasksByBranch[b.id] || []).sort((a, b) => (a.position ?? 0) - (b.position ?? 0));
 
         branches[b.id] = {
@@ -767,13 +816,20 @@ export const ProjectProvider: React.FC<{ children: React.ReactNode }> = ({ child
             tasks: branchTasks,
             childrenIds: b.children_ids || [], // Supabase preserves array order from upload
             parentIds: b.parent_ids || [],
-            archived: b.archived
+            archived: b.archived,
+            position: b.position
         };
         
         if (b.parent_ids.length === 0) rootBranchId = b.id;
     });
     
-    if (branches['root']) rootBranchId = 'root';
+    // Ensure we have a root, if specific root logic exists
+    // Fallback if multiple roots or none marked (though usually only one has no parents)
+    if (!branches[rootBranchId] && branchesData.length > 0) {
+        // Find one with no parents
+        const root = branchesData.find((b: any) => b.parent_ids.length === 0);
+        if (root) rootBranchId = root.id;
+    }
 
     const newState: ProjectState = {
         id: projectData.id,
@@ -787,6 +843,29 @@ export const ProjectProvider: React.FC<{ children: React.ReactNode }> = ({ child
   }, [supabaseClient, loadProject]);
 
   // AUTO SYNC EFFECT
+  // This watches for changes in activeProject and saves them with debounce
+  useEffect(() => {
+    if (!session || isOfflineMode || !supabaseClient) return;
+    
+    // We only auto-save if there is an active project and it is not the default empty one if we want strictness, 
+    // but users can edit default so we save everything.
+
+    // Set saving status to saving immediately when dependency changes
+    if (autoSaveStatus !== 'saving') setAutoSaveStatus('saving');
+
+    const timeoutId = setTimeout(() => {
+        uploadProjectToSupabase()
+            .then(() => setAutoSaveStatus('saved'))
+            .catch((e) => {
+                console.error("Auto-save failed", e);
+                setAutoSaveStatus('error');
+            });
+    }, 2000); // 2 second debounce to avoid rapid writes during dragging
+
+    return () => clearTimeout(timeoutId);
+  }, [activeProject, session, isOfflineMode, supabaseClient, uploadProjectToSupabase]);
+
+  // Initial Load (Sync)
   useEffect(() => {
     let isMounted = true;
     const sync = async () => {
@@ -794,13 +873,15 @@ export const ProjectProvider: React.FC<{ children: React.ReactNode }> = ({ child
             try {
                 const list = await listProjectsFromSupabase();
                 if (list && list.length > 0 && isMounted) {
-                    await downloadProjectFromSupabase(list[0].id, true, true);
-                    // Background sync others if needed
-                    // const others = list.slice(1);
-                    // if (others.length > 0) Promise.all(others.map(p => downloadProjectFromSupabase(p.id, false, false)));
+                    // Only load if we are on the default project or initial state
+                    // Actually, usually we want to load the last state.
+                    // For now, simpler: just load the first one found.
+                    if (projects.length === 1 && projects[0].id === 'default-project') {
+                         await downloadProjectFromSupabase(list[0].id, true, true);
+                    }
                 }
             } catch (e) {
-                console.error("Auto-sync failed", e);
+                console.error("Initial sync failed", e);
             }
         }
     };
@@ -810,7 +891,7 @@ export const ProjectProvider: React.FC<{ children: React.ReactNode }> = ({ child
     }
     
     return () => { isMounted = false; };
-  }, [session?.user?.id, supabaseClient, isOfflineMode, listProjectsFromSupabase, downloadProjectFromSupabase]);
+  }, [session?.user?.id, supabaseClient, isOfflineMode, listProjectsFromSupabase, downloadProjectFromSupabase]); // Removed projects dependency to avoid loops
 
   return (
     <ProjectContext.Provider value={{
@@ -854,7 +935,9 @@ export const ProjectProvider: React.FC<{ children: React.ReactNode }> = ({ child
       uploadProjectToSupabase,
       downloadProjectFromSupabase,
       listProjectsFromSupabase,
-      logout
+      logout,
+      
+      autoSaveStatus
     }}>
       {children}
     </ProjectContext.Provider>

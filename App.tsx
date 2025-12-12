@@ -1,7 +1,7 @@
 import React, { useState, useRef, useEffect } from 'react';
 import { useTheme } from './context/ThemeContext';
 import { useProject } from './context/ProjectContext';
-import { Moon, Sun, GitBranch, Layers, Users, Download, Upload, Archive, Camera, Image as ImageIcon, Smartphone, Plus, X, Edit2, Calendar, ClipboardList, Settings } from 'lucide-react';
+import { Moon, Sun, GitBranch, Layers, Users, Download, Upload, Archive, Camera, Image as ImageIcon, Smartphone, Plus, X, Edit2, Calendar, ClipboardList, Settings, Cloud, Loader2, Check, AlertCircle } from 'lucide-react';
 import FlowCanvas from './components/flow/FlowCanvas';
 import FolderTree from './components/flow/FolderTree';
 import BranchDetails from './components/panels/BranchDetails';
@@ -19,7 +19,7 @@ const App: React.FC = () => {
   const { 
     selectedBranchId, state, loadProject, showArchived, toggleShowArchived,
     projects, activeProjectId, switchProject, createProject, closeProject, renameProject,
-    session, loadingAuth, isOfflineMode
+    session, loadingAuth, isOfflineMode, autoSaveStatus
   } = useProject();
   
   const [currentView, setCurrentView] = useState<View>('workflow');
@@ -148,13 +148,42 @@ const App: React.FC = () => {
       {/* Header */}
       <div className="flex w-full h-14 md:h-16 bg-white dark:bg-slate-900 border-b border-slate-200 dark:border-slate-800 items-center justify-between px-4 md:px-6 z-20 shadow-sm flex-shrink-0">
         
-        <div className="flex items-center">
-          <div className="bg-indigo-600 p-1.5 rounded-lg mr-2 md:mr-3">
-            <GitBranch className="w-5 h-5 text-white" />
+        <div className="flex items-center gap-4">
+          <div className="flex items-center">
+            <div className="bg-indigo-600 p-1.5 rounded-lg mr-2 md:mr-3">
+              <GitBranch className="w-5 h-5 text-white" />
+            </div>
+            <h1 className="text-lg md:text-xl font-bold bg-gradient-to-r from-indigo-600 to-violet-600 bg-clip-text text-transparent">
+              FlowTask
+            </h1>
           </div>
-          <h1 className="text-lg md:text-xl font-bold bg-gradient-to-r from-indigo-600 to-violet-600 bg-clip-text text-transparent">
-            FlowTask
-          </h1>
+
+          {/* Auto Save Status Indicator */}
+          {session && !isOfflineMode && (
+              <div className="hidden md:flex items-center gap-1.5 px-2 py-1 bg-slate-50 dark:bg-slate-800 rounded text-xs transition-colors">
+                  {autoSaveStatus === 'saving' && (
+                      <>
+                        <Loader2 className="w-3 h-3 animate-spin text-indigo-500" />
+                        <span className="text-indigo-500">Salvataggio...</span>
+                      </>
+                  )}
+                  {autoSaveStatus === 'saved' && (
+                      <>
+                        <Cloud className="w-3 h-3 text-green-500" />
+                        <span className="text-green-500">Salvato</span>
+                      </>
+                  )}
+                  {autoSaveStatus === 'error' && (
+                      <>
+                        <AlertCircle className="w-3 h-3 text-red-500" />
+                        <span className="text-red-500">Errore Sync</span>
+                      </>
+                  )}
+                  {autoSaveStatus === 'idle' && (
+                      <span className="text-slate-400">Pronto</span>
+                  )}
+              </div>
+          )}
         </div>
 
         <div className="hidden md:flex items-center gap-2">
