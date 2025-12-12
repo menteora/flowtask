@@ -160,27 +160,27 @@ const App: React.FC = () => {
 
           {/* Auto Save Status Indicator */}
           {session && !isOfflineMode && (
-              <div className="hidden md:flex items-center gap-1.5 px-2 py-1 bg-slate-50 dark:bg-slate-800 rounded text-xs transition-colors">
+              <div className="flex items-center gap-1.5 px-2 py-1 bg-slate-50 dark:bg-slate-800 rounded text-xs transition-colors ml-2 md:ml-0">
                   {autoSaveStatus === 'saving' && (
                       <>
                         <Loader2 className="w-3 h-3 animate-spin text-indigo-500" />
-                        <span className="text-indigo-500">Salvataggio...</span>
+                        <span className="text-indigo-500 hidden sm:inline">Salvataggio...</span>
                       </>
                   )}
                   {autoSaveStatus === 'saved' && (
                       <>
                         <Cloud className="w-3 h-3 text-green-500" />
-                        <span className="text-green-500">Salvato</span>
+                        <span className="text-green-500 hidden sm:inline">Salvato</span>
                       </>
                   )}
                   {autoSaveStatus === 'error' && (
                       <>
                         <AlertCircle className="w-3 h-3 text-red-500" />
-                        <span className="text-red-500">Errore Sync</span>
+                        <span className="text-red-500 hidden sm:inline">Errore Sync</span>
                       </>
                   )}
                   {autoSaveStatus === 'idle' && (
-                      <span className="text-slate-400">Pronto</span>
+                      <span className="text-slate-400 hidden sm:inline">Pronto</span>
                   )}
               </div>
           )}

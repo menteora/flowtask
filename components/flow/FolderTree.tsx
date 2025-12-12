@@ -1,16 +1,18 @@
 import React, { useState } from 'react';
 import { useProject } from '../../context/ProjectContext';
 import { STATUS_CONFIG } from '../../constants';
-import { ChevronRight, ChevronDown, Plus, FileText, CheckSquare, Square, Archive, GitBranch } from 'lucide-react';
+import { ChevronRight, ChevronDown, Plus, FileText, CheckSquare, Square, Archive, GitBranch, ChevronUp } from 'lucide-react';
 import Avatar from '../ui/Avatar';
 
 interface FolderNodeProps {
   branchId: string;
   depth?: number;
+  index?: number;
+  siblingsCount?: number;
 }
 
-const FolderNode: React.FC<FolderNodeProps> = ({ branchId, depth = 0 }) => {
-  const { state, selectBranch, selectedBranchId, addBranch, updateTask, showArchived } = useProject();
+const FolderNode: React.FC<FolderNodeProps> = ({ branchId, depth = 0, index, siblingsCount }) => {
+  const { state, selectBranch, selectedBranchId, addBranch, updateTask, moveTask, moveBranch, showArchived } = useProject();
   const branch = state.branches[branchId];
   const [isOpen, setIsOpen] = useState(true);
 
@@ -87,16 +89,39 @@ const FolderNode: React.FC<FolderNodeProps> = ({ branchId, depth = 0 }) => {
         >
             <Plus className="w-4 h-4" />
         </button>
+
+        {/* Mobile Branch Reordering Controls */}
+        {index !== undefined && siblingsCount !== undefined && siblingsCount > 1 && (
+            <div className="flex flex-col gap-1 border-l border-gray-200 dark:border-slate-700 pl-2 ml-1">
+                {index > 0 ? (
+                    <button 
+                        onClick={(e) => { e.stopPropagation(); moveBranch(branchId, 'left'); }} // 'left' maps to UP in tree view
+                        className="p-0.5 text-slate-400 hover:text-indigo-500"
+                    >
+                        <ChevronUp className="w-3.5 h-3.5" />
+                    </button>
+                ) : <div className="w-3.5 h-3.5 p-0.5"></div>}
+                
+                {index < siblingsCount - 1 ? (
+                    <button 
+                        onClick={(e) => { e.stopPropagation(); moveBranch(branchId, 'right'); }} // 'right' maps to DOWN in tree view
+                        className="p-0.5 text-slate-400 hover:text-indigo-500"
+                    >
+                        <ChevronDown className="w-3.5 h-3.5" />
+                    </button>
+                ) : <div className="w-3.5 h-3.5 p-0.5"></div>}
+            </div>
+        )}
       </div>
 
       {/* Children (Tasks & Sub-Branches) */}
       {isOpen && hasContent && (
         <div className="flex flex-col">
           {/* Tasks */}
-          {branch.tasks.map(task => (
+          {branch.tasks.map((task, index) => (
              <div 
                 key={task.id}
-                className="flex items-center gap-3 py-2 border-b border-gray-50 dark:border-slate-800/50 bg-gray-50/50 dark:bg-slate-900/50"
+                className="flex items-center gap-3 py-2 border-b border-gray-50 dark:border-slate-800/50 bg-gray-50/50 dark:bg-slate-900/50 pr-2"
                 style={{ paddingLeft: `${(depth + 1) * 1.5 + 2.5}rem` }}
              >
                 <div className="text-gray-400">
@@ -111,20 +136,47 @@ const FolderNode: React.FC<FolderNodeProps> = ({ branchId, depth = 0 }) => {
                 >
                     {task.completed ? <CheckSquare className="w-4 h-4" /> : <Square className="w-4 h-4" />}
                 </button>
-                <div className="flex-1 min-w-0 flex items-center justify-between pr-4">
+                <div className="flex-1 min-w-0 flex items-center justify-between">
                     <span className={`text-sm truncate ${task.completed ? 'line-through text-gray-400' : 'text-slate-600 dark:text-slate-300'}`}>
                         {task.title}
                     </span>
                     {task.assigneeId && (
-                        <Avatar person={state.people.find(p => p.id === task.assigneeId)!} size="sm" className="w-5 h-5 text-[10px]" />
+                        <Avatar person={state.people.find(p => p.id === task.assigneeId)!} size="sm" className="w-5 h-5 text-[10px] mr-2" />
                     )}
+                </div>
+
+                {/* Mobile Task Reordering Controls */}
+                <div className="flex flex-col gap-1 border-l border-gray-200 dark:border-slate-700 pl-2">
+                    {index > 0 ? (
+                        <button 
+                            onClick={(e) => { e.stopPropagation(); moveTask(branchId, task.id, 'up'); }}
+                            className="p-0.5 text-slate-400 hover:text-indigo-500"
+                        >
+                            <ChevronUp className="w-3.5 h-3.5" />
+                        </button>
+                    ) : <div className="w-3.5 h-3.5 p-0.5"></div>}
+                    
+                    {index < branch.tasks.length - 1 ? (
+                        <button 
+                            onClick={(e) => { e.stopPropagation(); moveTask(branchId, task.id, 'down'); }}
+                            className="p-0.5 text-slate-400 hover:text-indigo-500"
+                        >
+                            <ChevronDown className="w-3.5 h-3.5" />
+                        </button>
+                    ) : <div className="w-3.5 h-3.5 p-0.5"></div>}
                 </div>
              </div>
           ))}
 
           {/* Sub Branches */}
-          {visibleChildrenIds.map(childId => (
-            <FolderNode key={childId} branchId={childId} depth={depth + 1} />
+          {visibleChildrenIds.map((childId, idx) => (
+            <FolderNode 
+                key={childId} 
+                branchId={childId} 
+                depth={depth + 1}
+                index={idx}
+                siblingsCount={visibleChildrenIds.length}
+            />
           ))}
         </div>
       )}
