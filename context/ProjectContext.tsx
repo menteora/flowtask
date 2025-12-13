@@ -573,8 +573,9 @@ export const ProjectProvider: React.FC<{ children: React.ReactNode }> = ({ child
         const currentTasksMap = new Map(branch.tasks.map(t => [t.title, t]));
         
         const newTasks: Task[] = lines.map((line, index) => {
-            if (currentTasksMap.has(line)) {
-                return { ...currentTasksMap.get(line)!, position: index };
+            const existingTask = currentTasksMap.get(line);
+            if (existingTask) {
+                return { ...existingTask, position: index };
             }
             return {
                 id: generateId(),
