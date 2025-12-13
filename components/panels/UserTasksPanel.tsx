@@ -1,5 +1,6 @@
 import React, { useMemo } from 'react';
 import { useProject } from '../../context/ProjectContext';
+import { Branch } from '../../types';
 import { CheckSquare, Square, ClipboardList, HelpCircle, ArrowRight, Calendar, Mail } from 'lucide-react';
 import Avatar from '../ui/Avatar';
 
@@ -48,7 +49,7 @@ const UserTasksPanel: React.FC = () => {
     };
 
     // Iterate branches and tasks
-    Object.values(state.branches).forEach(branch => {
+    (Object.values(state.branches) as Branch[]).forEach(branch => {
       if (branch.archived && !showArchived) return;
 
       branch.tasks.forEach(task => {

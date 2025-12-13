@@ -1,6 +1,6 @@
 import React, { useMemo } from 'react';
 import { useProject } from '../../context/ProjectContext';
-import { BranchStatus } from '../../types';
+import { BranchStatus, Branch } from '../../types';
 import { Calendar, Clock, AlertCircle, CheckCircle2, FileText, PlayCircle, StopCircle, ArrowRight } from 'lucide-react';
 import Avatar from '../ui/Avatar';
 
@@ -26,7 +26,7 @@ const CalendarPanel: React.FC = () => {
     const now = new Date();
     now.setHours(0,0,0,0);
 
-    Object.values(state.branches).forEach(branch => {
+    (Object.values(state.branches) as Branch[]).forEach(branch => {
         // Skip archived if needed, but usually deadlines are important regardless. 
         // Let's skip archived/closed for clarity unless specifically requested.
         if (branch.archived || branch.status === BranchStatus.CANCELLED) return;
@@ -112,7 +112,7 @@ const CalendarPanel: React.FC = () => {
       return d.toLocaleDateString('it-IT', { day: 'numeric', month: 'short', weekday: 'short' });
   };
 
-  const RenderItem = ({ item }: { item: TimelineItem }) => {
+  const RenderItem: React.FC<{ item: TimelineItem }> = ({ item }) => {
       let icon = <AlertCircle className="w-5 h-5 text-gray-400" />;
       let colorClass = "bg-gray-100 border-gray-200 dark:bg-slate-800 dark:border-slate-700";
       

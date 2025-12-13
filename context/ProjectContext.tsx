@@ -682,7 +682,7 @@ export const ProjectProvider: React.FC<{ children: React.ReactNode }> = ({ child
          await supabaseClient.from('flowtask_branches').delete().eq('project_id', p.id);
     }
 
-    const branches = Object.values(p.branches);
+    const branches = Object.values(p.branches) as Branch[];
     if (branches.length > 0) {
         const branchesData = branches.map(b => {
              // Calculate position for the branch (find its index in first parent's childrenIds)
