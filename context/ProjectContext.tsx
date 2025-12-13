@@ -46,6 +46,7 @@ interface ProjectContextType {
   supabaseClient: SupabaseClient | null;
   session: Session | null;
   loadingAuth: boolean;
+  isInitializing: boolean; // New state
   isOfflineMode: boolean;
   enableOfflineMode: () => void;
   disableOfflineMode: () => void;
@@ -79,10 +80,19 @@ export const ProjectProvider: React.FC<{ children: React.ReactNode }> = ({ child
   const [supabaseClient, setSupabaseClient] = useState<SupabaseClient | null>(null);
   const [session, setSession] = useState<Session | null>(null);
   const [loadingAuth, setLoadingAuth] = useState(false);
+  const [isInitializing, setIsInitializing] = useState(true); // Start true to block UI
   const [isOfflineMode, setIsOfflineMode] = useState(false);
 
-  const enableOfflineMode = useCallback(() => setIsOfflineMode(true), []);
-  const disableOfflineMode = useCallback(() => setIsOfflineMode(false), []);
+  const enableOfflineMode = useCallback(() => {
+      setIsOfflineMode(true);
+      setIsInitializing(false);
+  }, []);
+  
+  const disableOfflineMode = useCallback(() => {
+      setIsOfflineMode(false);
+      // If we disable offline mode, we might want to re-init, 
+      // but usually the auth flow takes over.
+  }, []);
 
   // Check URL for shared config on mount
   useEffect(() => {
@@ -108,31 +118,49 @@ export const ProjectProvider: React.FC<{ children: React.ReactNode }> = ({ child
 
   // Initialize Client when config changes
   useEffect(() => {
-    if (supabaseConfig.url && supabaseConfig.key) {
+    const hasConfig = supabaseConfig.url && supabaseConfig.key;
+
+    if (hasConfig) {
         try {
             const client = createClient(supabaseConfig.url, supabaseConfig.key);
             setSupabaseClient(client);
             
-            // Check session
+            // Start loading Auth
             setLoadingAuth(true);
+            setIsInitializing(true); // Ensure spinner is shown while checking auth
+            
             client.auth.getSession().then(({ data: { session } }) => {
                 setSession(session);
                 setLoadingAuth(false);
+                
+                // CRITICAL FIX: If no session, we are done initializing (show Login).
+                // If there IS a session, the Sync Effect will handle turning off isInitializing
+                // after data load to prevent dummy data flash.
+                if (!session) {
+                    setIsInitializing(false);
+                }
             });
 
             // Listen for changes
             const { data: { subscription } } = client.auth.onAuthStateChange((_event, session) => {
                 setSession(session);
+                if (_event === 'SIGNED_OUT') {
+                    setIsInitializing(false);
+                }
             });
 
             return () => subscription.unsubscribe();
         } catch (e) {
             console.error("Invalid Supabase Config", e);
             setLoadingAuth(false);
+            setIsInitializing(false); // Stop waiting if config is bad
         }
     } else {
         setSupabaseClient(null);
         setSession(null);
+        setLoadingAuth(false);
+        // If no config, we are initialized (ready to show Config screen)
+        setIsInitializing(false);
     }
   }, [supabaseConfig.url, supabaseConfig.key]);
 
@@ -146,6 +174,7 @@ export const ProjectProvider: React.FC<{ children: React.ReactNode }> = ({ child
       if (supabaseClient) {
           await supabaseClient.auth.signOut();
           setSession(null);
+          setIsOfflineMode(false);
       }
   };
 
@@ -292,7 +321,7 @@ export const ProjectProvider: React.FC<{ children: React.ReactNode }> = ({ child
       const currentBranch = prev.branches[branchId];
       if (!currentBranch) return prev;
 
-      const updates = { ...data };
+      const updates = Object.assign({}, data);
       
       const now = new Date();
       const localToday = now.getFullYear() + '-' + String(now.getMonth() + 1).padStart(2, '0') + '-' + String(now.getDate()).padStart(2, '0');
@@ -575,7 +604,7 @@ export const ProjectProvider: React.FC<{ children: React.ReactNode }> = ({ child
         const newTasks: Task[] = lines.map((line, index) => {
             const existingTask = currentTasksMap.get(line);
             if (existingTask) {
-                return { ...existingTask, position: index };
+                return Object.assign({}, existingTask, { position: index });
             }
             return {
                 id: generateId(),
@@ -619,7 +648,7 @@ export const ProjectProvider: React.FC<{ children: React.ReactNode }> = ({ child
         const current = prev.people.find(p => p.id === id);
         if (!current) return prev;
 
-        let updates = { ...data };
+        let updates = Object.assign({}, data);
         if (data.name) {
              updates.initials = data.name.split(' ').map(n => n[0]).join('').substring(0, 2).toUpperCase();
         }
@@ -813,7 +842,7 @@ export const ProjectProvider: React.FC<{ children: React.ReactNode }> = ({ child
             status: b.status as BranchStatus,
             startDate: b.start_date,
             endDate: b.end_date,
-            dueDate: b.due_date,
+            due_date: b.due_date,
             tasks: branchTasks,
             childrenIds: b.children_ids || [], // Supabase preserves array order from upload
             parentIds: b.parent_ids || [],
@@ -866,6 +895,13 @@ export const ProjectProvider: React.FC<{ children: React.ReactNode }> = ({ child
     return () => clearTimeout(timeoutId);
   }, [activeProject, session, isOfflineMode, supabaseClient, uploadProjectToSupabase]);
 
+  // Handle Offline Mode toggles
+  useEffect(() => {
+    if (isOfflineMode) {
+        setIsInitializing(false);
+    }
+  }, [isOfflineMode]);
+
   // Initial Load (Sync)
   useEffect(() => {
     let isMounted = true;
@@ -875,24 +911,25 @@ export const ProjectProvider: React.FC<{ children: React.ReactNode }> = ({ child
                 const list = await listProjectsFromSupabase();
                 if (list && list.length > 0 && isMounted) {
                     // Only load if we are on the default project or initial state
-                    // Actually, usually we want to load the last state.
-                    // For now, simpler: just load the first one found.
                     if (projects.length === 1 && projects[0].id === 'default-project') {
                          await downloadProjectFromSupabase(list[0].id, true, true);
                     }
                 }
             } catch (e) {
                 console.error("Initial sync failed", e);
+            } finally {
+                if (isMounted) setIsInitializing(false);
             }
         }
     };
     
-    if (session?.user?.id) {
+    // Only attempt sync if auth loading is done and we have a session
+    if (!loadingAuth && session) {
          sync();
     }
     
     return () => { isMounted = false; };
-  }, [session?.user?.id, supabaseClient, isOfflineMode, listProjectsFromSupabase, downloadProjectFromSupabase]); // Removed projects dependency to avoid loops
+  }, [loadingAuth, session, supabaseClient, isOfflineMode, listProjectsFromSupabase, downloadProjectFromSupabase]);
 
   return (
     <ProjectContext.Provider value={{
@@ -929,6 +966,7 @@ export const ProjectProvider: React.FC<{ children: React.ReactNode }> = ({ child
       supabaseClient,
       session,
       loadingAuth,
+      isInitializing,
       isOfflineMode,
       enableOfflineMode,
       disableOfflineMode,
