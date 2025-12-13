@@ -118,21 +118,27 @@ export const ProjectProvider: React.FC<{ children: React.ReactNode }> = ({ child
 
   // Initialize Client when config changes
   useEffect(() => {
-    if (supabaseConfig.url && supabaseConfig.key) {
+    const hasConfig = supabaseConfig.url && supabaseConfig.key;
+
+    if (hasConfig) {
         try {
             const client = createClient(supabaseConfig.url, supabaseConfig.key);
             setSupabaseClient(client);
             
-            // Check session
+            // Start loading Auth
             setLoadingAuth(true);
-            setIsInitializing(true);
+            setIsInitializing(true); // Ensure spinner is shown while checking auth
             
             client.auth.getSession().then(({ data: { session } }) => {
                 setSession(session);
                 setLoadingAuth(false);
-                // NOTE: We do NOT set isInitializing(false) here yet.
-                // We wait for the data sync effect to do it if there is a session.
-                // If there is NO session, the next effect handles it.
+                
+                // CRITICAL FIX: If no session, we are done initializing (show Login).
+                // If there IS a session, the Sync Effect will handle turning off isInitializing
+                // after data load to prevent dummy data flash.
+                if (!session) {
+                    setIsInitializing(false);
+                }
             });
 
             // Listen for changes
@@ -153,7 +159,7 @@ export const ProjectProvider: React.FC<{ children: React.ReactNode }> = ({ child
         setSupabaseClient(null);
         setSession(null);
         setLoadingAuth(false);
-        // If no config, we are basically "initialized" in a state where we need config
+        // If no config, we are initialized (ready to show Config screen)
         setIsInitializing(false);
     }
   }, [supabaseConfig.url, supabaseConfig.key]);
@@ -315,7 +321,7 @@ export const ProjectProvider: React.FC<{ children: React.ReactNode }> = ({ child
       const currentBranch = prev.branches[branchId];
       if (!currentBranch) return prev;
 
-      const updates = Object.assign({}, data);
+      const updates = { ...data };
       
       const now = new Date();
       const localToday = now.getFullYear() + '-' + String(now.getMonth() + 1).padStart(2, '0') + '-' + String(now.getDate()).padStart(2, '0');
@@ -642,7 +648,7 @@ export const ProjectProvider: React.FC<{ children: React.ReactNode }> = ({ child
         const current = prev.people.find(p => p.id === id);
         if (!current) return prev;
 
-        let updates = Object.assign({}, data);
+        let updates = { ...data };
         if (data.name) {
              updates.initials = data.name.split(' ').map(n => n[0]).join('').substring(0, 2).toUpperCase();
         }
@@ -889,12 +895,12 @@ export const ProjectProvider: React.FC<{ children: React.ReactNode }> = ({ child
     return () => clearTimeout(timeoutId);
   }, [activeProject, session, isOfflineMode, supabaseClient, uploadProjectToSupabase]);
 
-  // Handle initialization flow completion when no session
+  // Handle Offline Mode toggles
   useEffect(() => {
-    if (!loadingAuth && !session && !isOfflineMode) {
+    if (isOfflineMode) {
         setIsInitializing(false);
     }
-  }, [loadingAuth, session, isOfflineMode]);
+  }, [isOfflineMode]);
 
   // Initial Load (Sync)
   useEffect(() => {
@@ -914,12 +920,11 @@ export const ProjectProvider: React.FC<{ children: React.ReactNode }> = ({ child
             } finally {
                 if (isMounted) setIsInitializing(false);
             }
-        } else if (isOfflineMode) {
-             if (isMounted) setIsInitializing(false);
         }
     };
     
-    if (!loadingAuth) {
+    // Only attempt sync if auth loading is done and we have a session
+    if (!loadingAuth && session) {
          sync();
     }
     
