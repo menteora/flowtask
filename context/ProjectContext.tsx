@@ -46,6 +46,7 @@ interface ProjectContextType {
   supabaseClient: SupabaseClient | null;
   session: Session | null;
   loadingAuth: boolean;
+  isInitializing: boolean; // New state
   isOfflineMode: boolean;
   enableOfflineMode: () => void;
   disableOfflineMode: () => void;
@@ -79,10 +80,19 @@ export const ProjectProvider: React.FC<{ children: React.ReactNode }> = ({ child
   const [supabaseClient, setSupabaseClient] = useState<SupabaseClient | null>(null);
   const [session, setSession] = useState<Session | null>(null);
   const [loadingAuth, setLoadingAuth] = useState(false);
+  const [isInitializing, setIsInitializing] = useState(true); // Start true to block UI
   const [isOfflineMode, setIsOfflineMode] = useState(false);
 
-  const enableOfflineMode = useCallback(() => setIsOfflineMode(true), []);
-  const disableOfflineMode = useCallback(() => setIsOfflineMode(false), []);
+  const enableOfflineMode = useCallback(() => {
+      setIsOfflineMode(true);
+      setIsInitializing(false);
+  }, []);
+  
+  const disableOfflineMode = useCallback(() => {
+      setIsOfflineMode(false);
+      // If we disable offline mode, we might want to re-init, 
+      // but usually the auth flow takes over.
+  }, []);
 
   // Check URL for shared config on mount
   useEffect(() => {
@@ -115,24 +125,36 @@ export const ProjectProvider: React.FC<{ children: React.ReactNode }> = ({ child
             
             // Check session
             setLoadingAuth(true);
+            setIsInitializing(true);
+            
             client.auth.getSession().then(({ data: { session } }) => {
                 setSession(session);
                 setLoadingAuth(false);
+                // NOTE: We do NOT set isInitializing(false) here yet.
+                // We wait for the data sync effect to do it if there is a session.
+                // If there is NO session, the next effect handles it.
             });
 
             // Listen for changes
             const { data: { subscription } } = client.auth.onAuthStateChange((_event, session) => {
                 setSession(session);
+                if (_event === 'SIGNED_OUT') {
+                    setIsInitializing(false);
+                }
             });
 
             return () => subscription.unsubscribe();
         } catch (e) {
             console.error("Invalid Supabase Config", e);
             setLoadingAuth(false);
+            setIsInitializing(false); // Stop waiting if config is bad
         }
     } else {
         setSupabaseClient(null);
         setSession(null);
+        setLoadingAuth(false);
+        // If no config, we are basically "initialized" in a state where we need config
+        setIsInitializing(false);
     }
   }, [supabaseConfig.url, supabaseConfig.key]);
 
@@ -146,6 +168,7 @@ export const ProjectProvider: React.FC<{ children: React.ReactNode }> = ({ child
       if (supabaseClient) {
           await supabaseClient.auth.signOut();
           setSession(null);
+          setIsOfflineMode(false);
       }
   };
 
@@ -292,7 +315,7 @@ export const ProjectProvider: React.FC<{ children: React.ReactNode }> = ({ child
       const currentBranch = prev.branches[branchId];
       if (!currentBranch) return prev;
 
-      const updates = { ...data };
+      const updates = Object.assign({}, data);
       
       const now = new Date();
       const localToday = now.getFullYear() + '-' + String(now.getMonth() + 1).padStart(2, '0') + '-' + String(now.getDate()).padStart(2, '0');
@@ -619,7 +642,7 @@ export const ProjectProvider: React.FC<{ children: React.ReactNode }> = ({ child
         const current = prev.people.find(p => p.id === id);
         if (!current) return prev;
 
-        let updates = { ...data };
+        let updates = Object.assign({}, data);
         if (data.name) {
              updates.initials = data.name.split(' ').map(n => n[0]).join('').substring(0, 2).toUpperCase();
         }
@@ -866,6 +889,13 @@ export const ProjectProvider: React.FC<{ children: React.ReactNode }> = ({ child
     return () => clearTimeout(timeoutId);
   }, [activeProject, session, isOfflineMode, supabaseClient, uploadProjectToSupabase]);
 
+  // Handle initialization flow completion when no session
+  useEffect(() => {
+    if (!loadingAuth && !session && !isOfflineMode) {
+        setIsInitializing(false);
+    }
+  }, [loadingAuth, session, isOfflineMode]);
+
   // Initial Load (Sync)
   useEffect(() => {
     let isMounted = true;
@@ -875,24 +905,26 @@ export const ProjectProvider: React.FC<{ children: React.ReactNode }> = ({ child
                 const list = await listProjectsFromSupabase();
                 if (list && list.length > 0 && isMounted) {
                     // Only load if we are on the default project or initial state
-                    // Actually, usually we want to load the last state.
-                    // For now, simpler: just load the first one found.
                     if (projects.length === 1 && projects[0].id === 'default-project') {
                          await downloadProjectFromSupabase(list[0].id, true, true);
                     }
                 }
             } catch (e) {
                 console.error("Initial sync failed", e);
+            } finally {
+                if (isMounted) setIsInitializing(false);
             }
+        } else if (isOfflineMode) {
+             if (isMounted) setIsInitializing(false);
         }
     };
     
-    if (session?.user?.id) {
+    if (!loadingAuth) {
          sync();
     }
     
     return () => { isMounted = false; };
-  }, [session?.user?.id, supabaseClient, isOfflineMode, listProjectsFromSupabase, downloadProjectFromSupabase]); // Removed projects dependency to avoid loops
+  }, [loadingAuth, session, supabaseClient, isOfflineMode, listProjectsFromSupabase, downloadProjectFromSupabase]);
 
   return (
     <ProjectContext.Provider value={{
@@ -929,6 +961,7 @@ export const ProjectProvider: React.FC<{ children: React.ReactNode }> = ({ child
       supabaseClient,
       session,
       loadingAuth,
+      isInitializing,
       isOfflineMode,
       enableOfflineMode,
       disableOfflineMode,

@@ -19,21 +19,33 @@ const App: React.FC = () => {
   const { 
     selectedBranchId, state, loadProject, showArchived, toggleShowArchived,
     projects, activeProjectId, switchProject, createProject, closeProject, renameProject,
-    session, loadingAuth, isOfflineMode, autoSaveStatus
+    session, loadingAuth, isInitializing, isOfflineMode, autoSaveStatus
   } = useProject();
   
   const [currentView, setCurrentView] = useState<View>('workflow');
   const fileInputRef = useRef<HTMLInputElement>(null);
   const [editingNameId, setEditingNameId] = useState<string | null>(null);
 
-  // AUTH WALL CHECK
-  // If we are NOT in offline mode AND (we don't have a session), show login.
+  // AUTH WALL & INITIALIZATION CHECK
+  // 1. If initializing data (fetching from cloud), show loader
+  if (isInitializing) {
+      return (
+          <div className="flex h-[100dvh] w-screen items-center justify-center bg-slate-50 dark:bg-slate-950">
+              <div className="flex flex-col items-center gap-4">
+                  <Loader2 className="w-10 h-10 animate-spin text-indigo-600" />
+                  <p className="text-sm text-slate-500 dark:text-slate-400 font-medium">Caricamento...</p>
+              </div>
+          </div>
+      );
+  }
+
+  // 2. If NOT offline mode AND (no session), show login.
   // We ignore loadingAuth if offline mode is active.
   if (!isOfflineMode) {
       if (!session && !loadingAuth) {
           return <LoginScreen />;
       }
-      // Optional: Show loading state if still loading auth
+      // Optional: Show loading state if still loading auth (though isInitializing usually covers this)
       if (loadingAuth) {
           return <LoginScreen />;
       }
