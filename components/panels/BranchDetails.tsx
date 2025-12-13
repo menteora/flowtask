@@ -1,6 +1,6 @@
 import React, { useState, useEffect, useRef } from 'react';
 import { useProject } from '../../context/ProjectContext';
-import { BranchStatus } from '../../types';
+import { BranchStatus, Branch } from '../../types';
 import { STATUS_CONFIG } from '../../constants';
 import { X, Save, Trash2, CheckSquare, Square, ArrowUpLeft, Calendar, Plus, Link as LinkIcon, Unlink, PlayCircle, StopCircle, Clock, AlertTriangle, Archive, RefreshCw, Bold, Italic, List, Eye, Edit2, FileText, ChevronUp, ChevronDown } from 'lucide-react';
 import Avatar from '../ui/Avatar';
@@ -52,7 +52,7 @@ const BranchDetails: React.FC = () => {
      return false;
   };
 
-  const eligibleParents = Object.values(state.branches).filter(b => 
+  const eligibleParents = (Object.values(state.branches) as Branch[]).filter(b => 
       b.id !== branch.id && 
       !branch.parentIds.includes(b.id) && 
       !isAncestor(b.id, branch.id) 
