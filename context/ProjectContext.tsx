@@ -321,7 +321,7 @@ export const ProjectProvider: React.FC<{ children: React.ReactNode }> = ({ child
       const currentBranch = prev.branches[branchId];
       if (!currentBranch) return prev;
 
-      const updates = { ...data };
+      const updates = Object.assign({}, data);
       
       const now = new Date();
       const localToday = now.getFullYear() + '-' + String(now.getMonth() + 1).padStart(2, '0') + '-' + String(now.getDate()).padStart(2, '0');
@@ -604,7 +604,7 @@ export const ProjectProvider: React.FC<{ children: React.ReactNode }> = ({ child
         const newTasks: Task[] = lines.map((line, index) => {
             const existingTask = currentTasksMap.get(line);
             if (existingTask) {
-                return { ...existingTask, position: index };
+                return Object.assign({}, existingTask, { position: index });
             }
             return {
                 id: generateId(),
@@ -648,7 +648,7 @@ export const ProjectProvider: React.FC<{ children: React.ReactNode }> = ({ child
         const current = prev.people.find(p => p.id === id);
         if (!current) return prev;
 
-        let updates = { ...data };
+        let updates = Object.assign({}, data);
         if (data.name) {
              updates.initials = data.name.split(' ').map(n => n[0]).join('').substring(0, 2).toUpperCase();
         }
@@ -842,7 +842,7 @@ export const ProjectProvider: React.FC<{ children: React.ReactNode }> = ({ child
             status: b.status as BranchStatus,
             startDate: b.start_date,
             endDate: b.end_date,
-            dueDate: b.due_date,
+            due_date: b.due_date,
             tasks: branchTasks,
             childrenIds: b.children_ids || [], // Supabase preserves array order from upload
             parentIds: b.parent_ids || [],
