@@ -49,7 +49,7 @@ const PeopleManager: React.FC = () => {
       {/* Add/Edit Person Bar */}
       <div className={`p-4 rounded-lg shadow-sm border mb-6 transition-colors ${editingId ? 'bg-indigo-50 border-indigo-200 dark:bg-indigo-900/20 dark:border-indigo-800' : 'bg-white border-gray-200 dark:bg-slate-800 dark:border-slate-700'}`}>
         <form onSubmit={handleSubmit} className="flex flex-col md:flex-row gap-4">
-            <div className="flex-1 flex gap-4">
+            <div className="flex-1 flex flex-col sm:flex-row gap-4">
                 <input
                     type="text"
                     value={newName}
