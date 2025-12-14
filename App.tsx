@@ -251,7 +251,7 @@ const App: React.FC = () => {
 
             <button 
               onClick={toggleTheme}
-              className="hidden md:block p-2 rounded-full hover:bg-slate-100 dark:hover:bg-slate-800 text-slate-500 dark:text-slate-400 transition-colors border border-gray-200 dark:border-slate-700"
+              className="p-2 rounded-full hover:bg-slate-100 dark:hover:bg-slate-800 text-slate-500 dark:text-slate-400 transition-colors border border-gray-200 dark:border-slate-700"
               title="Cambia tema"
             >
               {theme === 'light' ? <Moon className="w-4 h-4" /> : <Sun className="w-4 h-4" />}

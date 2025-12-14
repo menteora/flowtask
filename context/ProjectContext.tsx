@@ -294,10 +294,11 @@ export const ProjectProvider: React.FC<{ children: React.ReactNode }> = ({ child
     const projectId = newState.id || generateId();
     const projectName = newState.name || 'Progetto Importato';
 
-    const projectToLoad: ProjectState = Object.assign({}, newState, {
+    const projectToLoad: ProjectState = {
+        ...newState,
         id: projectId,
         name: projectName
-    });
+    };
 
     setProjects(prev => {
         let currentProjects = prev;
@@ -357,8 +358,8 @@ export const ProjectProvider: React.FC<{ children: React.ReactNode }> = ({ child
       const currentBranch = prev.branches[branchId];
       if (!currentBranch) return prev;
 
-      // USE Object.assign instead of spread to avoid TS errors with Partials
-      const updates = Object.assign({}, data);
+      // USE spread instead of Object.assign to avoid potential spread type errors
+      const updates = { ...data };
       
       const now = new Date();
       const localToday = now.getFullYear() + '-' + String(now.getMonth() + 1).padStart(2, '0') + '-' + String(now.getDate()).padStart(2, '0');
@@ -376,7 +377,7 @@ export const ProjectProvider: React.FC<{ children: React.ReactNode }> = ({ child
         ...prev,
         branches: {
           ...prev.branches,
-          [branchId]: Object.assign({}, currentBranch, updates),
+          [branchId]: { ...currentBranch, ...updates },
         },
       };
     });
@@ -472,17 +473,19 @@ export const ProjectProvider: React.FC<{ children: React.ReactNode }> = ({ child
 
       branchToDelete.parentIds.forEach(pid => {
           if (newBranches[pid]) {
-              newBranches[pid] = Object.assign({}, newBranches[pid], {
+              newBranches[pid] = {
+                  ...newBranches[pid],
                   childrenIds: newBranches[pid].childrenIds.filter(id => id !== branchId)
-              });
+              };
           }
       });
 
       branchToDelete.childrenIds.forEach(cid => {
           if (newBranches[cid]) {
-              newBranches[cid] = Object.assign({}, newBranches[cid], {
+              newBranches[cid] = {
+                  ...newBranches[cid],
                   parentIds: newBranches[cid].parentIds.filter(id => id !== branchId)
-              });
+              };
           }
       });
 
@@ -569,7 +572,7 @@ export const ProjectProvider: React.FC<{ children: React.ReactNode }> = ({ child
         const branch = prev.branches[branchId];
         if (!branch) return prev;
         
-        const newTasks = branch.tasks.map(t => t.id === taskId ? Object.assign({}, t, data) : t);
+        const newTasks = branch.tasks.map(t => t.id === taskId ? { ...t, ...data } : t);
         return {
             ...prev,
             branches: {
@@ -615,7 +618,7 @@ export const ProjectProvider: React.FC<{ children: React.ReactNode }> = ({ child
         }
 
         // CRITICAL FIX: Re-assign 'position' property to all tasks to match new array order
-        const reorderedTasks = tasks.map((t, i) => Object.assign({}, t, { position: i }));
+        const reorderedTasks = tasks.map((t, i) => ({ ...t, position: i }));
         
         return {
             ...prev,
@@ -683,14 +686,14 @@ export const ProjectProvider: React.FC<{ children: React.ReactNode }> = ({ child
         const current = prev.people.find(p => p.id === id);
         if (!current) return prev;
 
-        const updates = Object.assign({}, data);
+        const updates = { ...data };
         if (data.name) {
              updates.initials = data.name.split(' ').map(n => n[0]).join('').substring(0, 2).toUpperCase();
         }
 
         return {
             ...prev,
-            people: prev.people.map(p => p.id === id ? Object.assign({}, p, updates) : p)
+            people: prev.people.map(p => p.id === id ? { ...p, ...updates } : p)
         };
     });
   }, [setProjectState]);
@@ -760,11 +763,11 @@ export const ProjectProvider: React.FC<{ children: React.ReactNode }> = ({ child
                 id: b.id,
                 project_id: p.id,
                 title: b.title,
-                description: b.description,
+                description: b.description || null,
                 status: b.status,
-                start_date: b.startDate,
-                end_date: b.endDate,
-                due_date: b.dueDate,
+                start_date: b.startDate || null,
+                end_date: b.endDate || null,
+                due_date: b.dueDate || null,
                 archived: b.archived || false,
                 parent_ids: b.parentIds,
                 children_ids: b.childrenIds,
