@@ -53,6 +53,7 @@ interface ProjectContextType {
   
   uploadProjectToSupabase: () => Promise<void>;
   downloadProjectFromSupabase: (projectId: string, activate?: boolean, removeDefault?: boolean) => Promise<void>;
+  deleteProjectFromSupabase: (projectId: string) => Promise<void>;
   listProjectsFromSupabase: () => Promise<Array<{ id: string, name: string, updated_at: string }>>;
   logout: () => Promise<void>;
   
@@ -63,8 +64,39 @@ const ProjectContext = createContext<ProjectContextType | undefined>(undefined);
 
 export const ProjectProvider: React.FC<{ children: React.ReactNode }> = ({ children }) => {
   // We manage an array of projects
-  const [projects, setProjects] = useState<ProjectState[]>([INITIAL_STATE]);
-  const [activeProjectId, setActiveProjectId] = useState<string>(INITIAL_STATE.id);
+  // Initialize from LocalStorage if available
+  const [projects, setProjects] = useState<ProjectState[]>(() => {
+    if (typeof window !== 'undefined') {
+        const saved = localStorage.getItem('flowtask_projects');
+        if (saved) {
+            try {
+                const parsed = JSON.parse(saved);
+                if (Array.isArray(parsed) && parsed.length > 0) {
+                    return parsed;
+                }
+            } catch (e) {
+                console.error("Failed to parse saved projects", e);
+            }
+        }
+    }
+    return [INITIAL_STATE];
+  });
+
+  const [activeProjectId, setActiveProjectId] = useState<string>(() => {
+      // Try to select the first project if available
+      if (typeof window !== 'undefined') {
+          const saved = localStorage.getItem('flowtask_projects');
+          if (saved) {
+               try {
+                   const parsed = JSON.parse(saved);
+                   if (Array.isArray(parsed) && parsed.length > 0) {
+                       return parsed[0].id;
+                   }
+               } catch (e) {}
+          }
+      }
+      return INITIAL_STATE.id;
+  });
   
   const [selectedBranchId, setSelectedBranchId] = useState<string | null>(null);
   const [showArchived, setShowArchived] = useState(false);
@@ -82,6 +114,11 @@ export const ProjectProvider: React.FC<{ children: React.ReactNode }> = ({ child
   const [loadingAuth, setLoadingAuth] = useState(false);
   const [isInitializing, setIsInitializing] = useState(true); // Start true to block UI
   const [isOfflineMode, setIsOfflineMode] = useState(false);
+
+  // PERSISTENCE: Save projects to localStorage whenever they change
+  useEffect(() => {
+      localStorage.setItem('flowtask_projects', JSON.stringify(projects));
+  }, [projects]);
 
   const enableOfflineMode = useCallback(() => {
       setIsOfflineMode(true);
@@ -604,7 +641,7 @@ export const ProjectProvider: React.FC<{ children: React.ReactNode }> = ({ child
         const newTasks: Task[] = lines.map((line, index) => {
             const existingTask = currentTasksMap.get(line);
             if (existingTask) {
-                return Object.assign({}, existingTask, { position: index });
+                return { ...existingTask, position: index };
             }
             return {
                 id: generateId(),
@@ -776,6 +813,16 @@ export const ProjectProvider: React.FC<{ children: React.ReactNode }> = ({ child
       return data || [];
   }, [supabaseClient]);
 
+  const deleteProjectFromSupabase = useCallback(async (projectId: string) => {
+    if (!supabaseClient) throw new Error("Client Supabase non inizializzato");
+    
+    // Cascading delete should handle related tables if configured in Supabase (ON DELETE CASCADE)
+    // Based on the SQL schema in SettingsPanel, it IS configured.
+    const { error } = await supabaseClient.from('flowtask_projects').delete().eq('id', projectId);
+    
+    if (error) throw error;
+  }, [supabaseClient]);
+
   const downloadProjectFromSupabase = useCallback(async (projectId: string, activate = true, removeDefault = false) => {
     if (!supabaseClient) throw new Error("Client Supabase non inizializzato");
 
@@ -842,7 +889,7 @@ export const ProjectProvider: React.FC<{ children: React.ReactNode }> = ({ child
             status: b.status as BranchStatus,
             startDate: b.start_date,
             endDate: b.end_date,
-            due_date: b.due_date,
+            dueDate: b.due_date,
             tasks: branchTasks,
             childrenIds: b.children_ids || [], // Supabase preserves array order from upload
             parentIds: b.parent_ids || [],
@@ -903,33 +950,18 @@ export const ProjectProvider: React.FC<{ children: React.ReactNode }> = ({ child
   }, [isOfflineMode]);
 
   // Initial Load (Sync)
+  // We remove the automatic "first sync" if data is already present locally to favor local speed,
+  // but keep initialization logic for checking auth.
   useEffect(() => {
     let isMounted = true;
-    const sync = async () => {
-        if (session && supabaseClient && !isOfflineMode) {
-            try {
-                const list = await listProjectsFromSupabase();
-                if (list && list.length > 0 && isMounted) {
-                    // Only load if we are on the default project or initial state
-                    if (projects.length === 1 && projects[0].id === 'default-project') {
-                         await downloadProjectFromSupabase(list[0].id, true, true);
-                    }
-                }
-            } catch (e) {
-                console.error("Initial sync failed", e);
-            } finally {
-                if (isMounted) setIsInitializing(false);
-            }
-        }
-    };
     
-    // Only attempt sync if auth loading is done and we have a session
-    if (!loadingAuth && session) {
-         sync();
+    // If not waiting for auth, stop spinner.
+    if (!loadingAuth) {
+         if (isMounted) setIsInitializing(false);
     }
     
     return () => { isMounted = false; };
-  }, [loadingAuth, session, supabaseClient, isOfflineMode, listProjectsFromSupabase, downloadProjectFromSupabase]);
+  }, [loadingAuth]);
 
   return (
     <ProjectContext.Provider value={{
@@ -973,6 +1005,7 @@ export const ProjectProvider: React.FC<{ children: React.ReactNode }> = ({ child
       setSupabaseConfig,
       uploadProjectToSupabase,
       downloadProjectFromSupabase,
+      deleteProjectFromSupabase,
       listProjectsFromSupabase,
       logout,
       

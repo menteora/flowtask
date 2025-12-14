@@ -1,6 +1,6 @@
 import React, { useState, useEffect, useRef } from 'react';
 import { useProject } from '../../context/ProjectContext';
-import { Database, Save, Download, Key, ShieldCheck, Check, Copy, Terminal, Cloud, CloudRain, Loader2, AlertCircle, Upload, User, LogOut, LogIn, WifiOff, X, Share2, Link } from 'lucide-react';
+import { Database, Save, Download, Key, ShieldCheck, Check, Copy, Terminal, Cloud, CloudRain, Loader2, AlertCircle, Upload, User, LogOut, LogIn, WifiOff, X, Share2, Link, Trash2 } from 'lucide-react';
 
 const SQL_SCHEMA = `
 -- CANCELLAZIONE VECCHIE TABELLE (Se esistono)
@@ -110,6 +110,7 @@ const SettingsPanel: React.FC = () => {
     uploadProjectToSupabase, 
     listProjectsFromSupabase,
     downloadProjectFromSupabase,
+    deleteProjectFromSupabase,
     state,
     session,
     logout,
@@ -128,6 +129,10 @@ const SettingsPanel: React.FC = () => {
   const [isLoadingList, setIsLoadingList] = useState(false);
   const [remoteProjects, setRemoteProjects] = useState<any[]>([]);
   const [isDownloading, setIsDownloading] = useState(false);
+  
+  // Confirmation state for deletion
+  const [projectToDelete, setProjectToDelete] = useState<{ id: string; name: string } | null>(null);
+  const [isDeleting, setIsDeleting] = useState(false);
   
   // Notification system replacement for alerts
   const [notification, setNotification] = useState<{ message: string, type: 'success' | 'error' } | null>(null);
@@ -249,16 +254,32 @@ const SettingsPanel: React.FC = () => {
   };
 
   const handleDownload = async (id: string) => {
-      // confirm() removed to prevent sandbox issues
       setIsDownloading(true);
       try {
           await downloadProjectFromSupabase(id);
           showNotification("Progetto caricato con successo!", 'success');
-          setRemoteProjects([]); // Close list logic optionally
+          // setRemoteProjects([]); // Don't close list, allow downloading others
       } catch (e: any) {
           showNotification("Errore nel download: " + e.message, 'error');
       } finally {
           setIsDownloading(false);
+      }
+  };
+
+  const handleConfirmDelete = async () => {
+      if (!projectToDelete) return;
+      
+      setIsDeleting(true);
+      try {
+          await deleteProjectFromSupabase(projectToDelete.id);
+          showNotification("Progetto eliminato dal cloud.", 'success');
+          // Refresh list
+          setRemoteProjects(prev => prev.filter(p => p.id !== projectToDelete.id));
+      } catch (e: any) {
+          showNotification("Errore durante l'eliminazione: " + e.message, 'error');
+      } finally {
+          setIsDeleting(false);
+          setProjectToDelete(null);
       }
   };
 
@@ -274,6 +295,42 @@ const SettingsPanel: React.FC = () => {
             <button onClick={() => setNotification(null)} className="p-1 hover:bg-white/20 rounded-full ml-2">
                 <X className="w-4 h-4" />
             </button>
+        </div>
+      )}
+
+      {/* Delete Confirmation Modal */}
+      {projectToDelete && (
+        <div className="fixed inset-0 z-[70] flex items-center justify-center p-6 bg-black/50 backdrop-blur-sm">
+            <div className="bg-white dark:bg-slate-800 p-6 rounded-xl shadow-2xl border border-gray-200 dark:border-slate-700 w-full max-w-sm">
+                <div className="flex flex-col items-center text-center space-y-4">
+                    <div className="w-12 h-12 rounded-full bg-red-100 dark:bg-red-900/30 flex items-center justify-center text-red-500">
+                        <Trash2 className="w-6 h-6" />
+                    </div>
+                    <div>
+                        <h3 className="text-lg font-bold text-slate-800 dark:text-white">Eliminare "{projectToDelete.name}"?</h3>
+                        <p className="text-sm text-slate-500 dark:text-slate-400 mt-1">
+                            Questa azione cancellerà definitivamente il progetto dal database remoto. Non può essere annullata.
+                        </p>
+                    </div>
+                    <div className="flex gap-3 w-full mt-2">
+                        <button 
+                            onClick={() => setProjectToDelete(null)}
+                            disabled={isDeleting}
+                            className="flex-1 py-2 text-sm font-medium bg-gray-100 dark:bg-slate-700 text-slate-700 dark:text-slate-300 rounded-lg hover:bg-gray-200 dark:hover:bg-slate-600 transition-colors disabled:opacity-50"
+                        >
+                            Annulla
+                        </button>
+                        <button 
+                            onClick={handleConfirmDelete}
+                            disabled={isDeleting}
+                            className="flex-1 py-2 text-sm font-bold bg-red-600 text-white rounded-lg hover:bg-red-700 transition-colors shadow-sm flex items-center justify-center gap-2 disabled:opacity-70"
+                        >
+                            {isDeleting ? <Loader2 className="w-4 h-4 animate-spin" /> : null}
+                            Elimina
+                        </button>
+                    </div>
+                </div>
+            </div>
         </div>
       )}
 
@@ -451,17 +508,29 @@ const SettingsPanel: React.FC = () => {
                               Lista Progetti
                           </button>
                       ) : (
-                          <div className="space-y-2 max-h-40 overflow-y-auto">
+                          <div className="space-y-2 max-h-56 overflow-y-auto">
                                {remoteProjects.map(p => (
-                                   <div key={p.id} className="flex items-center justify-between p-2 bg-white dark:bg-slate-800 rounded border border-slate-200 dark:border-slate-700">
+                                   <div key={p.id} className="flex items-center justify-between p-2 bg-white dark:bg-slate-800 rounded border border-slate-200 dark:border-slate-700 group">
                                        <span className="text-sm font-medium truncate flex-1">{p.name}</span>
-                                       <button 
-                                          onClick={() => handleDownload(p.id)}
-                                          disabled={isDownloading}
-                                          className="p-1.5 text-indigo-600 hover:bg-indigo-50 dark:hover:bg-indigo-900/30 rounded"
-                                       >
-                                           {isDownloading ? <Loader2 className="w-4 h-4 animate-spin" /> : <Download className="w-4 h-4" />}
-                                       </button>
+                                       
+                                       <div className="flex items-center gap-1">
+                                            <button 
+                                                onClick={() => handleDownload(p.id)}
+                                                disabled={isDownloading}
+                                                className="p-1.5 text-indigo-600 hover:bg-indigo-50 dark:hover:bg-indigo-900/30 rounded"
+                                                title="Scarica"
+                                            >
+                                                {isDownloading ? <Loader2 className="w-4 h-4 animate-spin" /> : <Download className="w-4 h-4" />}
+                                            </button>
+                                            <button 
+                                                onClick={() => setProjectToDelete(p)}
+                                                disabled={isDownloading}
+                                                className="p-1.5 text-slate-400 hover:text-red-500 hover:bg-red-50 dark:hover:bg-red-900/20 rounded opacity-0 group-hover:opacity-100 transition-all"
+                                                title="Elimina dal Cloud"
+                                            >
+                                                <Trash2 className="w-4 h-4" />
+                                            </button>
+                                       </div>
                                    </div>
                                ))}
                                <button onClick={() => setRemoteProjects([])} className="text-xs text-slate-400 hover:underline w-full text-center mt-2">Chiudi lista</button>
