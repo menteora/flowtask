@@ -639,7 +639,7 @@ export const ProjectProvider: React.FC<{ children: React.ReactNode }> = ({ child
         const newTasks: Task[] = lines.map((line, index) => {
             const existingTask = currentTasksMap.get(line);
             if (existingTask) {
-                return Object.assign({}, existingTask, { position: index });
+                return { ...existingTask, position: index };
             }
             return {
                 id: generateId(),
