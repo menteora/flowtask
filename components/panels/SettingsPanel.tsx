@@ -284,7 +284,7 @@ const SettingsPanel: React.FC = () => {
   };
 
   return (
-    <div className="w-full max-w-4xl mx-auto h-full flex flex-col p-4 md:p-8 overflow-y-auto pb-4 md:pb-8 relative scroll-smooth">
+    <div className="w-full max-w-4xl mx-auto h-full flex flex-col p-4 md:p-8 overflow-y-auto overflow-x-hidden pb-4 md:pb-8 relative scroll-smooth">
       {/* Toast Notification */}
       {notification && (
         <div className={`fixed top-4 left-1/2 -translate-x-1/2 z-[60] w-[90%] max-w-md px-4 py-3 rounded-lg shadow-xl flex items-center gap-3 transition-all transform animate-in fade-in slide-in-from-top-4 ${
@@ -354,13 +354,13 @@ const SettingsPanel: React.FC = () => {
         </div>
         
         {session ? (
-            <div className="flex items-center justify-between md:justify-start gap-3 bg-white dark:bg-slate-800 p-2 rounded-lg border border-slate-200 dark:border-slate-700 shadow-sm w-full md:w-auto">
-                <div className="flex items-center gap-3 overflow-hidden">
+            <div className="flex items-center justify-between md:justify-start gap-3 bg-white dark:bg-slate-800 p-2 rounded-lg border border-slate-200 dark:border-slate-700 shadow-sm w-full md:w-auto min-w-0">
+                <div className="flex items-center gap-3 overflow-hidden min-w-0">
                     <div className="w-8 h-8 shrink-0 bg-indigo-100 dark:bg-indigo-900 rounded-full flex items-center justify-center text-indigo-600 dark:text-indigo-400">
                         <User className="w-4 h-4" />
                     </div>
-                    <div className="text-xs min-w-0">
-                        <div className="font-bold text-slate-800 dark:text-white">Logged In</div>
+                    <div className="text-xs min-w-0 truncate flex-1">
+                        <div className="font-bold text-slate-800 dark:text-white truncate">Logged In</div>
                         <div className="text-slate-500 dark:text-slate-400 truncate" title={session.user.email}>{session.user.email}</div>
                     </div>
                 </div>
@@ -387,10 +387,10 @@ const SettingsPanel: React.FC = () => {
         )}
       </div>
 
-      <div className="grid gap-6 md:gap-8">
+      <div className="grid gap-6 md:gap-8 w-full min-w-0">
           
           {/* Credentials Section */}
-          <div className="bg-white dark:bg-slate-800 rounded-xl shadow-sm border border-slate-200 dark:border-slate-700 p-4 md:p-6">
+          <div className="bg-white dark:bg-slate-800 rounded-xl shadow-sm border border-slate-200 dark:border-slate-700 p-4 md:p-6 w-full min-w-0">
               <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-4 mb-4">
                   <h3 className="text-lg font-semibold text-slate-800 dark:text-white flex items-center gap-2">
                       <Key className="w-5 h-5 text-indigo-500" />
@@ -458,7 +458,7 @@ const SettingsPanel: React.FC = () => {
           </div>
 
           {/* Sync Actions */}
-          <div className={`bg-white dark:bg-slate-800 rounded-xl shadow-sm border border-slate-200 dark:border-slate-700 p-4 md:p-6 ${!session ? 'opacity-75' : ''}`}>
+          <div className={`bg-white dark:bg-slate-800 rounded-xl shadow-sm border border-slate-200 dark:border-slate-700 p-4 md:p-6 w-full min-w-0 ${!session ? 'opacity-75' : ''}`}>
               <div className="flex flex-col sm:flex-row items-start sm:items-center justify-between mb-4 gap-2">
                   <h3 className="text-lg font-semibold text-slate-800 dark:text-white flex items-center gap-2">
                       <Cloud className="w-5 h-5 text-blue-500" />
@@ -473,12 +473,12 @@ const SettingsPanel: React.FC = () => {
               
               <div className="grid grid-cols-1 md:grid-cols-2 gap-4 md:gap-6">
                   {/* Upload */}
-                  <div className="p-4 bg-slate-50 dark:bg-slate-900/50 rounded-lg border border-slate-200 dark:border-slate-700">
+                  <div className="p-4 bg-slate-50 dark:bg-slate-900/50 rounded-lg border border-slate-200 dark:border-slate-700 w-full min-w-0">
                       <h4 className="font-medium mb-2 flex items-center gap-2 text-slate-800 dark:text-slate-200">
                           <CloudRain className="w-4 h-4" /> Salva Corrente
                       </h4>
-                      <p className="text-xs md:text-sm text-slate-500 mb-4">
-                          Salva <strong>"{state.name}"</strong> su Supabase. Sovrascrive i dati esistenti.
+                      <p className="text-xs md:text-sm text-slate-500 mb-4 truncate">
+                          Salva <strong>"{state.name}"</strong> su Supabase.
                       </p>
                       <button 
                         onClick={handleCloudSave}
@@ -494,7 +494,7 @@ const SettingsPanel: React.FC = () => {
                   </div>
 
                   {/* Download */}
-                  <div className="p-4 bg-slate-50 dark:bg-slate-900/50 rounded-lg border border-slate-200 dark:border-slate-700">
+                  <div className="p-4 bg-slate-50 dark:bg-slate-900/50 rounded-lg border border-slate-200 dark:border-slate-700 w-full min-w-0">
                       <h4 className="font-medium mb-2 flex items-center gap-2 text-slate-800 dark:text-slate-200">
                           <Download className="w-4 h-4" /> Carica da Cloud
                       </h4>
@@ -512,9 +512,9 @@ const SettingsPanel: React.FC = () => {
                               Lista Progetti
                           </button>
                       ) : (
-                          <div className="space-y-2 max-h-56 overflow-y-auto">
+                          <div className="space-y-2 max-h-56 overflow-y-auto w-full">
                                {remoteProjects.map(p => (
-                                   <div key={p.id} className="flex items-center justify-between p-2 bg-white dark:bg-slate-800 rounded border border-slate-200 dark:border-slate-700 group">
+                                   <div key={p.id} className="flex items-center justify-between p-2 bg-white dark:bg-slate-800 rounded border border-slate-200 dark:border-slate-700 group w-full min-w-0">
                                        <span className="text-sm font-medium truncate flex-1 pr-2">{p.name}</span>
                                        
                                        <div className="flex items-center gap-1 shrink-0">
@@ -545,7 +545,7 @@ const SettingsPanel: React.FC = () => {
           </div>
 
           {/* Setup Instructions */}
-          <div className="bg-white dark:bg-slate-800 rounded-xl shadow-sm border border-slate-200 dark:border-slate-700 p-4 md:p-6">
+          <div className="bg-white dark:bg-slate-800 rounded-xl shadow-sm border border-slate-200 dark:border-slate-700 p-4 md:p-6 w-full min-w-0">
               <h3 className="text-lg font-semibold text-slate-800 dark:text-white mb-4 flex items-center gap-2">
                   <ShieldCheck className="w-5 h-5 text-green-500" />
                   Configurazione Database (SQL)
@@ -554,17 +554,17 @@ const SettingsPanel: React.FC = () => {
                   Copia ed esegui questo script SQL nel tuo progetto Supabase per creare le tabelle.
               </p>
               
-              <div className="relative group">
-                  <div className="absolute top-2 right-2">
+              <div className="relative group w-full">
+                  <div className="absolute top-2 right-2 z-10">
                       <button 
                         onClick={handleCopySql}
-                        className="p-2 bg-slate-800 text-white rounded hover:bg-slate-700 transition-colors flex items-center gap-1 text-xs"
+                        className="p-2 bg-slate-800 text-white rounded hover:bg-slate-700 transition-colors flex items-center gap-1 text-xs shadow-md"
                       >
                           {copied ? <Check className="w-3 h-3" /> : <Copy className="w-3 h-3" />}
                           {copied ? 'Copiato' : 'Copia SQL'}
                       </button>
                   </div>
-                  <pre className="bg-slate-900 text-slate-100 p-4 rounded-lg text-[10px] md:text-xs overflow-x-auto font-mono h-48 md:h-64 border border-slate-700">
+                  <pre className="bg-slate-900 text-slate-100 p-4 rounded-lg text-[10px] md:text-xs overflow-x-auto font-mono h-48 md:h-64 border border-slate-700 w-full whitespace-pre-wrap">
                       <code>{SQL_SCHEMA}</code>
                   </pre>
               </div>

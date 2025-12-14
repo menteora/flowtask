@@ -294,11 +294,10 @@ export const ProjectProvider: React.FC<{ children: React.ReactNode }> = ({ child
     const projectId = newState.id || generateId();
     const projectName = newState.name || 'Progetto Importato';
 
-    const projectToLoad: ProjectState = {
-        ...newState,
+    const projectToLoad: ProjectState = Object.assign({}, newState, {
         id: projectId,
         name: projectName
-    };
+    });
 
     setProjects(prev => {
         let currentProjects = prev;
@@ -473,19 +472,17 @@ export const ProjectProvider: React.FC<{ children: React.ReactNode }> = ({ child
 
       branchToDelete.parentIds.forEach(pid => {
           if (newBranches[pid]) {
-              newBranches[pid] = {
-                  ...newBranches[pid],
+              newBranches[pid] = Object.assign({}, newBranches[pid], {
                   childrenIds: newBranches[pid].childrenIds.filter(id => id !== branchId)
-              };
+              });
           }
       });
 
       branchToDelete.childrenIds.forEach(cid => {
           if (newBranches[cid]) {
-              newBranches[cid] = {
-                  ...newBranches[cid],
+              newBranches[cid] = Object.assign({}, newBranches[cid], {
                   parentIds: newBranches[cid].parentIds.filter(id => id !== branchId)
-              };
+              });
           }
       });
 
@@ -618,7 +615,7 @@ export const ProjectProvider: React.FC<{ children: React.ReactNode }> = ({ child
         }
 
         // CRITICAL FIX: Re-assign 'position' property to all tasks to match new array order
-        const reorderedTasks = tasks.map((t, i) => ({ ...t, position: i }));
+        const reorderedTasks = tasks.map((t, i) => Object.assign({}, t, { position: i }));
         
         return {
             ...prev,
@@ -642,7 +639,7 @@ export const ProjectProvider: React.FC<{ children: React.ReactNode }> = ({ child
         const newTasks: Task[] = lines.map((line, index) => {
             const existingTask = currentTasksMap.get(line);
             if (existingTask) {
-                return { ...existingTask, position: index };
+                return Object.assign({}, existingTask, { position: index });
             }
             return {
                 id: generateId(),
