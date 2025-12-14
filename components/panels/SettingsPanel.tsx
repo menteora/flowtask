@@ -284,14 +284,14 @@ const SettingsPanel: React.FC = () => {
   };
 
   return (
-    <div className="w-full max-w-4xl mx-auto h-full flex flex-col p-4 md:p-8 overflow-y-auto overflow-x-hidden pb-4 md:pb-8 relative scroll-smooth">
+    <div className="w-full max-w-4xl mx-auto h-full flex flex-col p-3 md:p-8 overflow-y-auto overflow-x-hidden pb-4 md:pb-8 relative scroll-smooth">
       {/* Toast Notification */}
       {notification && (
         <div className={`fixed top-4 left-1/2 -translate-x-1/2 z-[60] w-[90%] max-w-md px-4 py-3 rounded-lg shadow-xl flex items-center gap-3 transition-all transform animate-in fade-in slide-in-from-top-4 ${
             notification.type === 'success' ? 'bg-emerald-600 text-white' : 'bg-red-600 text-white'
         }`}>
             {notification.type === 'success' ? <Check className="w-5 h-5 flex-shrink-0" /> : <AlertCircle className="w-5 h-5 flex-shrink-0" />}
-            <span className="font-medium text-sm flex-1">{notification.message}</span>
+            <span className="font-medium text-sm flex-1 break-words">{notification.message}</span>
             <button onClick={() => setNotification(null)} className="p-1 hover:bg-white/20 rounded-full ml-2">
                 <X className="w-4 h-4" />
             </button>
@@ -354,7 +354,7 @@ const SettingsPanel: React.FC = () => {
         </div>
         
         {session ? (
-            <div className="flex items-center justify-between md:justify-start gap-3 bg-white dark:bg-slate-800 p-2 rounded-lg border border-slate-200 dark:border-slate-700 shadow-sm w-full md:w-auto min-w-0">
+            <div className="flex items-center justify-between md:justify-start gap-3 bg-white dark:bg-slate-800 p-2 rounded-lg border border-slate-200 dark:border-slate-700 shadow-sm w-full md:w-auto min-w-0 max-w-full">
                 <div className="flex items-center gap-3 overflow-hidden min-w-0">
                     <div className="w-8 h-8 shrink-0 bg-indigo-100 dark:bg-indigo-900 rounded-full flex items-center justify-center text-indigo-600 dark:text-indigo-400">
                         <User className="w-4 h-4" />
@@ -387,10 +387,10 @@ const SettingsPanel: React.FC = () => {
         )}
       </div>
 
-      <div className="grid gap-6 md:gap-8 w-full min-w-0">
+      <div className="grid gap-6 md:gap-8 w-full min-w-0 max-w-full">
           
           {/* Credentials Section */}
-          <div className="bg-white dark:bg-slate-800 rounded-xl shadow-sm border border-slate-200 dark:border-slate-700 p-4 md:p-6 w-full min-w-0">
+          <div className="bg-white dark:bg-slate-800 rounded-xl shadow-sm border border-slate-200 dark:border-slate-700 p-4 md:p-6 w-full min-w-0 max-w-full">
               <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-4 mb-4">
                   <h3 className="text-lg font-semibold text-slate-800 dark:text-white flex items-center gap-2">
                       <Key className="w-5 h-5 text-indigo-500" />
@@ -414,7 +414,7 @@ const SettingsPanel: React.FC = () => {
                         value={url}
                         onChange={(e) => setUrl(e.target.value)}
                         placeholder="https://your-project.supabase.co"
-                        className="w-full p-2 rounded-md border border-slate-300 dark:border-slate-600 bg-white dark:bg-slate-900 focus:ring-2 focus:ring-indigo-500 outline-none text-sm"
+                        className="w-full p-2 rounded-md border border-slate-300 dark:border-slate-600 bg-white dark:bg-slate-900 focus:ring-2 focus:ring-indigo-500 outline-none text-sm min-w-0"
                       />
                   </div>
                   <div>
@@ -424,14 +424,14 @@ const SettingsPanel: React.FC = () => {
                         value={key}
                         onChange={(e) => setKey(e.target.value)}
                         placeholder="eyJ..."
-                        className="w-full p-2 rounded-md border border-slate-300 dark:border-slate-600 bg-white dark:bg-slate-900 focus:ring-2 focus:ring-indigo-500 outline-none text-sm"
+                        className="w-full p-2 rounded-md border border-slate-300 dark:border-slate-600 bg-white dark:bg-slate-900 focus:ring-2 focus:ring-indigo-500 outline-none text-sm min-w-0"
                       />
                   </div>
                   
                   <div className="flex flex-col sm:flex-row items-stretch sm:items-center gap-3 pt-2">
                     <button 
                         onClick={handleSaveConfig}
-                        className="px-4 py-2 bg-indigo-600 text-white rounded-md hover:bg-indigo-700 transition-colors flex items-center justify-center gap-2 text-sm font-medium"
+                        className="px-4 py-2 bg-indigo-600 text-white rounded-md hover:bg-indigo-700 transition-colors flex items-center justify-center gap-2 text-sm font-medium shrink-0"
                     >
                         <Save className="w-4 h-4" /> Aggiorna
                     </button>
@@ -458,7 +458,7 @@ const SettingsPanel: React.FC = () => {
           </div>
 
           {/* Sync Actions */}
-          <div className={`bg-white dark:bg-slate-800 rounded-xl shadow-sm border border-slate-200 dark:border-slate-700 p-4 md:p-6 w-full min-w-0 ${!session ? 'opacity-75' : ''}`}>
+          <div className={`bg-white dark:bg-slate-800 rounded-xl shadow-sm border border-slate-200 dark:border-slate-700 p-4 md:p-6 w-full min-w-0 max-w-full ${!session ? 'opacity-75' : ''}`}>
               <div className="flex flex-col sm:flex-row items-start sm:items-center justify-between mb-4 gap-2">
                   <h3 className="text-lg font-semibold text-slate-800 dark:text-white flex items-center gap-2">
                       <Cloud className="w-5 h-5 text-blue-500" />
@@ -471,7 +471,7 @@ const SettingsPanel: React.FC = () => {
                   )}
               </div>
               
-              <div className="grid grid-cols-1 md:grid-cols-2 gap-4 md:gap-6">
+              <div className="grid grid-cols-1 md:grid-cols-2 gap-4 md:gap-6 w-full">
                   {/* Upload */}
                   <div className="p-4 bg-slate-50 dark:bg-slate-900/50 rounded-lg border border-slate-200 dark:border-slate-700 w-full min-w-0">
                       <h4 className="font-medium mb-2 flex items-center gap-2 text-slate-800 dark:text-slate-200">
@@ -545,7 +545,7 @@ const SettingsPanel: React.FC = () => {
           </div>
 
           {/* Setup Instructions */}
-          <div className="bg-white dark:bg-slate-800 rounded-xl shadow-sm border border-slate-200 dark:border-slate-700 p-4 md:p-6 w-full min-w-0">
+          <div className="bg-white dark:bg-slate-800 rounded-xl shadow-sm border border-slate-200 dark:border-slate-700 p-4 md:p-6 w-full min-w-0 max-w-full">
               <h3 className="text-lg font-semibold text-slate-800 dark:text-white mb-4 flex items-center gap-2">
                   <ShieldCheck className="w-5 h-5 text-green-500" />
                   Configurazione Database (SQL)
@@ -554,7 +554,7 @@ const SettingsPanel: React.FC = () => {
                   Copia ed esegui questo script SQL nel tuo progetto Supabase per creare le tabelle.
               </p>
               
-              <div className="relative group w-full">
+              <div className="relative group w-full min-w-0">
                   <div className="absolute top-2 right-2 z-10">
                       <button 
                         onClick={handleCopySql}
@@ -564,7 +564,7 @@ const SettingsPanel: React.FC = () => {
                           {copied ? 'Copiato' : 'Copia SQL'}
                       </button>
                   </div>
-                  <pre className="bg-slate-900 text-slate-100 p-4 rounded-lg text-[10px] md:text-xs overflow-x-auto font-mono h-48 md:h-64 border border-slate-700 w-full whitespace-pre-wrap">
+                  <pre className="bg-slate-900 text-slate-100 p-4 rounded-lg text-[10px] md:text-xs overflow-x-auto font-mono h-48 md:h-64 border border-slate-700 w-full whitespace-pre-wrap break-all">
                       <code>{SQL_SCHEMA}</code>
                   </pre>
               </div>
