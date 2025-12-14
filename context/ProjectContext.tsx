@@ -358,6 +358,7 @@ export const ProjectProvider: React.FC<{ children: React.ReactNode }> = ({ child
       const currentBranch = prev.branches[branchId];
       if (!currentBranch) return prev;
 
+      // USE Object.assign instead of spread to avoid TS errors with Partials
       const updates = Object.assign({}, data);
       
       const now = new Date();
@@ -571,7 +572,7 @@ export const ProjectProvider: React.FC<{ children: React.ReactNode }> = ({ child
         const branch = prev.branches[branchId];
         if (!branch) return prev;
         
-        const newTasks = branch.tasks.map(t => t.id === taskId ? { ...t, ...data } : t);
+        const newTasks = branch.tasks.map(t => t.id === taskId ? Object.assign({}, t, data) : t);
         return {
             ...prev,
             branches: {
@@ -685,7 +686,7 @@ export const ProjectProvider: React.FC<{ children: React.ReactNode }> = ({ child
         const current = prev.people.find(p => p.id === id);
         if (!current) return prev;
 
-        let updates = Object.assign({}, data);
+        const updates = Object.assign({}, data);
         if (data.name) {
              updates.initials = data.name.split(' ').map(n => n[0]).join('').substring(0, 2).toUpperCase();
         }
@@ -816,8 +817,6 @@ export const ProjectProvider: React.FC<{ children: React.ReactNode }> = ({ child
   const deleteProjectFromSupabase = useCallback(async (projectId: string) => {
     if (!supabaseClient) throw new Error("Client Supabase non inizializzato");
     
-    // Cascading delete should handle related tables if configured in Supabase (ON DELETE CASCADE)
-    // Based on the SQL schema in SettingsPanel, it IS configured.
     const { error } = await supabaseClient.from('flowtask_projects').delete().eq('id', projectId);
     
     if (error) throw error;
@@ -842,7 +841,6 @@ export const ProjectProvider: React.FC<{ children: React.ReactNode }> = ({ child
     const branchIds = branchesData.map((b: any) => b.id);
     let tasksData: any[] = [];
     if (branchIds.length > 0) {
-        // Order by position explicitly to respect saved order
         const { data: tData, error: tError } = await supabaseClient.from('flowtask_tasks').select('*').in('branch_id', branchIds).order('position', { ascending: true });
         if (tError) throw tError;
         tasksData = tData || [];
@@ -879,7 +877,6 @@ export const ProjectProvider: React.FC<{ children: React.ReactNode }> = ({ child
     let rootBranchId = 'root';
     
     branchesData.forEach((b: any) => {
-        // Tasks already sorted by SQL query above, but safety sort doesn't hurt
         const branchTasks = (tasksByBranch[b.id] || []).sort((a, b) => (a.position ?? 0) - (b.position ?? 0));
 
         branches[b.id] = {
@@ -891,7 +888,7 @@ export const ProjectProvider: React.FC<{ children: React.ReactNode }> = ({ child
             endDate: b.end_date,
             dueDate: b.due_date,
             tasks: branchTasks,
-            childrenIds: b.children_ids || [], // Supabase preserves array order from upload
+            childrenIds: b.children_ids || [], 
             parentIds: b.parent_ids || [],
             archived: b.archived,
             position: b.position
@@ -900,10 +897,7 @@ export const ProjectProvider: React.FC<{ children: React.ReactNode }> = ({ child
         if (b.parent_ids.length === 0) rootBranchId = b.id;
     });
     
-    // Ensure we have a root, if specific root logic exists
-    // Fallback if multiple roots or none marked (though usually only one has no parents)
     if (!branches[rootBranchId] && branchesData.length > 0) {
-        // Find one with no parents
         const root = branchesData.find((b: any) => b.parent_ids.length === 0);
         if (root) rootBranchId = root.id;
     }
@@ -920,14 +914,9 @@ export const ProjectProvider: React.FC<{ children: React.ReactNode }> = ({ child
   }, [supabaseClient, loadProject]);
 
   // AUTO SYNC EFFECT
-  // This watches for changes in activeProject and saves them with debounce
   useEffect(() => {
     if (!session || isOfflineMode || !supabaseClient) return;
     
-    // We only auto-save if there is an active project and it is not the default empty one if we want strictness, 
-    // but users can edit default so we save everything.
-
-    // Set saving status to saving immediately when dependency changes
     if (autoSaveStatus !== 'saving') setAutoSaveStatus('saving');
 
     const timeoutId = setTimeout(() => {
@@ -937,7 +926,7 @@ export const ProjectProvider: React.FC<{ children: React.ReactNode }> = ({ child
                 console.error("Auto-save failed", e);
                 setAutoSaveStatus('error');
             });
-    }, 2000); // 2 second debounce to avoid rapid writes during dragging
+    }, 2000); 
 
     return () => clearTimeout(timeoutId);
   }, [activeProject, session, isOfflineMode, supabaseClient, uploadProjectToSupabase]);
@@ -950,16 +939,11 @@ export const ProjectProvider: React.FC<{ children: React.ReactNode }> = ({ child
   }, [isOfflineMode]);
 
   // Initial Load (Sync)
-  // We remove the automatic "first sync" if data is already present locally to favor local speed,
-  // but keep initialization logic for checking auth.
   useEffect(() => {
     let isMounted = true;
-    
-    // If not waiting for auth, stop spinner.
     if (!loadingAuth) {
          if (isMounted) setIsInitializing(false);
     }
-    
     return () => { isMounted = false; };
   }, [loadingAuth]);
 
