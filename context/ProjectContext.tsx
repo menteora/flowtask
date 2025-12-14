@@ -377,7 +377,7 @@ export const ProjectProvider: React.FC<{ children: React.ReactNode }> = ({ child
         ...prev,
         branches: {
           ...prev.branches,
-          [branchId]: { ...currentBranch, ...updates },
+          [branchId]: Object.assign({}, currentBranch, updates),
         },
       };
     });
@@ -693,7 +693,7 @@ export const ProjectProvider: React.FC<{ children: React.ReactNode }> = ({ child
 
         return {
             ...prev,
-            people: prev.people.map(p => p.id === id ? { ...p, ...updates } : p)
+            people: prev.people.map(p => p.id === id ? Object.assign({}, p, updates) : p)
         };
     });
   }, [setProjectState]);
