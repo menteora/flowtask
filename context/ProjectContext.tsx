@@ -6,6 +6,11 @@ import { createClient, SupabaseClient, Session } from '@supabase/supabase-js';
 // Helper for IDs
 const generateId = () => Math.random().toString(36).substring(2, 9);
 
+interface Notification {
+    message: string;
+    type: 'success' | 'error';
+}
+
 interface ProjectContextType {
   state: ProjectState; // The CURRENTLY ACTIVE project state
   
@@ -73,6 +78,10 @@ interface ProjectContextType {
   logout: () => Promise<void>;
   
   autoSaveStatus: 'idle' | 'saving' | 'saved' | 'error';
+  
+  // Global Notification
+  notification: Notification | null;
+  showNotification: (message: string, type: 'success' | 'error') => void;
 }
 
 const ProjectContext = createContext<ProjectContextType | undefined>(undefined);
@@ -133,6 +142,9 @@ export const ProjectProvider: React.FC<{ children: React.ReactNode }> = ({ child
   const [remindingUserId, setRemindingUserId] = useState<string | null>(null);
   const [showArchived, setShowArchived] = useState(false);
   
+  // Notification State
+  const [notification, setNotification] = useState<Notification | null>(null);
+  
   // Auto-save Status
   const [autoSaveStatus, setAutoSaveStatus] = useState<'idle' | 'saving' | 'saved' | 'error'>('idle');
   
@@ -154,6 +166,11 @@ export const ProjectProvider: React.FC<{ children: React.ReactNode }> = ({ child
   useEffect(() => {
       localStorage.setItem('flowtask_projects', JSON.stringify(projects));
   }, [projects]);
+
+  const showNotification = useCallback((message: string, type: 'success' | 'error') => {
+      setNotification({ message, type });
+      setTimeout(() => setNotification(null), 4000);
+  }, []);
 
   const enableOfflineMode = useCallback(() => {
       setIsOfflineMode(true);
@@ -331,7 +348,7 @@ export const ProjectProvider: React.FC<{ children: React.ReactNode }> = ({ child
 
   const loadProject = useCallback((newState: ProjectState, activate = true, removeDefault = false) => {
     if (!newState.branches || !newState.rootBranchId) {
-        console.error("File JSON non valido o corrotto.");
+        showNotification("File JSON non valido o corrotto.", 'error');
         return;
     }
     
@@ -365,7 +382,7 @@ export const ProjectProvider: React.FC<{ children: React.ReactNode }> = ({ child
         setActiveProjectId(projectId);
         setSelectedBranchId(null);
     }
-  }, []);
+  }, [showNotification]);
 
   const addBranch = useCallback((parentId: string) => {
     const newId = generateId();
@@ -463,7 +480,7 @@ export const ProjectProvider: React.FC<{ children: React.ReactNode }> = ({ child
         }
 
         if (isAncestor(prev.branches, parentId, childId)) {
-            alert("Operazione non consentita: creerebbe un ciclo infinito.");
+            showNotification("Operazione non consentita: creerebbe un ciclo infinito.", 'error');
             return prev;
         }
 
@@ -480,9 +497,17 @@ export const ProjectProvider: React.FC<{ children: React.ReactNode }> = ({ child
             }
         };
     });
-  }, [setProjectState]);
+  }, [setProjectState, showNotification]);
 
   const unlinkBranch = useCallback((childId: string, parentId: string) => {
+    const child = activeProject.branches[childId];
+    if (child) {
+        if (child.parentIds.length <= 1 && child.parentIds.includes(parentId)) {
+            showNotification("Impossibile scollegare: un ramo deve avere almeno un genitore per non rimanere orfano.", 'error');
+            return;
+        }
+    }
+
     setProjectState(prev => {
         const child = prev.branches[childId];
         const parent = prev.branches[parentId];
@@ -502,33 +527,50 @@ export const ProjectProvider: React.FC<{ children: React.ReactNode }> = ({ child
             }
         };
       });
-  }, [setProjectState]);
+  }, [setProjectState, activeProject, showNotification]);
 
   const deleteBranch = useCallback((branchId: string) => {
     setProjectState(prev => {
       const branchToDelete = prev.branches[branchId];
       if (!branchToDelete) return prev; 
       
+      // Prevent deleting Root, though UI should handle this
+      if (branchId === prev.rootBranchId) {
+          showNotification("Non puoi eliminare il ramo radice del progetto.", 'error');
+          return prev;
+      }
+
       const newBranches = { ...prev.branches };
+      const parentIds = branchToDelete.parentIds;
+      const childrenIds = branchToDelete.childrenIds;
 
-      branchToDelete.parentIds.forEach(pid => {
-          if (newBranches[pid]) {
-              // Use Object.assign to avoid "Spread types may only be created from object types" error
-              newBranches[pid] = Object.assign({}, newBranches[pid], {
-                  childrenIds: newBranches[pid].childrenIds.filter(id => id !== branchId)
-              });
+      // 1. RE-LINK ORPHANS (Children)
+      childrenIds.forEach(childId => {
+          if (newBranches[childId]) {
+              const currentParents = newBranches[childId].parentIds.filter(id => id !== branchId);
+              const newParents = Array.from(new Set([...currentParents, ...parentIds]));
+              
+              newBranches[childId] = {
+                  ...newBranches[childId],
+                  parentIds: newParents
+              };
           }
       });
 
-      branchToDelete.childrenIds.forEach(cid => {
-          if (newBranches[cid]) {
-              // Use Object.assign to avoid "Spread types may only be created from object types" error
-              newBranches[cid] = Object.assign({}, newBranches[cid], {
-                  parentIds: newBranches[cid].parentIds.filter(id => id !== branchId)
-              });
+      // 2. UPDATE PARENTS
+      parentIds.forEach(parentId => {
+          if (newBranches[parentId]) {
+              const currentChildren = newBranches[parentId].childrenIds.filter(id => id !== branchId);
+              const newChildren = Array.from(new Set([...currentChildren, ...childrenIds]));
+
+              newBranches[parentId] = {
+                  ...newBranches[parentId],
+                  childrenIds: newChildren
+              };
           }
       });
 
+      // 3. DELETE
       delete newBranches[branchId];
 
       return {
@@ -540,7 +582,7 @@ export const ProjectProvider: React.FC<{ children: React.ReactNode }> = ({ child
     if (selectedBranchId === branchId) {
         setSelectedBranchId(null);
     }
-  }, [selectedBranchId, setProjectState]);
+  }, [selectedBranchId, setProjectState, showNotification]);
 
   const moveBranch = useCallback((branchId: string, direction: 'left' | 'right') => {
     setProjectState(prev => {
@@ -930,12 +972,6 @@ export const ProjectProvider: React.FC<{ children: React.ReactNode }> = ({ child
     if (tError) throw tError;
 
     // 3. Create NEW Branch object (Copy)
-    // We import it as a "Parent", so it needs to point to our targetChild
-    // But we clear its existing parents/children to avoid broken links from the old project
-    // NOTE: Ideally we should regenerate ID to avoid collisions if merging projects, 
-    // but preserving ID allows "moving" logic. For "Importing a copy", regenerate ID is safer.
-    // Let's Regenerate ID for safety.
-    
     const newBranchId = generateId();
     
     const importedBranch: Branch = {
@@ -948,30 +984,38 @@ export const ProjectProvider: React.FC<{ children: React.ReactNode }> = ({ child
         dueDate: bData.due_date,
         archived: false,
         collapsed: false,
-        parentIds: [], // Start as root/floating in this project context
+        // CRITICAL FIX: Link to Root Branch so it's visible in FlowCanvas
+        parentIds: [activeProject.rootBranchId], 
         childrenIds: [targetChildId], // It becomes parent of our target
         tasks: (tData || []).map((t: any, idx: number) => ({
             id: generateId(),
             title: t.title,
             completed: t.completed,
             dueDate: t.due_date,
-            assigneeId: undefined, // Clear assignee as people IDs might not match
+            assigneeId: undefined, 
             position: idx
         }))
     };
 
     setProjectState(prev => {
         const targetChild = prev.branches[targetChildId];
-        if (!targetChild) return prev; // Safety check
+        const rootBranch = prev.branches[prev.rootBranchId];
+        
+        if (!targetChild || !rootBranch) return prev; 
 
         // 1. Add imported branch
         // 2. Update target child to include new parent
+        // 3. Update Root Branch to include new child (the imported branch) for visibility
         const updatedBranches = {
             ...prev.branches,
             [newBranchId]: importedBranch,
             [targetChildId]: {
                 ...targetChild,
                 parentIds: [...targetChild.parentIds, newBranchId]
+            },
+            [prev.rootBranchId]: {
+                ...rootBranch,
+                childrenIds: [...rootBranch.childrenIds, newBranchId]
             }
         };
 
@@ -981,7 +1025,7 @@ export const ProjectProvider: React.FC<{ children: React.ReactNode }> = ({ child
         };
     });
 
-  }, [supabaseClient, setProjectState]);
+  }, [supabaseClient, activeProject.rootBranchId, setProjectState]);
 
   const deleteProjectFromSupabase = useCallback(async (projectId: string) => {
     if (!supabaseClient) throw new Error("Client Supabase non inizializzato");
@@ -1239,7 +1283,9 @@ export const ProjectProvider: React.FC<{ children: React.ReactNode }> = ({ child
       importBranchAsParent,
       logout,
       
-      autoSaveStatus
+      autoSaveStatus,
+      notification,
+      showNotification
     }}>
       {children}
     </ProjectContext.Provider>
