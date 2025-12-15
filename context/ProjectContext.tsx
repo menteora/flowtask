@@ -143,6 +143,9 @@ export const ProjectProvider: React.FC<{ children: React.ReactNode }> = ({ child
       return projects.length > 0 ? projects[0].id : '';
   });
   
+  // Helper to get active project (or default if something goes wrong)
+  const activeProject = projects.find(p => p.id === activeProjectId) || projects[0] || INITIAL_STATE;
+
   const [selectedBranchId, setSelectedBranchId] = useState<string | null>(null);
   const [readingDescriptionId, setReadingDescriptionId] = useState<string | null>(null);
   const [editingTask, setEditingTask] = useState<{ branchId: string, taskId: string } | null>(null);
@@ -159,7 +162,8 @@ export const ProjectProvider: React.FC<{ children: React.ReactNode }> = ({ child
   const isRemoteUpdate = useRef(false);
   
   // Track the last saved JSON string to prevent loops on identical data
-  const lastSavedState = useRef<string>('');
+  // FIX: Initialize with the current state to prevent first-load autosave
+  const lastSavedState = useRef<string>(JSON.stringify(activeProject));
 
   // Supabase State
   const [supabaseConfig, setSupabaseState] = useState<{ url: string; key: string }>({
@@ -284,9 +288,6 @@ export const ProjectProvider: React.FC<{ children: React.ReactNode }> = ({ child
       }
   };
 
-  // Helper to get active project (or default if something goes wrong)
-  const activeProject = projects.find(p => p.id === activeProjectId) || projects[0] || INITIAL_STATE;
-
   // Helper to update the ACTIVE project specifically
   const setProjectState = useCallback((updateFn: (prev: ProjectState) => ProjectState) => {
     setProjects(prevProjects => {
@@ -316,7 +317,7 @@ export const ProjectProvider: React.FC<{ children: React.ReactNode }> = ({ child
               title: 'Inizio Progetto',
               description: 'Punto di partenza del flusso',
               status: BranchStatus.PLANNED,
-              isLabel: true, // Default to Label
+              isLabel: true, // Default to Label for root
               tasks: [],
               childrenIds: [],
               parentIds: [],
@@ -1108,6 +1109,9 @@ export const ProjectProvider: React.FC<{ children: React.ReactNode }> = ({ child
     // Update local ref to avoid saving what we just downloaded
     lastSavedState.current = JSON.stringify(newState);
     loadProject(newState, activate, removeDefault);
+    
+    // FIX: Explicitly set status to 'saved' to avoid "Saving..." spinner on fresh load
+    setAutoSaveStatus('saved');
   }, [supabaseClient, loadProject]);
 
   const moveLocalBranchToRemoteProject = useCallback(async (branchIdToMove: string, targetProjectId: string, targetParentId: string) => {
@@ -1203,6 +1207,8 @@ export const ProjectProvider: React.FC<{ children: React.ReactNode }> = ({ child
     if (isRemoteUpdate.current) {
         isRemoteUpdate.current = false;
         lastSavedState.current = currentJson;
+        // FIX: Ensure visual status is 'saved' immediately if it was 'saving' or 'idle'
+        if (autoSaveStatus !== 'saved') setAutoSaveStatus('saved');
         return;
     }
     
