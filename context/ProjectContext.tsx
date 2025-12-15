@@ -36,6 +36,11 @@ interface ProjectContextType {
   
   selectedBranchId: string | null;
   selectBranch: (id: string | null) => void;
+  
+  // Reading Mode State
+  readingDescriptionId: string | null;
+  setReadingDescriptionId: (id: string | null) => void;
+
   toggleBranchArchive: (branchId: string) => void;
   showArchived: boolean;
   toggleShowArchived: () => void;
@@ -113,6 +118,7 @@ export const ProjectProvider: React.FC<{ children: React.ReactNode }> = ({ child
   });
   
   const [selectedBranchId, setSelectedBranchId] = useState<string | null>(null);
+  const [readingDescriptionId, setReadingDescriptionId] = useState<string | null>(null);
   const [showArchived, setShowArchived] = useState(false);
   
   // Auto-save Status
@@ -749,11 +755,12 @@ export const ProjectProvider: React.FC<{ children: React.ReactNode }> = ({ child
         const oldRoot = p.branches['root'];
         
         // 1. Create new branches object replacing 'root' key
-        const newBranches = { ...p.branches };
+        // Use Object.assign to avoid "Spread types may only be created from object types" error
+        const newBranches = Object.assign({}, p.branches);
         delete newBranches['root'];
         
         // 2. Add the new root branch with the new ID
-        newBranches[newRootId] = { ...oldRoot, id: newRootId };
+        newBranches[newRootId] = Object.assign({}, oldRoot, { id: newRootId });
         
         // 3. Update children of root to point to new parent ID
         oldRoot.childrenIds.forEach(childId => {
@@ -766,11 +773,13 @@ export const ProjectProvider: React.FC<{ children: React.ReactNode }> = ({ child
         });
 
         // 4. Update the local variable 'p' which we will send to Supabase
-        p = { ...p, rootBranchId: newRootId, branches: newBranches };
+        // Use Object.assign to avoid spread error
+        p = Object.assign({}, p, { rootBranchId: newRootId, branches: newBranches });
         
         // 5. IMPORTANT: Update the Local React State immediately so the UI reflects the change 
         // and subsequent saves don't try to migrate again.
-        setProjectState(prev => ({ ...prev, rootBranchId: newRootId, branches: newBranches }));
+        // Use Object.assign to avoid spread error
+        setProjectState(prev => Object.assign({}, prev, { rootBranchId: newRootId, branches: newBranches }));
     }
 
     const { data: { user } } = await supabaseClient.auth.getUser();
@@ -929,7 +938,8 @@ export const ProjectProvider: React.FC<{ children: React.ReactNode }> = ({ child
             
             if (tError) throw tError;
             if (chunkData) {
-                tasksData = [...tasksData, ...chunkData];
+                // Use concat instead of spread to avoid potential TS errors
+                tasksData = tasksData.concat(chunkData);
             }
         }
     }
@@ -1116,6 +1126,8 @@ export const ProjectProvider: React.FC<{ children: React.ReactNode }> = ({ child
       removePerson,
       selectedBranchId,
       selectBranch: setSelectedBranchId,
+      readingDescriptionId,
+      setReadingDescriptionId,
       toggleBranchArchive,
       showArchived,
       toggleShowArchived,
