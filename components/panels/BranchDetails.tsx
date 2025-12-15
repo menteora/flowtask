@@ -2,7 +2,7 @@ import React, { useState, useEffect, useRef } from 'react';
 import { useProject } from '../../context/ProjectContext';
 import { BranchStatus, Branch } from '../../types';
 import { STATUS_CONFIG } from '../../constants';
-import { X, Save, Trash2, CheckSquare, Square, ArrowUpLeft, Calendar, Plus, Link as LinkIcon, Unlink, PlayCircle, StopCircle, Clock, AlertTriangle, Archive, RefreshCw, Bold, Italic, List, Eye, Edit2, FileText, ChevronUp, ChevronDown, DownloadCloud, Loader2 } from 'lucide-react';
+import { X, Save, Trash2, CheckSquare, Square, ArrowUpLeft, Calendar, Plus, Link as LinkIcon, Unlink, PlayCircle, StopCircle, Clock, AlertTriangle, Archive, RefreshCw, Bold, Italic, List, Eye, Edit2, FileText, ChevronUp, ChevronDown, DownloadCloud, Loader2, GitMerge } from 'lucide-react';
 import Avatar from '../ui/Avatar';
 
 const BranchDetails: React.FC = () => {
@@ -191,6 +191,19 @@ const BranchDetails: React.FC = () => {
       {/* Content */}
       <div className="flex-1 overflow-y-auto p-4 space-y-6 relative">
         
+        {/* Multi-parent Warning */}
+        {branch.parentIds.length > 1 && (
+            <div className="bg-amber-50 dark:bg-amber-900/20 border border-amber-200 dark:border-amber-800 p-3 rounded-lg flex items-start gap-2">
+                <GitMerge className="w-4 h-4 text-amber-600 dark:text-amber-400 mt-0.5" />
+                <div>
+                    <p className="text-xs font-bold text-amber-700 dark:text-amber-300">Ramo Condiviso</p>
+                    <p className="text-[10px] text-amber-600 dark:text-amber-400">
+                        Questo ramo ha {branch.parentIds.length} genitori. Apparirà in più punti del grafico. Le modifiche qui si rifletteranno ovunque.
+                    </p>
+                </div>
+            </div>
+        )}
+
         {/* Description Section with Markdown Editor */}
         <div className="space-y-2">
             <div className="flex items-center justify-between">
@@ -633,7 +646,7 @@ const BranchDetails: React.FC = () => {
                      </div>
                      {isImportMode && selectedRemoteBranch && (
                          <p className="text-[10px] text-indigo-500 mt-2">
-                             Il ramo selezionato verrà copiato in questo progetto e impostato come genitore.
+                             Il ramo selezionato verrà copiato in questo progetto. Non sarà sincronizzato con l'originale.
                          </p>
                      )}
                  </div>
