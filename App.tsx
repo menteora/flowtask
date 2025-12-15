@@ -10,6 +10,7 @@ import CalendarPanel from './components/panels/CalendarPanel';
 import UserTasksPanel from './components/panels/UserTasksPanel';
 import SettingsPanel from './components/panels/SettingsPanel';
 import LoginScreen from './components/auth/LoginScreen';
+import DescriptionReader from './components/modals/DescriptionReader';
 import { toPng } from 'html-to-image';
 
 type View = 'workflow' | 'team' | 'calendar' | 'assignments' | 'settings';
@@ -156,6 +157,8 @@ const App: React.FC = () => {
         accept=".json" 
         className="hidden" 
       />
+      
+      <DescriptionReader />
 
       {/* Header */}
       <div className="flex w-full h-14 md:h-16 bg-white dark:bg-slate-900 border-b border-slate-200 dark:border-slate-800 items-center justify-between px-4 md:px-6 z-20 shadow-sm flex-shrink-0">

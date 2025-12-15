@@ -2,7 +2,7 @@ import React from 'react';
 import { Branch, BranchStatus } from '../../types';
 import { STATUS_CONFIG } from '../../constants';
 import { useProject } from '../../context/ProjectContext';
-import { MoreHorizontal, Plus, Calendar, Archive, ChevronLeft, ChevronRight } from 'lucide-react';
+import { MoreHorizontal, Plus, Calendar, Archive, ChevronLeft, ChevronRight, FileText } from 'lucide-react';
 import Avatar from '../ui/Avatar';
 
 interface BranchNodeProps {
@@ -10,7 +10,7 @@ interface BranchNodeProps {
 }
 
 const BranchNode: React.FC<BranchNodeProps> = ({ branchId }) => {
-  const { state, addBranch, selectBranch, selectedBranchId, moveBranch } = useProject();
+  const { state, addBranch, selectBranch, selectedBranchId, moveBranch, setReadingDescriptionId } = useProject();
   const branch = state.branches[branchId];
   
   if (!branch) return null;
@@ -35,6 +35,8 @@ const BranchNode: React.FC<BranchNodeProps> = ({ branchId }) => {
           if (idx !== -1 && idx < firstParent.childrenIds.length - 1) canMoveRight = true;
       }
   }
+
+  const hasDescription = branch.description && branch.description.trim().length > 0;
 
   return (
     <div className="flex flex-col items-center group/node">
@@ -67,6 +69,20 @@ const BranchNode: React.FC<BranchNodeProps> = ({ branchId }) => {
           </div>
 
           <div className="flex items-center gap-1">
+             {/* Description Reader Icon */}
+             {hasDescription && (
+                 <button
+                    onClick={(e) => {
+                        e.stopPropagation();
+                        setReadingDescriptionId(branchId);
+                    }}
+                    className="p-1 rounded hover:bg-indigo-50 dark:hover:bg-indigo-900/30 text-indigo-500 dark:text-indigo-400 transition-colors"
+                    title="Leggi descrizione"
+                 >
+                     <FileText className="w-4 h-4" />
+                 </button>
+             )}
+
              {/* Left Arrow */}
              {canMoveLeft && (
                  <button 
