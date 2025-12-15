@@ -51,6 +51,13 @@ const PeopleManager: React.FC = () => {
               
               if (contacts && contacts.length > 0) {
                   const contact = contacts[0];
+                  // Determine logic: 
+                  // If adding (no editingId), overwrite everything.
+                  // If editing, logic depends on user preference, but usually import means "use this data".
+                  // However, to be safe for "filling missing info", if the name input is already populated and we are editing,
+                  // we could prioritize the existing name, BUT usually contact names are better. 
+                  // Let's overwrite form state - user can edit before saving.
+                  
                   if (contact.name && contact.name.length > 0) setNewName(contact.name[0]);
                   if (contact.email && contact.email.length > 0) setNewEmail(contact.email[0]);
                   if (contact.tel && contact.tel.length > 0) setNewPhone(contact.tel[0]);
@@ -101,16 +108,14 @@ const PeopleManager: React.FC = () => {
                         placeholder="Telefono (opzionale)..."
                         className="flex-1 text-base rounded-md border border-gray-300 dark:border-slate-600 bg-white dark:bg-slate-900 px-4 py-2 text-slate-900 dark:text-white focus:outline-none focus:ring-2 focus:ring-indigo-500 min-w-0"
                     />
-                    {!editingId && (
-                        <button
-                            type="button"
-                            onClick={handleImportContact}
-                            className="p-2 bg-slate-100 dark:bg-slate-700 hover:bg-slate-200 dark:hover:bg-slate-600 text-slate-600 dark:text-slate-300 rounded-md transition-colors flex-shrink-0"
-                            title="Importa da Rubrica"
-                        >
-                            <Smartphone className="w-5 h-5" />
-                        </button>
-                    )}
+                    <button
+                        type="button"
+                        onClick={handleImportContact}
+                        className="p-2 bg-slate-100 dark:bg-slate-700 hover:bg-slate-200 dark:hover:bg-slate-600 text-slate-600 dark:text-slate-300 rounded-md transition-colors flex-shrink-0"
+                        title="Importa dati da Rubrica"
+                    >
+                        <Smartphone className="w-5 h-5" />
+                    </button>
                 </div>
             </div>
             
