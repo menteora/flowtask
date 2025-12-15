@@ -14,6 +14,7 @@ DROP TABLE IF EXISTS public.flowtask_projects;
 create table public.flowtask_projects (
   id text primary key,
   name text not null,
+  root_branch_id text, -- Added to track the entry point of the flow
   owner_id uuid references auth.users not null,
   created_at timestamp with time zone default timezone('utc'::text, now()) not null
 );
