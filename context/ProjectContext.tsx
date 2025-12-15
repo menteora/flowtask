@@ -525,13 +525,15 @@ export const ProjectProvider: React.FC<{ children: React.ReactNode }> = ({ child
               const temp = newChildren[currentIndex - 1];
               newChildren[currentIndex - 1] = newChildren[currentIndex];
               newChildren[currentIndex] = temp;
-              newBranches[parentId] = { ...parent, childrenIds: newChildren };
+              // Use Object.assign to avoid spread type error
+              newBranches[parentId] = Object.assign({}, parent, { childrenIds: newChildren });
               changed = true;
           } else if (direction === 'right' && currentIndex < newChildren.length - 1) {
               const temp = newChildren[currentIndex + 1];
               newChildren[currentIndex + 1] = newChildren[currentIndex];
               newChildren[currentIndex] = temp;
-              newBranches[parentId] = { ...parent, childrenIds: newChildren };
+              // Use Object.assign to avoid spread type error
+              newBranches[parentId] = Object.assign({}, parent, { childrenIds: newChildren });
               changed = true;
           }
       });
