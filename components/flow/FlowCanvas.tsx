@@ -27,6 +27,7 @@ const TreeLevel: React.FC<TreeLevelProps> = ({ branchId }) => {
   });
 
   const hasChildren = visibleChildrenIds.length > 0;
+  const isCollapsed = branch.collapsed;
 
   return (
     <div className={`flex flex-col items-center ${branch.archived ? 'opacity-60 grayscale' : ''}`}>
@@ -34,8 +35,8 @@ const TreeLevel: React.FC<TreeLevelProps> = ({ branchId }) => {
       <BranchNode branchId={branchId} />
 
       {/* Children Container */}
-      {hasChildren && (
-        <div className="relative flex items-start justify-center pt-4">
+      {hasChildren && !isCollapsed && (
+        <div className="relative flex items-start justify-center pt-4 animate-in fade-in zoom-in-95 duration-200 origin-top">
             {/* Horizontal connecting line logic */}
              
              {/* Only draw the horizontal connector bar if more than 1 child */}

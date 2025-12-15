@@ -1,6 +1,6 @@
 import React, { useState, useEffect, useRef } from 'react';
 import { useProject } from '../../context/ProjectContext';
-import { Database, Save, Download, Key, ShieldCheck, Check, Copy, Terminal, Cloud, CloudRain, Loader2, AlertCircle, Upload, User, LogOut, LogIn, WifiOff, X, Share2, Link, Trash2 } from 'lucide-react';
+import { Database, Save, Download, Key, ShieldCheck, Check, Copy, Terminal, Cloud, CloudRain, Loader2, AlertCircle, Upload, User, LogOut, LogIn, WifiOff, X, Share2, Link, Trash2, ArrowUpCircle } from 'lucide-react';
 
 const SQL_SCHEMA = `
 -- CANCELLAZIONE VECCHIE TABELLE (Se esistono)
@@ -41,6 +41,7 @@ create table public.flowtask_branches (
   end_date text,
   due_date text,
   archived boolean default false,
+  collapsed boolean default false, -- Added for collapsing branches
   parent_ids text[],
   children_ids text[],
   position integer default 0
@@ -105,6 +106,19 @@ using (
 );
 `;
 
+const MIGRATION_SQL = `
+-- ESEGUI QUESTO SE HAI GIÀ DEI DATI NEL DB E VUOI AGGIORNARE LE TABELLE
+-- SENZA PERDERE I DATI ESISTENTI.
+
+-- Aggiunge la colonna per comprimere i rami
+ALTER TABLE public.flowtask_branches 
+ADD COLUMN IF NOT EXISTS collapsed boolean DEFAULT false;
+
+-- (Opzionale) Se non hai ancora il campo phone su people
+ALTER TABLE public.flowtask_people 
+ADD COLUMN IF NOT EXISTS phone text;
+`;
+
 const SettingsPanel: React.FC = () => {
   const { 
     supabaseConfig, 
@@ -123,6 +137,7 @@ const SettingsPanel: React.FC = () => {
   const [url, setUrl] = useState(supabaseConfig.url);
   const [key, setKey] = useState(supabaseConfig.key);
   const [copied, setCopied] = useState(false);
+  const [migrationCopied, setMigrationCopied] = useState(false);
   const [shareLinkCopied, setShareLinkCopied] = useState(false);
   
   const [isSaving, setIsSaving] = useState(false);
@@ -160,6 +175,12 @@ const SettingsPanel: React.FC = () => {
       navigator.clipboard.writeText(SQL_SCHEMA);
       setCopied(true);
       setTimeout(() => setCopied(false), 2000);
+  };
+
+  const handleCopyMigration = () => {
+      navigator.clipboard.writeText(MIGRATION_SQL);
+      setMigrationCopied(true);
+      setTimeout(() => setMigrationCopied(false), 2000);
   };
 
   const handleGenerateShareLink = () => {
@@ -547,28 +568,58 @@ const SettingsPanel: React.FC = () => {
           </div>
 
           {/* Setup Instructions */}
-          <div className="bg-white dark:bg-slate-800 rounded-xl shadow-sm border border-slate-200 dark:border-slate-700 p-4 md:p-6 w-full min-w-0 max-w-full">
-              <h3 className="text-lg font-semibold text-slate-800 dark:text-white mb-4 flex items-center gap-2">
-                  <ShieldCheck className="w-5 h-5 text-green-500" />
-                  Configurazione Database (SQL)
-              </h3>
-              <p className="text-xs md:text-sm text-slate-600 dark:text-slate-400 mb-4">
-                  Copia ed esegui questo script SQL nel tuo progetto Supabase per creare le tabelle.
-              </p>
-              
-              <div className="relative group w-full min-w-0">
-                  <div className="absolute top-2 right-2 z-10">
-                      <button 
-                        onClick={handleCopySql}
-                        className="p-2 bg-slate-800 text-white rounded hover:bg-slate-700 transition-colors flex items-center gap-1 text-xs shadow-md"
-                      >
-                          {copied ? <Check className="w-3 h-3" /> : <Copy className="w-3 h-3" />}
-                          {copied ? 'Copiato' : 'Copia SQL'}
-                      </button>
+          <div className="grid grid-cols-1 md:grid-cols-2 gap-6">
+              {/* Fresh Install */}
+              <div className="bg-white dark:bg-slate-800 rounded-xl shadow-sm border border-slate-200 dark:border-slate-700 p-4 md:p-6 w-full min-w-0">
+                  <h3 className="text-lg font-semibold text-slate-800 dark:text-white mb-4 flex items-center gap-2">
+                      <ShieldCheck className="w-5 h-5 text-green-500" />
+                      Nuova Installazione (Reset)
+                  </h3>
+                  <p className="text-xs md:text-sm text-slate-600 dark:text-slate-400 mb-4">
+                      Usa questo script se vuoi creare le tabelle da zero. 
+                      <span className="text-red-500 font-bold ml-1">ATTENZIONE: Cancella i dati esistenti!</span>
+                  </p>
+                  
+                  <div className="relative group w-full min-w-0">
+                      <div className="absolute top-2 right-2 z-10">
+                          <button 
+                            onClick={handleCopySql}
+                            className="p-2 bg-slate-800 text-white rounded hover:bg-slate-700 transition-colors flex items-center gap-1 text-xs shadow-md"
+                          >
+                              {copied ? <Check className="w-3 h-3" /> : <Copy className="w-3 h-3" />}
+                              {copied ? 'Copiato' : 'Copia'}
+                          </button>
+                      </div>
+                      <pre className="bg-slate-900 text-slate-100 p-4 rounded-lg text-[10px] md:text-xs overflow-x-auto font-mono h-48 border border-slate-700 w-full whitespace-pre-wrap break-all">
+                          <code>{SQL_SCHEMA}</code>
+                      </pre>
                   </div>
-                  <pre className="bg-slate-900 text-slate-100 p-4 rounded-lg text-[10px] md:text-xs overflow-x-auto font-mono h-48 md:h-64 border border-slate-700 w-full whitespace-pre-wrap break-all">
-                      <code>{SQL_SCHEMA}</code>
-                  </pre>
+              </div>
+
+              {/* Migration */}
+              <div className="bg-white dark:bg-slate-800 rounded-xl shadow-sm border border-slate-200 dark:border-slate-700 p-4 md:p-6 w-full min-w-0">
+                  <h3 className="text-lg font-semibold text-slate-800 dark:text-white mb-4 flex items-center gap-2">
+                      <ArrowUpCircle className="w-5 h-5 text-amber-500" />
+                      Migrazione (Mantieni Dati)
+                  </h3>
+                  <p className="text-xs md:text-sm text-slate-600 dark:text-slate-400 mb-4">
+                      Usa questo script se hai già un database e vuoi aggiungere le nuove funzionalità senza perdere i dati.
+                  </p>
+                  
+                  <div className="relative group w-full min-w-0">
+                      <div className="absolute top-2 right-2 z-10">
+                          <button 
+                            onClick={handleCopyMigration}
+                            className="p-2 bg-slate-800 text-white rounded hover:bg-slate-700 transition-colors flex items-center gap-1 text-xs shadow-md"
+                          >
+                              {migrationCopied ? <Check className="w-3 h-3" /> : <Copy className="w-3 h-3" />}
+                              {migrationCopied ? 'Copiato' : 'Copia'}
+                          </button>
+                      </div>
+                      <pre className="bg-slate-900 text-slate-100 p-4 rounded-lg text-[10px] md:text-xs overflow-x-auto font-mono h-48 border border-slate-700 w-full whitespace-pre-wrap break-all">
+                          <code>{MIGRATION_SQL}</code>
+                      </pre>
+                  </div>
               </div>
           </div>
       </div>

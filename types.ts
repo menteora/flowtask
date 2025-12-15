@@ -37,6 +37,7 @@ export interface Branch {
   parentIds: string[]; // Changed from parentId: string | null
   archived?: boolean;
   position?: number; // Added for explicit SQL ordering
+  collapsed?: boolean; // New field for UI collapsing
 }
 
 export interface ProjectState {

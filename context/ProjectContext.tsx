@@ -68,6 +68,8 @@ interface ProjectContextType {
   downloadProjectFromSupabase: (projectId: string, activate?: boolean, removeDefault?: boolean) => Promise<void>;
   deleteProjectFromSupabase: (projectId: string) => Promise<void>;
   listProjectsFromSupabase: () => Promise<Array<{ id: string, name: string, updated_at: string }>>;
+  getProjectBranchesFromSupabase: (projectId: string) => Promise<Branch[]>;
+  importBranchAsParent: (sourceProjectId: string, sourceBranchId: string, targetChildId: string) => Promise<void>;
   logout: () => Promise<void>;
   
   autoSaveStatus: 'idle' | 'saving' | 'saved' | 'error';
@@ -676,12 +678,14 @@ export const ProjectProvider: React.FC<{ children: React.ReactNode }> = ({ child
         const branch = prev.branches[branchId];
         if (!branch) return prev;
 
-        const currentTasksMap = new Map(branch.tasks.map(t => [t.title, t]));
+        // Correctly type the Map to avoid inference issues with Object.assign later
+        const currentTasksMap = new Map<string, Task>(branch.tasks.map(t => [t.title, t]));
         
         const newTasks: Task[] = lines.map((line, index) => {
             const existingTask = currentTasksMap.get(line);
             if (existingTask) {
-                return Object.assign({}, existingTask, { position: index });
+                // Use spread syntax to avoid 'Object.assign' type inference issues
+                return { ...existingTask, position: index };
             }
             return {
                 id: generateId(),
@@ -835,7 +839,8 @@ export const ProjectProvider: React.FC<{ children: React.ReactNode }> = ({ child
                 archived: b.archived || false,
                 parent_ids: b.parentIds,
                 children_ids: b.childrenIds,
-                position: pos
+                position: pos,
+                collapsed: b.collapsed || false // Sync collapsed state
             };
         });
         await supabaseClient.from('flowtask_branches').upsert(branchesData);
@@ -855,7 +860,7 @@ export const ProjectProvider: React.FC<{ children: React.ReactNode }> = ({ child
         id: t.id,
         branch_id: b.id,
         title: t.title,
-        assignee_id: t.assignee_id,
+        assignee_id: t.assigneeId,
         due_date: t.dueDate,
         completed: t.completed,
         position: index
@@ -874,6 +879,109 @@ export const ProjectProvider: React.FC<{ children: React.ReactNode }> = ({ child
       if (error) throw error;
       return data || [];
   }, [supabaseClient]);
+
+  const getProjectBranchesFromSupabase = useCallback(async (projectId: string): Promise<Branch[]> => {
+    if (!supabaseClient) throw new Error("Client Supabase non inizializzato");
+
+    // Fetch branches
+    const { data: branchesData, error } = await supabaseClient
+        .from('flowtask_branches')
+        .select('*')
+        .eq('project_id', projectId);
+    
+    if (error) throw error;
+    if (!branchesData) return [];
+
+    // Map to local Branch type
+    return branchesData.map((b: any) => ({
+        id: b.id,
+        title: b.title,
+        description: b.description,
+        status: b.status as BranchStatus,
+        startDate: b.start_date,
+        endDate: b.end_date,
+        dueDate: b.due_date,
+        tasks: [], // We don't need tasks for parent selection
+        childrenIds: b.children_ids || [],
+        parentIds: b.parent_ids || [],
+        archived: b.archived,
+        position: b.position,
+        collapsed: b.collapsed
+    }));
+  }, [supabaseClient]);
+
+  const importBranchAsParent = useCallback(async (sourceProjectId: string, sourceBranchId: string, targetChildId: string) => {
+    if (!supabaseClient) throw new Error("Client Supabase non inizializzato");
+
+    // 1. Fetch Source Branch Data (Single)
+    const { data: bData, error: bError } = await supabaseClient
+        .from('flowtask_branches')
+        .select('*')
+        .eq('id', sourceBranchId)
+        .single();
+    if (bError) throw bError;
+
+    // 2. Fetch Tasks for that branch
+    const { data: tData, error: tError } = await supabaseClient
+        .from('flowtask_tasks')
+        .select('*')
+        .eq('branch_id', sourceBranchId)
+        .order('position', { ascending: true });
+    if (tError) throw tError;
+
+    // 3. Create NEW Branch object (Copy)
+    // We import it as a "Parent", so it needs to point to our targetChild
+    // But we clear its existing parents/children to avoid broken links from the old project
+    // NOTE: Ideally we should regenerate ID to avoid collisions if merging projects, 
+    // but preserving ID allows "moving" logic. For "Importing a copy", regenerate ID is safer.
+    // Let's Regenerate ID for safety.
+    
+    const newBranchId = generateId();
+    
+    const importedBranch: Branch = {
+        id: newBranchId,
+        title: `${bData.title} (Importato)`,
+        description: bData.description,
+        status: bData.status as BranchStatus,
+        startDate: bData.start_date,
+        endDate: bData.end_date,
+        dueDate: bData.due_date,
+        archived: false,
+        collapsed: false,
+        parentIds: [], // Start as root/floating in this project context
+        childrenIds: [targetChildId], // It becomes parent of our target
+        tasks: (tData || []).map((t: any, idx: number) => ({
+            id: generateId(),
+            title: t.title,
+            completed: t.completed,
+            dueDate: t.due_date,
+            assigneeId: undefined, // Clear assignee as people IDs might not match
+            position: idx
+        }))
+    };
+
+    setProjectState(prev => {
+        const targetChild = prev.branches[targetChildId];
+        if (!targetChild) return prev; // Safety check
+
+        // 1. Add imported branch
+        // 2. Update target child to include new parent
+        const updatedBranches = {
+            ...prev.branches,
+            [newBranchId]: importedBranch,
+            [targetChildId]: {
+                ...targetChild,
+                parentIds: [...targetChild.parentIds, newBranchId]
+            }
+        };
+
+        return {
+            ...prev,
+            branches: updatedBranches
+        };
+    });
+
+  }, [supabaseClient, setProjectState]);
 
   const deleteProjectFromSupabase = useCallback(async (projectId: string) => {
     if (!supabaseClient) throw new Error("Client Supabase non inizializzato");
@@ -982,7 +1090,8 @@ export const ProjectProvider: React.FC<{ children: React.ReactNode }> = ({ child
             childrenIds: childrenIds, 
             parentIds: parentIds,
             archived: b.archived,
-            position: b.position
+            position: b.position,
+            collapsed: b.collapsed || false // Sync collapsed state
         };
     });
     
@@ -1126,6 +1235,8 @@ export const ProjectProvider: React.FC<{ children: React.ReactNode }> = ({ child
       downloadProjectFromSupabase,
       deleteProjectFromSupabase,
       listProjectsFromSupabase,
+      getProjectBranchesFromSupabase,
+      importBranchAsParent,
       logout,
       
       autoSaveStatus

@@ -2,17 +2,25 @@ import React, { useState, useEffect, useRef } from 'react';
 import { useProject } from '../../context/ProjectContext';
 import { BranchStatus, Branch } from '../../types';
 import { STATUS_CONFIG } from '../../constants';
-import { X, Save, Trash2, CheckSquare, Square, ArrowUpLeft, Calendar, Plus, Link as LinkIcon, Unlink, PlayCircle, StopCircle, Clock, AlertTriangle, Archive, RefreshCw, Bold, Italic, List, Eye, Edit2, FileText, ChevronUp, ChevronDown } from 'lucide-react';
+import { X, Save, Trash2, CheckSquare, Square, ArrowUpLeft, Calendar, Plus, Link as LinkIcon, Unlink, PlayCircle, StopCircle, Clock, AlertTriangle, Archive, RefreshCw, Bold, Italic, List, Eye, Edit2, FileText, ChevronUp, ChevronDown, DownloadCloud, Loader2 } from 'lucide-react';
 import Avatar from '../ui/Avatar';
 
 const BranchDetails: React.FC = () => {
-  const { state, selectedBranchId, selectBranch, updateBranch, deleteBranch, linkBranch, unlinkBranch, addTask, updateTask, deleteTask, moveTask, bulkUpdateTasks, toggleBranchArchive } = useProject();
+  const { state, selectedBranchId, selectBranch, updateBranch, deleteBranch, linkBranch, unlinkBranch, addTask, updateTask, deleteTask, moveTask, bulkUpdateTasks, toggleBranchArchive, listProjectsFromSupabase, getProjectBranchesFromSupabase, importBranchAsParent, session } = useProject();
   const [isBulkMode, setIsBulkMode] = useState(false);
   const [bulkText, setBulkText] = useState('');
   const [newTaskTitle, setNewTaskTitle] = useState('');
   const [showDeleteConfirm, setShowDeleteConfirm] = useState(false);
   const [parentToAdd, setParentToAdd] = useState('');
   
+  // Import Mode State
+  const [isImportMode, setIsImportMode] = useState(false);
+  const [remoteProjects, setRemoteProjects] = useState<any[]>([]);
+  const [selectedRemoteProj, setSelectedRemoteProj] = useState('');
+  const [remoteBranches, setRemoteBranches] = useState<Branch[]>([]);
+  const [selectedRemoteBranch, setSelectedRemoteBranch] = useState('');
+  const [isLoadingRemote, setIsLoadingRemote] = useState(false);
+
   // Description State
   const [isPreviewMode, setIsPreviewMode] = useState(false);
   const textareaRef = useRef<HTMLTextAreaElement>(null);
@@ -26,6 +34,9 @@ const BranchDetails: React.FC = () => {
       setParentToAdd('');
       // Reset formatting mode on branch switch
       setIsPreviewMode(false); 
+      setIsImportMode(false);
+      setSelectedRemoteProj('');
+      setSelectedRemoteBranch('');
     }
   }, [branch?.tasks, branch?.id]); 
 
@@ -35,6 +46,30 @@ const BranchDetails: React.FC = () => {
           setNewTaskTitle('');
       }
   }, [branch?.id]);
+
+  // Load remote projects when import mode is toggled
+  useEffect(() => {
+      if (isImportMode && session && remoteProjects.length === 0) {
+          setIsLoadingRemote(true);
+          listProjectsFromSupabase()
+            .then(projs => setRemoteProjects(projs.filter(p => p.id !== state.id)))
+            .catch(err => console.error(err))
+            .finally(() => setIsLoadingRemote(false));
+      }
+  }, [isImportMode, session]);
+
+  // Load branches when remote project is selected
+  useEffect(() => {
+      if (selectedRemoteProj) {
+          setIsLoadingRemote(true);
+          getProjectBranchesFromSupabase(selectedRemoteProj)
+            .then(branches => setRemoteBranches(branches))
+            .catch(err => console.error(err))
+            .finally(() => setIsLoadingRemote(false));
+      } else {
+          setRemoteBranches([]);
+      }
+  }, [selectedRemoteProj]);
 
   if (!branch) return null;
 
@@ -70,9 +105,23 @@ const BranchDetails: React.FC = () => {
   };
 
   const handleAddParent = () => {
-      if (parentToAdd) {
-          linkBranch(branch.id, parentToAdd);
-          setParentToAdd('');
+      if (isImportMode) {
+          if (selectedRemoteProj && selectedRemoteBranch) {
+              setIsLoadingRemote(true);
+              importBranchAsParent(selectedRemoteProj, selectedRemoteBranch, branch.id)
+                .then(() => {
+                    setIsImportMode(false);
+                    setSelectedRemoteProj('');
+                    setSelectedRemoteBranch('');
+                })
+                .catch(err => alert("Errore importazione: " + err))
+                .finally(() => setIsLoadingRemote(false));
+          }
+      } else {
+          if (parentToAdd) {
+              linkBranch(branch.id, parentToAdd);
+              setParentToAdd('');
+          }
       }
   };
 
@@ -483,7 +532,7 @@ const BranchDetails: React.FC = () => {
                     Collegato a (Genitori)
                  </label>
                  
-                 <ul className="space-y-2 mb-2">
+                 <ul className="space-y-2 mb-3">
                      {branch.parentIds.map(pid => {
                          const parent = state.branches[pid];
                          if (!parent) return null;
@@ -505,26 +554,87 @@ const BranchDetails: React.FC = () => {
                      })}
                  </ul>
 
-                 <div className="flex gap-2">
-                     <select
-                        value={parentToAdd}
-                        onChange={(e) => setParentToAdd(e.target.value)}
-                        className="flex-1 text-sm bg-gray-50 dark:bg-slate-800 border border-gray-200 dark:border-slate-700 rounded-md p-2 text-slate-700 dark:text-slate-200 focus:ring-2 focus:ring-indigo-500 outline-none"
-                     >
-                        <option value="">Aggiungi genitore...</option>
-                        {eligibleParents.map(p => (
-                            <option key={p.id} value={p.id}>
-                                {p.title}
-                            </option>
-                        ))}
-                     </select>
-                     <button 
-                        onClick={handleAddParent}
-                        disabled={!parentToAdd}
-                        className="p-2 bg-indigo-600 text-white rounded-md disabled:opacity-50 disabled:cursor-not-allowed hover:bg-indigo-700"
-                     >
-                         <Plus className="w-4 h-4" />
-                     </button>
+                 <div className="bg-gray-50 dark:bg-slate-800/50 p-2 rounded-lg border border-gray-100 dark:border-slate-700">
+                     <div className="flex gap-2 text-[10px] font-medium text-slate-500 mb-2">
+                         <button 
+                            className={`flex-1 py-1 rounded ${!isImportMode ? 'bg-white dark:bg-slate-700 text-indigo-600 shadow-sm' : 'hover:bg-gray-200 dark:hover:bg-slate-700'}`}
+                            onClick={() => setIsImportMode(false)}
+                         >
+                             Progetto Corrente
+                         </button>
+                         <button 
+                            className={`flex-1 py-1 rounded flex items-center justify-center gap-1 ${isImportMode ? 'bg-white dark:bg-slate-700 text-indigo-600 shadow-sm' : 'hover:bg-gray-200 dark:hover:bg-slate-700'}`}
+                            onClick={() => {
+                                if(!session) {
+                                    alert("Devi essere connesso per importare da altri progetti.");
+                                    return;
+                                }
+                                setIsImportMode(true);
+                            }}
+                         >
+                             <DownloadCloud className="w-3 h-3" />
+                             Importa da Altro
+                         </button>
+                     </div>
+
+                     <div className="flex gap-2">
+                        {isImportMode ? (
+                            <div className="flex-1 space-y-2">
+                                <select
+                                    value={selectedRemoteProj}
+                                    onChange={(e) => {
+                                        setSelectedRemoteProj(e.target.value);
+                                        setSelectedRemoteBranch('');
+                                    }}
+                                    className="w-full text-sm bg-white dark:bg-slate-800 border border-gray-200 dark:border-slate-700 rounded-md p-2 text-slate-700 dark:text-slate-200 focus:ring-2 focus:ring-indigo-500 outline-none"
+                                >
+                                    <option value="">Seleziona Progetto...</option>
+                                    {remoteProjects.map(p => (
+                                        <option key={p.id} value={p.id}>{p.name}</option>
+                                    ))}
+                                </select>
+                                
+                                {selectedRemoteProj && (
+                                     <select
+                                        value={selectedRemoteBranch}
+                                        onChange={(e) => setSelectedRemoteBranch(e.target.value)}
+                                        className="w-full text-sm bg-white dark:bg-slate-800 border border-gray-200 dark:border-slate-700 rounded-md p-2 text-slate-700 dark:text-slate-200 focus:ring-2 focus:ring-indigo-500 outline-none"
+                                    >
+                                        <option value="">Seleziona Ramo...</option>
+                                        {remoteBranches.map(b => (
+                                            <option key={b.id} value={b.id}>{b.title}</option>
+                                        ))}
+                                    </select>
+                                )}
+                            </div>
+                        ) : (
+                            <select
+                                value={parentToAdd}
+                                onChange={(e) => setParentToAdd(e.target.value)}
+                                className="flex-1 text-sm bg-white dark:bg-slate-800 border border-gray-200 dark:border-slate-700 rounded-md p-2 text-slate-700 dark:text-slate-200 focus:ring-2 focus:ring-indigo-500 outline-none"
+                            >
+                                <option value="">Aggiungi genitore...</option>
+                                {eligibleParents.map(p => (
+                                    <option key={p.id} value={p.id}>
+                                        {p.title}
+                                    </option>
+                                ))}
+                            </select>
+                        )}
+                        
+                        <button 
+                            onClick={handleAddParent}
+                            disabled={isLoadingRemote || (isImportMode ? (!selectedRemoteBranch) : (!parentToAdd))}
+                            className="p-2 bg-indigo-600 text-white rounded-md disabled:opacity-50 disabled:cursor-not-allowed hover:bg-indigo-700 flex items-center justify-center w-10 shrink-0 self-start"
+                        >
+                            {isLoadingRemote ? <Loader2 className="w-4 h-4 animate-spin" /> : <Plus className="w-4 h-4" />}
+                        </button>
+                     </div>
+                     {isImportMode && selectedRemoteBranch && (
+                         <p className="text-[10px] text-indigo-500 mt-2">
+                             Il ramo selezionato verrà copiato in questo progetto e impostato come genitore.
+                         </p>
+                     )}
                  </div>
             </div>
         )}
