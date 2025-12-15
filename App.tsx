@@ -22,7 +22,7 @@ const App: React.FC = () => {
   const { 
     selectedBranchId, state, loadProject, showArchived, toggleShowArchived,
     projects, activeProjectId, switchProject, createProject, closeProject, renameProject,
-    session, loadingAuth, isInitializing, isOfflineMode, autoSaveStatus
+    session, loadingAuth, isInitializing, isOfflineMode, autoSaveStatus, notification
   } = useProject();
   
   const [currentView, setCurrentView] = useState<View>('workflow');
@@ -151,8 +151,18 @@ const App: React.FC = () => {
   );
 
   return (
-    <div className="flex flex-col h-[100dvh] w-screen overflow-hidden bg-slate-50 dark:bg-slate-950 text-slate-900 dark:text-slate-100 font-sans">
+    <div className="flex flex-col h-[100dvh] w-screen overflow-hidden bg-slate-50 dark:bg-slate-950 text-slate-900 dark:text-slate-100 font-sans relative">
       
+      {/* GLOBAL NOTIFICATION TOAST */}
+      {notification && (
+        <div className={`fixed top-4 left-1/2 -translate-x-1/2 z-[200] w-[90%] max-w-md px-4 py-3 rounded-lg shadow-xl flex items-center gap-3 transition-all transform animate-in fade-in slide-in-from-top-4 ${
+            notification.type === 'success' ? 'bg-emerald-600 text-white' : 'bg-red-600 text-white'
+        }`}>
+            {notification.type === 'success' ? <Check className="w-5 h-5 flex-shrink-0" /> : <AlertCircle className="w-5 h-5 flex-shrink-0" />}
+            <span className="font-medium text-sm flex-1 break-words">{notification.message}</span>
+        </div>
+      )}
+
       <input 
         type="file" 
         ref={fileInputRef} 

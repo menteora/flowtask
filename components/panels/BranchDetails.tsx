@@ -6,7 +6,7 @@ import { X, Save, Trash2, CheckSquare, Square, ArrowUpLeft, Calendar, Plus, Link
 import Avatar from '../ui/Avatar';
 
 const BranchDetails: React.FC = () => {
-  const { state, selectedBranchId, selectBranch, updateBranch, deleteBranch, linkBranch, unlinkBranch, addTask, updateTask, deleteTask, moveTask, bulkUpdateTasks, toggleBranchArchive, listProjectsFromSupabase, getProjectBranchesFromSupabase, importBranchAsParent, session } = useProject();
+  const { state, selectedBranchId, selectBranch, updateBranch, deleteBranch, linkBranch, unlinkBranch, addTask, updateTask, deleteTask, moveTask, bulkUpdateTasks, toggleBranchArchive, listProjectsFromSupabase, getProjectBranchesFromSupabase, importBranchAsParent, session, showNotification } = useProject();
   const [isBulkMode, setIsBulkMode] = useState(false);
   const [bulkText, setBulkText] = useState('');
   const [newTaskTitle, setNewTaskTitle] = useState('');
@@ -113,8 +113,9 @@ const BranchDetails: React.FC = () => {
                     setIsImportMode(false);
                     setSelectedRemoteProj('');
                     setSelectedRemoteBranch('');
+                    showNotification("Ramo importato con successo!", 'success');
                 })
-                .catch(err => alert("Errore importazione: " + err))
+                .catch(err => showNotification("Errore importazione: " + err, 'error'))
                 .finally(() => setIsLoadingRemote(false));
           }
       } else {
@@ -566,7 +567,7 @@ const BranchDetails: React.FC = () => {
                             className={`flex-1 py-1 rounded flex items-center justify-center gap-1 ${isImportMode ? 'bg-white dark:bg-slate-700 text-indigo-600 shadow-sm' : 'hover:bg-gray-200 dark:hover:bg-slate-700'}`}
                             onClick={() => {
                                 if(!session) {
-                                    alert("Devi essere connesso per importare da altri progetti.");
+                                    showNotification("Devi essere connesso per importare da altri progetti.", 'error');
                                     return;
                                 }
                                 setIsImportMode(true);
