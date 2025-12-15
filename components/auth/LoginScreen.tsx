@@ -1,18 +1,28 @@
-import React, { useState } from 'react';
+import React, { useState, useEffect } from 'react';
 import { useProject } from '../../context/ProjectContext';
 import { Database, Key, LogIn, Loader2, AlertCircle, Save, WifiOff } from 'lucide-react';
 
 const LoginScreen: React.FC = () => {
   const { setSupabaseConfig, supabaseConfig, supabaseClient, loadingAuth, enableOfflineMode } = useProject();
 
-  // Tab 1: Config (if not set)
+  // Tab 1: Config (if not set or explicitly editing)
   // Tab 2: Auth (Login/Signup)
 
-  const [hasConfig, setHasConfig] = useState(!!(supabaseConfig.url && supabaseConfig.key));
+  // Determine if we have a valid config from the context (e.g. loaded from URL or localStorage)
+  const hasValidConfig = !!(supabaseConfig.url && supabaseConfig.key);
   
-  // Config State
+  // State to toggle config editing mode manually
+  const [isEditingConfig, setIsEditingConfig] = useState(false);
+  
+  // Config Form State
   const [url, setUrl] = useState(supabaseConfig.url);
   const [key, setKey] = useState(supabaseConfig.key);
+
+  // Sync local form state when context updates (e.g. when URL params are parsed on mount)
+  useEffect(() => {
+      setUrl(supabaseConfig.url);
+      setKey(supabaseConfig.key);
+  }, [supabaseConfig]);
 
   // Auth State
   const [email, setEmail] = useState('');
@@ -24,7 +34,7 @@ const LoginScreen: React.FC = () => {
   const handleSaveConfig = () => {
     if (url && key) {
         setSupabaseConfig(url, key);
-        setHasConfig(true);
+        setIsEditingConfig(false); // Exit edit mode
     }
   };
 
@@ -66,7 +76,8 @@ const LoginScreen: React.FC = () => {
   }
 
   // SCREEN 1: CONFIGURATION
-  if (!hasConfig) {
+  // Show if configuration is missing OR if user explicitly wants to edit it
+  if (!hasValidConfig || isEditingConfig) {
       return (
         <div className="flex h-screen w-screen items-center justify-center bg-slate-50 dark:bg-slate-950 p-4">
             <div className="w-full max-w-md bg-white dark:bg-slate-900 rounded-xl shadow-lg border border-slate-200 dark:border-slate-800 p-8">
@@ -99,13 +110,24 @@ const LoginScreen: React.FC = () => {
                             className="w-full p-2.5 rounded-lg border border-slate-300 dark:border-slate-700 bg-white dark:bg-slate-800 focus:ring-2 focus:ring-indigo-500 outline-none transition-all"
                         />
                     </div>
-                    <button 
-                        onClick={handleSaveConfig}
-                        disabled={!url || !key}
-                        className="w-full py-2.5 bg-indigo-600 hover:bg-indigo-700 text-white rounded-lg font-medium transition-colors flex items-center justify-center gap-2 disabled:opacity-50 disabled:cursor-not-allowed"
-                    >
-                        <Save className="w-4 h-4" /> Salva e Continua
-                    </button>
+                    
+                    <div className="flex gap-3">
+                        {hasValidConfig && (
+                            <button 
+                                onClick={() => setIsEditingConfig(false)}
+                                className="flex-1 py-2.5 bg-slate-100 dark:bg-slate-800 hover:bg-slate-200 dark:hover:bg-slate-700 text-slate-700 dark:text-slate-300 rounded-lg font-medium transition-colors"
+                            >
+                                Annulla
+                            </button>
+                        )}
+                        <button 
+                            onClick={handleSaveConfig}
+                            disabled={!url || !key}
+                            className={`flex-1 py-2.5 bg-indigo-600 hover:bg-indigo-700 text-white rounded-lg font-medium transition-colors flex items-center justify-center gap-2 disabled:opacity-50 disabled:cursor-not-allowed`}
+                        >
+                            <Save className="w-4 h-4" /> Salva e Continua
+                        </button>
+                    </div>
                     
                     <div className="relative flex py-2 items-center">
                         <div className="flex-grow border-t border-slate-200 dark:border-slate-700"></div>
@@ -204,7 +226,7 @@ const LoginScreen: React.FC = () => {
                 </button>
 
                 <button 
-                    onClick={() => setHasConfig(false)}
+                    onClick={() => setIsEditingConfig(true)}
                     className="text-xs text-slate-400 hover:text-slate-600 dark:hover:text-slate-300 block w-full"
                 >
                     Cambia Configurazione Database
