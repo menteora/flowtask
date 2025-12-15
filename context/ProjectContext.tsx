@@ -79,7 +79,21 @@ export const ProjectProvider: React.FC<{ children: React.ReactNode }> = ({ child
             }
         }
     }
-    return [INITIAL_STATE];
+    
+    // Generate a unique root ID for the default project to avoid collisions
+    const defaultRootId = generateId();
+    const defaultProject: ProjectState = {
+        ...INITIAL_STATE,
+        id: generateId(),
+        rootBranchId: defaultRootId,
+        branches: {
+            [defaultRootId]: {
+                ...INITIAL_STATE.branches['root'],
+                id: defaultRootId
+            }
+        }
+    };
+    return [defaultProject];
   });
 
   const [activeProjectId, setActiveProjectId] = useState<string>(() => {
@@ -95,7 +109,7 @@ export const ProjectProvider: React.FC<{ children: React.ReactNode }> = ({ child
                } catch (e) {}
           }
       }
-      return INITIAL_STATE.id;
+      return projects.length > 0 ? projects[0].id : '';
   });
   
   const [selectedBranchId, setSelectedBranchId] = useState<string | null>(null);
@@ -236,20 +250,30 @@ export const ProjectProvider: React.FC<{ children: React.ReactNode }> = ({ child
   // --- Tab Management ---
 
   const createProject = useCallback(() => {
-    const newId = generateId();
+    const newProjectId = generateId();
+    const newRootId = generateId();
+
     const newProject: ProjectState = {
-      ...INITIAL_STATE,
-      id: newId,
+      id: newProjectId,
       name: `Nuovo Progetto ${projects.length + 1}`,
-      branches: { ...INITIAL_STATE.branches }, 
-      people: [...INITIAL_STATE.people]
+      rootBranchId: newRootId,
+      people: [...INITIAL_STATE.people],
+      branches: {
+          [newRootId]: {
+              id: newRootId,
+              title: 'Inizio Progetto',
+              description: 'Punto di partenza del flusso',
+              status: BranchStatus.PLANNED,
+              tasks: [],
+              childrenIds: [],
+              parentIds: [],
+              position: 0
+          }
+      }
     };
-    
-    // Deep Clone branches for the new project to avoid shared references with INITIAL_STATE
-    newProject.branches = JSON.parse(JSON.stringify(INITIAL_STATE.branches));
 
     setProjects(prev => [...prev, newProject]);
-    setActiveProjectId(newId);
+    setActiveProjectId(newProjectId);
     setSelectedBranchId(null);
   }, [projects.length]);
 
@@ -476,19 +500,19 @@ export const ProjectProvider: React.FC<{ children: React.ReactNode }> = ({ child
 
       branchToDelete.parentIds.forEach(pid => {
           if (newBranches[pid]) {
-              newBranches[pid] = {
-                  ...newBranches[pid],
+              // Use Object.assign to avoid "Spread types may only be created from object types" error
+              newBranches[pid] = Object.assign({}, newBranches[pid], {
                   childrenIds: newBranches[pid].childrenIds.filter(id => id !== branchId)
-              };
+              });
           }
       });
 
       branchToDelete.childrenIds.forEach(cid => {
           if (newBranches[cid]) {
-              newBranches[cid] = {
-                  ...newBranches[cid],
+              // Use Object.assign to avoid "Spread types may only be created from object types" error
+              newBranches[cid] = Object.assign({}, newBranches[cid], {
                   parentIds: newBranches[cid].parentIds.filter(id => id !== branchId)
-              };
+              });
           }
       });
 
@@ -715,7 +739,40 @@ export const ProjectProvider: React.FC<{ children: React.ReactNode }> = ({ child
   const uploadProjectToSupabase = useCallback(async () => {
     if (!supabaseClient) throw new Error("Client Supabase non inizializzato");
     
-    const p = activeProject;
+    // Get the current state locally. We need to check if the root ID is 'root'
+    // and if so, perform an auto-migration to a unique ID to avoid DB collisions.
+    let p = activeProject;
+    
+    // MIGRATION LOGIC: Fix collision for static 'root' ID
+    if (p.rootBranchId === 'root' && p.branches['root']) {
+        const newRootId = generateId();
+        const oldRoot = p.branches['root'];
+        
+        // 1. Create new branches object replacing 'root' key
+        const newBranches = { ...p.branches };
+        delete newBranches['root'];
+        
+        // 2. Add the new root branch with the new ID
+        newBranches[newRootId] = { ...oldRoot, id: newRootId };
+        
+        // 3. Update children of root to point to new parent ID
+        oldRoot.childrenIds.forEach(childId => {
+            if (newBranches[childId]) {
+                 // Replace 'root' with newRootId in parentIds array
+                 const updatedParentIds = newBranches[childId].parentIds.map(pid => pid === 'root' ? newRootId : pid);
+                 // Ensure immutability via Object.assign to avoid TS errors
+                 newBranches[childId] = Object.assign({}, newBranches[childId], { parentIds: updatedParentIds });
+            }
+        });
+
+        // 4. Update the local variable 'p' which we will send to Supabase
+        p = { ...p, rootBranchId: newRootId, branches: newBranches };
+        
+        // 5. IMPORTANT: Update the Local React State immediately so the UI reflects the change 
+        // and subsequent saves don't try to migrate again.
+        setProjectState(prev => ({ ...prev, rootBranchId: newRootId, branches: newBranches }));
+    }
+
     const { data: { user } } = await supabaseClient.auth.getUser();
 
     // 1. Save Project
@@ -810,7 +867,7 @@ export const ProjectProvider: React.FC<{ children: React.ReactNode }> = ({ child
         const { error: tError } = await supabaseClient.from('flowtask_tasks').upsert(tasks);
         if (tError) throw tError;
     }
-  }, [supabaseClient, activeProject]);
+  }, [supabaseClient, activeProject, setProjectState]);
 
   const listProjectsFromSupabase = useCallback(async () => {
       if (!supabaseClient) throw new Error("Client Supabase non inizializzato");
