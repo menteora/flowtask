@@ -18,12 +18,19 @@ const FolderNode: React.FC<FolderNodeProps> = ({ branchId, depth = 0, index, sib
 
   if (!branch) return null;
   
-  if (branch.archived && !showArchived) return null;
-
-  const visibleChildrenIds = branch.childrenIds.filter(cid => {
+  // Visibility Logic: Show if not archived OR showArchived=true OR has active children
+  const isSelfVisible = !branch.archived || showArchived;
+  const hasActiveChildren = branch.childrenIds.some(cid => {
       const child = state.branches[cid];
-      return child && (!child.archived || showArchived);
+      return child && !child.archived;
   });
+
+  const shouldRender = isSelfVisible || hasActiveChildren;
+
+  if (!shouldRender) return null;
+
+  // For children, we pass through everything and let the recursive call handle hiding
+  const visibleChildrenIds = branch.childrenIds;
 
   const hasChildren = visibleChildrenIds.length > 0;
   const hasTasks = branch.tasks.length > 0;

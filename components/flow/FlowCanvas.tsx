@@ -12,18 +12,30 @@ const TreeLevel: React.FC<TreeLevelProps> = ({ branchId }) => {
   
   if (!branch) return null;
 
-  // Archive Filter Logic:
-  // If branch is archived AND we are NOT showing archived, do not render this node (or its children).
-  if (branch.archived && !showArchived) {
+  // Visibility Logic:
+  // 1. If showArchived is ON, show everything.
+  // 2. If branch is NOT archived, show it.
+  // 3. If branch IS archived, but has visible children (active), show it as a "ghost" connector.
+  const isSelfVisible = !branch.archived || showArchived;
+  const hasActiveChildren = branch.childrenIds.some(cid => {
+      const child = state.branches[cid];
+      return child && !child.archived;
+  });
+
+  const shouldRender = isSelfVisible || hasActiveChildren;
+
+  if (!shouldRender) {
       return null;
   }
 
-  // Filter Children: Only pass down children that should be visible, or rely on recursion to hide them individually.
-  // Recursion is cleaner, but if we want to remove the connecting lines, we need to know valid children ahead of time.
+  // Determine children to render
   const visibleChildrenIds = branch.childrenIds.filter(cid => {
       const child = state.branches[cid];
       if (!child) return false;
-      return !child.archived || showArchived;
+      // Show child if it is visible OR if it serves as a connector to active grandchildren
+      // For performance, we limit lookahead to 1 level here, or rely on TreeLevel recursion handling it (rendering null)
+      // Since map renders TreeLevel, passing the ID is safe, TreeLevel will return null if needed.
+      return true; 
   });
 
   const hasChildren = visibleChildrenIds.length > 0;
