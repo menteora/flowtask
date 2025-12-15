@@ -2,7 +2,7 @@ import React from 'react';
 import { Branch, BranchStatus } from '../../types';
 import { STATUS_CONFIG } from '../../constants';
 import { useProject } from '../../context/ProjectContext';
-import { MoreHorizontal, Plus, Calendar, Archive, ChevronLeft, ChevronRight, FileText, ChevronDown, ChevronUp } from 'lucide-react';
+import { MoreHorizontal, Plus, Calendar, Archive, ChevronLeft, ChevronRight, FileText, ChevronDown, ChevronUp, GitMerge, Globe } from 'lucide-react';
 import Avatar from '../ui/Avatar';
 
 interface BranchNodeProps {
@@ -38,6 +38,10 @@ const BranchNode: React.FC<BranchNodeProps> = ({ branchId }) => {
 
   const hasDescription = branch.description && branch.description.trim().length > 0;
   const hasChildren = branch.childrenIds.length > 0;
+  
+  // Indicators
+  const isMultiParent = branch.parentIds.length > 1;
+  const isImported = branch.title.includes('(Importato)');
 
   return (
     <div className="flex flex-col items-center group/node">
@@ -58,18 +62,35 @@ const BranchNode: React.FC<BranchNodeProps> = ({ branchId }) => {
         {/* Header */}
         <div className={`p-3 border-b border-slate-100 dark:border-slate-700 flex justify-between items-start ${branch.archived ? 'bg-slate-50 dark:bg-slate-800' : ''} relative`}>
           
-          <div className="flex flex-col gap-1 overflow-hidden">
+          <div className="flex flex-col gap-1 overflow-hidden flex-1 min-w-0 pr-1">
              <h3 className="font-bold text-slate-800 dark:text-slate-100 truncate text-sm flex items-center gap-2" title={branch.title}>
               {branch.title}
               {branch.archived && <Archive className="w-3 h-3 text-slate-400" />}
             </h3>
-            <span className={`inline-flex items-center gap-1 px-2 py-0.5 rounded-full text-[10px] font-medium w-fit ${statusConfig.color}`}>
-              {statusConfig.icon}
-              {statusConfig.label}
-            </span>
+            
+            <div className="flex flex-wrap gap-1">
+                <span className={`inline-flex items-center gap-1 px-2 py-0.5 rounded-full text-[10px] font-medium w-fit ${statusConfig.color}`}>
+                  {statusConfig.icon}
+                  {statusConfig.label}
+                </span>
+                
+                {isMultiParent && (
+                    <span className="inline-flex items-center gap-1 px-2 py-0.5 rounded-full text-[10px] font-medium w-fit bg-amber-100 text-amber-700 dark:bg-amber-900/30 dark:text-amber-400 border border-amber-200 dark:border-amber-800" title={`Questo ramo ha ${branch.parentIds.length} genitori (appare più volte)`}>
+                        <GitMerge className="w-3 h-3" />
+                        Multi-Link
+                    </span>
+                )}
+                
+                {isImported && (
+                    <span className="inline-flex items-center gap-1 px-2 py-0.5 rounded-full text-[10px] font-medium w-fit bg-blue-100 text-blue-700 dark:bg-blue-900/30 dark:text-blue-400 border border-blue-200 dark:border-blue-800" title="Importato da altro progetto">
+                        <Globe className="w-3 h-3" />
+                        Esterno
+                    </span>
+                )}
+            </div>
           </div>
 
-          <div className="flex items-center gap-1">
+          <div className="flex items-center gap-1 shrink-0">
              {/* Description Reader Icon */}
              {hasDescription && (
                  <button
