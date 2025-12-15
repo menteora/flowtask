@@ -722,6 +722,7 @@ export const ProjectProvider: React.FC<{ children: React.ReactNode }> = ({ child
     const { error: pError } = await supabaseClient.from('flowtask_projects').upsert({
         id: p.id,
         name: p.name,
+        root_branch_id: p.rootBranchId, // Explicitly saving rootBranchId to DB
         owner_id: user?.id,
         created_at: new Date().toISOString()
     });
@@ -904,7 +905,8 @@ export const ProjectProvider: React.FC<{ children: React.ReactNode }> = ({ child
 
     // Map Branches and SORT tasks for each branch
     const branches: Record<string, Branch> = {};
-    let rootBranchId = 'root';
+    // Use saved rootBranchId from DB first
+    let rootBranchId = projectData.root_branch_id; 
     
     branchesData.forEach((b: any) => {
         const branchTasks = (tasksByBranch[b.id] || []).sort((a, b) => (a.position ?? 0) - (b.position ?? 0));
@@ -923,13 +925,13 @@ export const ProjectProvider: React.FC<{ children: React.ReactNode }> = ({ child
             archived: b.archived,
             position: b.position
         };
-        
-        if (b.parent_ids.length === 0) rootBranchId = b.id;
     });
     
-    if (!branches[rootBranchId] && branchesData.length > 0) {
+    // Fallback logic if root_branch_id was missing or invalid
+    if ((!rootBranchId || !branches[rootBranchId]) && branchesData.length > 0) {
         const root = branchesData.find((b: any) => b.parent_ids.length === 0);
         if (root) rootBranchId = root.id;
+        else rootBranchId = branchesData[0].id; // Fallback to first available if strictly cyclic or weird data
     }
 
     const newState: ProjectState = {
@@ -937,7 +939,7 @@ export const ProjectProvider: React.FC<{ children: React.ReactNode }> = ({ child
         name: projectData.name,
         people: people,
         branches: branches,
-        rootBranchId: rootBranchId
+        rootBranchId: rootBranchId || 'root' // Ensure string is not undefined
     };
 
     // Flag that this update comes from the cloud to prevent auto-save loop
