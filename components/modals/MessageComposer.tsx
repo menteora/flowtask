@@ -82,7 +82,11 @@ const MessageComposer: React.FC = () => {
           }
           const subject = `Riepilogo Attività - ${state.name}`;
           const url = `mailto:${person.email}?subject=${encodeURIComponent(subject)}&body=${encodeURIComponent(body)}`;
-          window.location.href = url;
+          
+          // Use a hidden link click to avoid page navigation/reload issues
+          const link = document.createElement('a');
+          link.href = url;
+          link.click();
       }
   };
 

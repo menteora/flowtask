@@ -1,7 +1,7 @@
 import React, { useState, useRef, useEffect } from 'react';
 import { useTheme } from './context/ThemeContext';
 import { useProject } from './context/ProjectContext';
-import { Moon, Sun, GitBranch, Layers, Users, Download, Upload, Archive, Camera, Image as ImageIcon, Smartphone, Plus, X, Edit2, Calendar, ClipboardList, Settings, Cloud, Loader2, Check, AlertCircle } from 'lucide-react';
+import { Moon, Sun, GitBranch, Layers, Users, Download, Upload, Archive, Camera, Image as ImageIcon, Smartphone, Plus, X, Edit2, Calendar, ClipboardList, Settings, Cloud, Loader2, Check, AlertCircle, ChevronDown, Folder, MoreVertical } from 'lucide-react';
 import FlowCanvas from './components/flow/FlowCanvas';
 import FolderTree from './components/flow/FolderTree';
 import BranchDetails from './components/panels/BranchDetails';
@@ -26,6 +26,7 @@ const App: React.FC = () => {
   } = useProject();
   
   const [currentView, setCurrentView] = useState<View>('workflow');
+  const [isProjectMenuOpen, setIsProjectMenuOpen] = useState(false);
   const fileInputRef = useRef<HTMLInputElement>(null);
   const [editingNameId, setEditingNameId] = useState<string | null>(null);
 
@@ -164,11 +165,120 @@ const App: React.FC = () => {
       <TaskEditorModal />
       <MessageComposer />
 
+      {/* Mobile Project Menu Overlay (Bottom Sheet style) */}
+      {isProjectMenuOpen && (
+        <div 
+            className="fixed inset-0 z-[100] bg-black/60 backdrop-blur-sm flex flex-col justify-end sm:justify-center sm:items-center"
+            onClick={() => setIsProjectMenuOpen(false)}
+        >
+            <div 
+                className="bg-white dark:bg-slate-900 w-full sm:w-96 max-h-[80vh] sm:rounded-xl rounded-t-2xl shadow-2xl flex flex-col animate-in slide-in-from-bottom-10 duration-200"
+                onClick={e => e.stopPropagation()}
+            >
+                <div className="p-4 border-b border-slate-100 dark:border-slate-800 flex items-center justify-between">
+                    <h3 className="font-bold text-lg text-slate-800 dark:text-white">I tuoi Progetti</h3>
+                    <button 
+                        onClick={() => {
+                            createProject();
+                            setIsProjectMenuOpen(false);
+                        }}
+                        className="p-2 bg-indigo-600 hover:bg-indigo-700 text-white rounded-full transition-colors"
+                        title="Nuovo Progetto"
+                    >
+                        <Plus className="w-5 h-5" />
+                    </button>
+                </div>
+                
+                <div className="flex-1 overflow-y-auto p-2 space-y-1">
+                    {projects.map(proj => {
+                        const isActive = proj.id === activeProjectId;
+                        const isEditing = editingNameId === proj.id;
+                        
+                        return (
+                            <div key={proj.id} className={`flex items-center justify-between p-3 rounded-xl transition-colors ${isActive ? 'bg-indigo-50 dark:bg-indigo-900/20 border border-indigo-200 dark:border-indigo-800' : 'hover:bg-slate-50 dark:hover:bg-slate-800'}`}>
+                                <div 
+                                    className="flex-1 flex items-center gap-3 min-w-0"
+                                    onClick={() => {
+                                        switchProject(proj.id);
+                                        setIsProjectMenuOpen(false);
+                                    }}
+                                >
+                                    <div className={`w-8 h-8 rounded-full flex items-center justify-center shrink-0 ${isActive ? 'bg-indigo-100 text-indigo-600 dark:bg-indigo-900 dark:text-indigo-400' : 'bg-slate-100 text-slate-500 dark:bg-slate-800 dark:text-slate-400'}`}>
+                                        <Folder className="w-4 h-4" />
+                                    </div>
+                                    
+                                    {isEditing ? (
+                                        <input 
+                                            autoFocus
+                                            type="text"
+                                            defaultValue={proj.name}
+                                            onBlur={(e) => {
+                                                renameProject(e.target.value);
+                                                setEditingNameId(null);
+                                            }}
+                                            onKeyDown={(e) => {
+                                                if(e.key === 'Enter') {
+                                                    renameProject(e.currentTarget.value);
+                                                    setEditingNameId(null);
+                                                }
+                                            }}
+                                            className="bg-transparent border-b border-indigo-500 outline-none w-full text-sm p-1"
+                                            onClick={(e) => e.stopPropagation()}
+                                        />
+                                    ) : (
+                                        <div className="flex-1 min-w-0">
+                                            <p className={`text-sm font-semibold truncate ${isActive ? 'text-indigo-900 dark:text-indigo-100' : 'text-slate-700 dark:text-slate-200'}`}>
+                                                {proj.name}
+                                            </p>
+                                            <p className="text-[10px] text-slate-400">
+                                                {Object.keys(proj.branches).length} rami • {proj.people.length} persone
+                                            </p>
+                                        </div>
+                                    )}
+                                </div>
+
+                                <div className="flex items-center gap-1">
+                                    {isActive && !isEditing && (
+                                        <button 
+                                            onClick={() => setEditingNameId(proj.id)}
+                                            className="p-2 text-slate-400 hover:text-indigo-500 rounded-full"
+                                        >
+                                            <Edit2 className="w-4 h-4" />
+                                        </button>
+                                    )}
+                                    {projects.length > 1 && (
+                                        <button 
+                                            onClick={() => closeProject(proj.id)}
+                                            className="p-2 text-slate-400 hover:text-red-500 rounded-full"
+                                        >
+                                            <X className="w-4 h-4" />
+                                        </button>
+                                    )}
+                                </div>
+                            </div>
+                        )
+                    })}
+                </div>
+                
+                <div className="p-4 border-t border-slate-100 dark:border-slate-800 bg-slate-50 dark:bg-slate-900 rounded-b-2xl">
+                    <button 
+                        onClick={() => setIsProjectMenuOpen(false)}
+                        className="w-full py-3 bg-white dark:bg-slate-800 border border-slate-200 dark:border-slate-700 rounded-xl font-medium text-slate-600 dark:text-slate-300 shadow-sm"
+                    >
+                        Chiudi Menu
+                    </button>
+                </div>
+            </div>
+        </div>
+      )}
+
       {/* Header */}
       <div className="flex w-full h-14 md:h-16 bg-white dark:bg-slate-900 border-b border-slate-200 dark:border-slate-800 items-center justify-between px-4 md:px-6 z-20 shadow-sm flex-shrink-0">
         
         <div className="flex items-center gap-4">
-          <div className="flex items-center">
+          
+          {/* Desktop Logo */}
+          <div className="hidden md:flex items-center">
             <div className="bg-indigo-600 p-1.5 rounded-lg mr-2 md:mr-3">
               <GitBranch className="w-5 h-5 text-white" />
             </div>
@@ -177,9 +287,28 @@ const App: React.FC = () => {
             </h1>
           </div>
 
+          {/* Mobile Project Selector (Replaces Logo) */}
+          <button 
+            onClick={() => setIsProjectMenuOpen(true)}
+            className="md:hidden flex items-center gap-2 -ml-1 active:bg-slate-100 dark:active:bg-slate-800 p-1.5 rounded-xl transition-colors"
+          >
+             <div className="bg-indigo-600 p-1.5 rounded-lg shadow-sm">
+                <GitBranch className="w-5 h-5 text-white" />
+             </div>
+             <div className="flex flex-col items-start min-w-0">
+                 <span className="text-[9px] text-slate-400 font-bold uppercase tracking-wider leading-none mb-0.5">Progetto</span>
+                 <div className="flex items-center gap-1">
+                     <span className="font-bold text-slate-800 dark:text-white text-sm max-w-[140px] truncate leading-none">
+                         {state.name}
+                     </span>
+                     <ChevronDown className="w-3.5 h-3.5 text-slate-400" />
+                 </div>
+             </div>
+          </button>
+
           {/* Auto Save Status Indicator */}
           {session && !isOfflineMode && (
-              <div className="flex items-center gap-1.5 px-2 py-1 bg-slate-50 dark:bg-slate-800 rounded text-xs transition-colors ml-2 md:ml-0">
+              <div className="hidden sm:flex items-center gap-1.5 px-2 py-1 bg-slate-50 dark:bg-slate-800 rounded text-xs transition-colors ml-2 md:ml-0">
                   {autoSaveStatus === 'saving' && (
                       <>
                         <Loader2 className="w-3 h-3 animate-spin text-indigo-500" />
@@ -225,7 +354,7 @@ const App: React.FC = () => {
 
             <button 
                 onClick={handleImageExport}
-                className="p-2 rounded-full hover:bg-slate-100 dark:hover:bg-slate-800 text-slate-500 dark:text-slate-400 transition-colors"
+                className="hidden md:block p-2 rounded-full hover:bg-slate-100 dark:hover:bg-slate-800 text-slate-500 dark:text-slate-400 transition-colors"
                 title="Esporta Immagine"
             >
                 <Camera className="w-4 h-4" />
@@ -233,14 +362,14 @@ const App: React.FC = () => {
 
             <button 
               onClick={handleExport}
-              className="p-2 rounded-full hover:bg-slate-100 dark:hover:bg-slate-800 text-slate-500 dark:text-slate-400 transition-colors"
+              className="hidden md:block p-2 rounded-full hover:bg-slate-100 dark:hover:bg-slate-800 text-slate-500 dark:text-slate-400 transition-colors"
               title="Esporta JSON"
             >
               <Download className="w-4 h-4" />
             </button>
             <button 
               onClick={handleImportClick}
-              className="p-2 rounded-full hover:bg-slate-100 dark:hover:bg-slate-800 text-slate-500 dark:text-slate-400 transition-colors"
+              className="hidden md:block p-2 rounded-full hover:bg-slate-100 dark:hover:bg-slate-800 text-slate-500 dark:text-slate-400 transition-colors"
               title="Importa JSON (Nuova Tab)"
             >
               <Upload className="w-4 h-4" />
@@ -266,8 +395,8 @@ const App: React.FC = () => {
         </div>
       </div>
 
-      {/* Tab Bar for Projects */}
-      <div className="flex items-center w-full bg-slate-100 dark:bg-slate-950 border-b border-slate-200 dark:border-slate-800 overflow-x-auto hide-scrollbar px-2 pt-2 gap-1 flex-shrink-0">
+      {/* Tab Bar for Projects (HIDDEN ON MOBILE, replaced by header selector) */}
+      <div className="hidden md:flex items-center w-full bg-slate-100 dark:bg-slate-950 border-b border-slate-200 dark:border-slate-800 overflow-x-auto hide-scrollbar px-2 pt-2 gap-1 flex-shrink-0">
           {projects.map(proj => {
               const isActive = proj.id === activeProjectId;
               const isEditing = editingNameId === proj.id;

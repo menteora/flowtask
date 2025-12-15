@@ -2,7 +2,7 @@ import React from 'react';
 import { Branch, BranchStatus } from '../../types';
 import { STATUS_CONFIG } from '../../constants';
 import { useProject } from '../../context/ProjectContext';
-import { MoreHorizontal, Plus, Calendar, Archive, ChevronLeft, ChevronRight, FileText } from 'lucide-react';
+import { MoreHorizontal, Plus, Calendar, Archive, ChevronLeft, ChevronRight, FileText, ChevronDown, ChevronUp } from 'lucide-react';
 import Avatar from '../ui/Avatar';
 
 interface BranchNodeProps {
@@ -10,7 +10,7 @@ interface BranchNodeProps {
 }
 
 const BranchNode: React.FC<BranchNodeProps> = ({ branchId }) => {
-  const { state, addBranch, selectBranch, selectedBranchId, moveBranch, setReadingDescriptionId } = useProject();
+  const { state, addBranch, selectBranch, selectedBranchId, moveBranch, setReadingDescriptionId, updateBranch } = useProject();
   const branch = state.branches[branchId];
   
   if (!branch) return null;
@@ -37,6 +37,7 @@ const BranchNode: React.FC<BranchNodeProps> = ({ branchId }) => {
   }
 
   const hasDescription = branch.description && branch.description.trim().length > 0;
+  const hasChildren = branch.childrenIds.length > 0;
 
   return (
     <div className="flex flex-col items-center group/node">
@@ -172,17 +173,32 @@ const BranchNode: React.FC<BranchNodeProps> = ({ branchId }) => {
             </ul>
         </div>
 
-        {/* Footer Action */}
-        <div className="absolute -bottom-3 left-1/2 -translate-x-1/2 opacity-0 group-hover:opacity-100 transition-opacity">
-            {/* This is handled by parent container hover mostly, but let's keep it simple here */}
-        </div>
+        {/* Collapse Toggle Button (Bottom of card) */}
+        {hasChildren && (
+            <div className="absolute -bottom-3 left-1/2 -translate-x-1/2 z-20">
+                 <button
+                    onClick={(e) => {
+                        e.stopPropagation();
+                        updateBranch(branchId, { collapsed: !branch.collapsed });
+                    }}
+                    className="w-6 h-6 rounded-full bg-white dark:bg-slate-700 border border-slate-200 dark:border-slate-600 shadow-sm flex items-center justify-center hover:bg-slate-50 dark:hover:bg-slate-600 text-slate-500 dark:text-slate-300 transition-colors"
+                    title={branch.collapsed ? "Espandi" : "Comprimi"}
+                 >
+                     {branch.collapsed ? <ChevronDown className="w-3.5 h-3.5" /> : <ChevronUp className="w-3.5 h-3.5" />}
+                 </button>
+            </div>
+        )}
       </div>
 
       {/* Add Child Button (Visual connector) */}
       <div className="h-8 w-px bg-slate-300 dark:bg-slate-600"></div>
+      
+      {/* Only show Plus button if NOT collapsed (or handle it differently? Usually you can add even if collapsed, but visually it's weird. Let's keep it visible but below) */}
       <button 
         onClick={(e) => {
             e.stopPropagation();
+            // If collapsed, expand first?
+            if (branch.collapsed) updateBranch(branchId, { collapsed: false });
             addBranch(branchId);
         }}
         className="w-6 h-6 rounded-full bg-white dark:bg-slate-700 border border-slate-300 dark:border-slate-500 flex items-center justify-center hover:bg-indigo-50 dark:hover:bg-slate-600 text-slate-500 dark:text-slate-300 transition-colors z-10"
@@ -190,7 +206,10 @@ const BranchNode: React.FC<BranchNodeProps> = ({ branchId }) => {
       >
         <Plus className="w-3.5 h-3.5" />
       </button>
-      <div className="h-4 w-px bg-slate-300 dark:bg-slate-600"></div>
+      
+      {!branch.collapsed && branch.childrenIds.length > 0 && (
+        <div className="h-4 w-px bg-slate-300 dark:bg-slate-600"></div>
+      )}
     </div>
   );
 };
