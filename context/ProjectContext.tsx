@@ -113,7 +113,8 @@ export const ProjectProvider: React.FC<{ children: React.ReactNode }> = ({ child
         branches: {
             [defaultRootId]: {
                 ...INITIAL_STATE.branches['root'],
-                id: defaultRootId
+                id: defaultRootId,
+                isLabel: true // Default to Label
             }
         }
     };
@@ -312,6 +313,7 @@ export const ProjectProvider: React.FC<{ children: React.ReactNode }> = ({ child
               title: 'Inizio Progetto',
               description: 'Punto di partenza del flusso',
               status: BranchStatus.PLANNED,
+              isLabel: true, // Default to Label
               tasks: [],
               childrenIds: [],
               parentIds: [],
@@ -895,7 +897,8 @@ export const ProjectProvider: React.FC<{ children: React.ReactNode }> = ({ child
                 parent_ids: b.parentIds,
                 children_ids: b.childrenIds,
                 position: pos,
-                collapsed: b.collapsed || false // Sync collapsed state
+                collapsed: b.collapsed || false, // Sync collapsed state
+                is_label: b.isLabel || false // Sync isLabel
             };
         });
         await supabaseClient.from('flowtask_branches').upsert(branchesData);
@@ -961,7 +964,8 @@ export const ProjectProvider: React.FC<{ children: React.ReactNode }> = ({ child
         parentIds: b.parent_ids || [],
         archived: b.archived,
         position: b.position,
-        collapsed: b.collapsed
+        collapsed: b.collapsed,
+        isLabel: b.is_label // Map from DB
     }));
   }, [supabaseClient]);
 
@@ -1065,7 +1069,8 @@ export const ProjectProvider: React.FC<{ children: React.ReactNode }> = ({ child
             parentIds: parentIds,
             archived: b.archived,
             position: b.position,
-            collapsed: b.collapsed || false // Sync collapsed state
+            collapsed: b.collapsed || false, // Sync collapsed state
+            isLabel: b.is_label // Map from DB
         };
     });
     
