@@ -30,7 +30,7 @@ interface ProjectContextType {
   deleteTask: (branchId: string, taskId: string) => void;
   moveTask: (branchId: string, taskId: string, direction: 'up' | 'down') => void;
   bulkUpdateTasks: (branchId: string, rawText: string) => void;
-  addPerson: (name: string, email: string) => void;
+  addPerson: (name: string, email: string, phone: string) => void;
   updatePerson: (id: string, data: Partial<Person>) => void;
   removePerson: (id: string) => void;
   
@@ -40,6 +40,14 @@ interface ProjectContextType {
   // Reading Mode State
   readingDescriptionId: string | null;
   setReadingDescriptionId: (id: string | null) => void;
+
+  // Task Editing State (Global Modal)
+  editingTask: { branchId: string, taskId: string } | null;
+  setEditingTask: (data: { branchId: string, taskId: string } | null) => void;
+
+  // Reminding User State (Global Modal)
+  remindingUserId: string | null;
+  setRemindingUserId: (id: string | null) => void;
 
   toggleBranchArchive: (branchId: string) => void;
   showArchived: boolean;
@@ -119,6 +127,8 @@ export const ProjectProvider: React.FC<{ children: React.ReactNode }> = ({ child
   
   const [selectedBranchId, setSelectedBranchId] = useState<string | null>(null);
   const [readingDescriptionId, setReadingDescriptionId] = useState<string | null>(null);
+  const [editingTask, setEditingTask] = useState<{ branchId: string, taskId: string } | null>(null);
+  const [remindingUserId, setRemindingUserId] = useState<string | null>(null);
   const [showArchived, setShowArchived] = useState(false);
   
   // Auto-save Status
@@ -697,7 +707,7 @@ export const ProjectProvider: React.FC<{ children: React.ReactNode }> = ({ child
     });
   }, [setProjectState]);
 
-  const addPerson = useCallback((name: string, email: string) => {
+  const addPerson = useCallback((name: string, email: string, phone: string) => {
     const colors = ['bg-red-500', 'bg-blue-500', 'bg-green-500', 'bg-yellow-500', 'bg-purple-500', 'bg-pink-500'];
     const randomColor = colors[Math.floor(Math.random() * colors.length)];
     const initials = name.split(' ').map(n => n[0]).join('').substring(0, 2).toUpperCase();
@@ -706,6 +716,7 @@ export const ProjectProvider: React.FC<{ children: React.ReactNode }> = ({ child
         id: generateId(),
         name,
         email,
+        phone, // New Field
         initials,
         color: randomColor
     };
@@ -745,41 +756,28 @@ export const ProjectProvider: React.FC<{ children: React.ReactNode }> = ({ child
   const uploadProjectToSupabase = useCallback(async () => {
     if (!supabaseClient) throw new Error("Client Supabase non inizializzato");
     
-    // Get the current state locally. We need to check if the root ID is 'root'
-    // and if so, perform an auto-migration to a unique ID to avoid DB collisions.
-    let p = activeProject;
+    let p: ProjectState = activeProject;
     
-    // MIGRATION LOGIC: Fix collision for static 'root' ID
     if (p.rootBranchId === 'root' && p.branches['root']) {
         const newRootId = generateId();
         const oldRoot = p.branches['root'];
         
-        // 1. Create new branches object replacing 'root' key
-        // Use Object.assign to avoid "Spread types may only be created from object types" error
-        const newBranches = Object.assign({}, p.branches);
-        delete newBranches['root'];
-        
-        // 2. Add the new root branch with the new ID
-        newBranches[newRootId] = Object.assign({}, oldRoot, { id: newRootId });
-        
-        // 3. Update children of root to point to new parent ID
-        oldRoot.childrenIds.forEach(childId => {
-            if (newBranches[childId]) {
-                 // Replace 'root' with newRootId in parentIds array
-                 const updatedParentIds = newBranches[childId].parentIds.map(pid => pid === 'root' ? newRootId : pid);
-                 // Ensure immutability via Object.assign to avoid TS errors
-                 newBranches[childId] = Object.assign({}, newBranches[childId], { parentIds: updatedParentIds });
-            }
-        });
-
-        // 4. Update the local variable 'p' which we will send to Supabase
-        // Use Object.assign to avoid spread error
-        p = Object.assign({}, p, { rootBranchId: newRootId, branches: newBranches });
-        
-        // 5. IMPORTANT: Update the Local React State immediately so the UI reflects the change 
-        // and subsequent saves don't try to migrate again.
-        // Use Object.assign to avoid spread error
-        setProjectState(prev => Object.assign({}, prev, { rootBranchId: newRootId, branches: newBranches }));
+        if (oldRoot) {
+            const newBranches = { ...p.branches };
+            delete newBranches['root'];
+            
+            newBranches[newRootId] = { ...oldRoot, id: newRootId };
+            
+            oldRoot.childrenIds.forEach(childId => {
+                if (newBranches[childId]) {
+                     const updatedParentIds = newBranches[childId].parentIds.map(pid => pid === 'root' ? newRootId : pid);
+                     newBranches[childId] = { ...newBranches[childId], parentIds: updatedParentIds };
+                }
+            });
+    
+            p = { ...p, rootBranchId: newRootId, branches: newBranches };
+            setProjectState(prev => ({ ...prev, rootBranchId: newRootId, branches: newBranches }));
+        }
     }
 
     const { data: { user } } = await supabaseClient.auth.getUser();
@@ -788,7 +786,7 @@ export const ProjectProvider: React.FC<{ children: React.ReactNode }> = ({ child
     const { error: pError } = await supabaseClient.from('flowtask_projects').upsert({
         id: p.id,
         name: p.name,
-        root_branch_id: p.rootBranchId, // Explicitly saving rootBranchId to DB
+        root_branch_id: p.rootBranchId, 
         owner_id: user?.id,
         created_at: new Date().toISOString()
     });
@@ -808,6 +806,7 @@ export const ProjectProvider: React.FC<{ children: React.ReactNode }> = ({ child
             project_id: p.id,
             name: person.name,
             email: person.email,
+            phone: person.phone, // Sync phone
             initials: person.initials,
             color: person.color
         }));
@@ -825,7 +824,6 @@ export const ProjectProvider: React.FC<{ children: React.ReactNode }> = ({ child
     const branches = Object.values(p.branches) as Branch[];
     if (branches.length > 0) {
         const branchesData = branches.map(b => {
-             // Calculate position for the branch (find its index in first parent's childrenIds)
              let pos = 0;
              if(b.parentIds.length > 0 && p.branches[b.parentIds[0]]) {
                  pos = p.branches[b.parentIds[0]].childrenIds.indexOf(b.id);
@@ -843,14 +841,13 @@ export const ProjectProvider: React.FC<{ children: React.ReactNode }> = ({ child
                 archived: b.archived || false,
                 parent_ids: b.parentIds,
                 children_ids: b.childrenIds,
-                position: pos // Save visual order index
+                position: pos
             };
         });
         await supabaseClient.from('flowtask_branches').upsert(branchesData);
     }
 
     // 4. Sync Tasks (Handle deletions)
-    // First, delete tasks that are in the kept branches but not in our local list
     const allLocalTaskIds = branches.flatMap(b => b.tasks.map(t => t.id));
     if (localBranchIds.length > 0) {
         let query = supabaseClient.from('flowtask_tasks').delete().in('branch_id', localBranchIds);
@@ -860,8 +857,6 @@ export const ProjectProvider: React.FC<{ children: React.ReactNode }> = ({ child
         await query;
     }
 
-    // Upsert current tasks using current array index as position
-    // This is robust because we updated state.position in moveTask
     const tasks = branches.flatMap(b => b.tasks.map((t, index) => ({
         id: t.id,
         branch_id: b.id,
@@ -869,7 +864,7 @@ export const ProjectProvider: React.FC<{ children: React.ReactNode }> = ({ child
         assignee_id: t.assigneeId,
         due_date: t.dueDate,
         completed: t.completed,
-        position: index // Enforce strict 0,1,2,3 order
+        position: index
     })));
 
     if (tasks.length > 0) {
@@ -922,7 +917,7 @@ export const ProjectProvider: React.FC<{ children: React.ReactNode }> = ({ child
     if (bError) throw bError;
 
     // 4. Fetch Tasks (Chunking + Limit)
-    const branchIds = branchesData.map((b: any) => b.id);
+    const branchIds = (branchesData || []).map((b: any) => b.id);
     let tasksData: any[] = [];
     
     if (branchIds.length > 0) {
@@ -938,7 +933,6 @@ export const ProjectProvider: React.FC<{ children: React.ReactNode }> = ({ child
             
             if (tError) throw tError;
             if (chunkData) {
-                // Use concat instead of spread to avoid potential TS errors
                 tasksData = tasksData.concat(chunkData);
             }
         }
@@ -951,6 +945,7 @@ export const ProjectProvider: React.FC<{ children: React.ReactNode }> = ({ child
         id: p.id,
         name: p.name,
         email: p.email,
+        phone: p.phone, // Restore phone
         initials: p.initials,
         color: p.color
     }));
@@ -978,7 +973,6 @@ export const ProjectProvider: React.FC<{ children: React.ReactNode }> = ({ child
     branchesData.forEach((b: any) => {
         const branchTasks = (tasksByBranch[b.id] || []).sort((a, b) => (a.position ?? 0) - (b.position ?? 0));
         
-        // Handle potential nulls from DB arrays
         const parentIds = b.parent_ids || [];
         const childrenIds = b.children_ids || [];
 
@@ -1000,20 +994,16 @@ export const ProjectProvider: React.FC<{ children: React.ReactNode }> = ({ child
     
     // Fallback logic if root_branch_id was missing or invalid
     if ((!rootBranchId || !branches[rootBranchId]) && branchesData.length > 0) {
-        // Try to find a branch with no parents (candidate for root)
         const orphans = branchesData.filter((b: any) => (b.parent_ids || []).length === 0);
         
         if (orphans.length > 0) {
-             // Prefer an orphan that HAS children (likely the true root) over a standalone box
              const trueRootCandidate = orphans.find((b: any) => (b.children_ids || []).length > 0);
              if (trueRootCandidate) {
                  rootBranchId = trueRootCandidate.id;
              } else {
-                 // If all orphans are single boxes, just pick the first one
                  rootBranchId = orphans[0].id;
              }
         } else {
-             // If everything has a parent (cyclic?), fallback to first in list
              rootBranchId = branchesData[0].id;
         }
     }
@@ -1023,10 +1013,9 @@ export const ProjectProvider: React.FC<{ children: React.ReactNode }> = ({ child
         name: projectData.name,
         people: people,
         branches: branches,
-        rootBranchId: rootBranchId || 'root' // Ensure string is not undefined
+        rootBranchId: rootBranchId || 'root' 
     };
 
-    // Flag that this update comes from the cloud to prevent auto-save loop
     isRemoteUpdate.current = true;
     loadProject(newState, activate, removeDefault);
   }, [supabaseClient, loadProject]);
@@ -1035,7 +1024,6 @@ export const ProjectProvider: React.FC<{ children: React.ReactNode }> = ({ child
   useEffect(() => {
     if (!session || isOfflineMode || !supabaseClient) return;
     
-    // Prevent auto-save if the change came from a cloud download
     if (isRemoteUpdate.current) {
         isRemoteUpdate.current = false;
         return;
@@ -1061,7 +1049,6 @@ export const ProjectProvider: React.FC<{ children: React.ReactNode }> = ({ child
 
       const sync = async () => {
            try {
-              // Check existence first to prevent errors on local-only projects
               const { count } = await supabaseClient.from('flowtask_projects').select('id', { count: 'exact', head: true }).eq('id', activeProjectId);
               if (count && count > 0) {
                    await downloadProjectFromSupabase(activeProjectId, false, false);
@@ -1069,10 +1056,8 @@ export const ProjectProvider: React.FC<{ children: React.ReactNode }> = ({ child
            } catch(e) { console.error("Sync error", e); }
       };
 
-      // 1. Initial Fetch on Mount/Switch
       sync();
 
-      // 2. Realtime Subscription (Branches only to avoid high-frequency text overwrite loops)
       const channel = supabaseClient.channel(`project-sync-${activeProjectId}`)
           .on('postgres_changes', { event: '*', schema: 'public', table: 'flowtask_branches', filter: `project_id=eq.${activeProjectId}` }, () => {
               console.log("Remote change detected, syncing...");
@@ -1081,16 +1066,14 @@ export const ProjectProvider: React.FC<{ children: React.ReactNode }> = ({ child
           .subscribe();
 
       return () => { supabaseClient.removeChannel(channel); };
-  }, [activeProjectId, session, isOfflineMode, supabaseClient]); // Removed downloadProjectFromSupabase from deps to prevent re-subscriptions
+  }, [activeProjectId, session, isOfflineMode, supabaseClient]); 
 
-  // Handle Offline Mode toggles
   useEffect(() => {
     if (isOfflineMode) {
         setIsInitializing(false);
     }
   }, [isOfflineMode]);
 
-  // Initial Load (Auth State)
   useEffect(() => {
     let isMounted = true;
     if (!loadingAuth) {
@@ -1128,6 +1111,10 @@ export const ProjectProvider: React.FC<{ children: React.ReactNode }> = ({ child
       selectBranch: setSelectedBranchId,
       readingDescriptionId,
       setReadingDescriptionId,
+      editingTask,
+      setEditingTask,
+      remindingUserId,
+      setRemindingUserId,
       toggleBranchArchive,
       showArchived,
       toggleShowArchived,

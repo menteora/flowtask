@@ -19,7 +19,7 @@ interface TimelineItem {
 }
 
 const CalendarPanel: React.FC = () => {
-  const { state, selectBranch } = useProject();
+  const { state, selectBranch, setEditingTask } = useProject();
 
   const items = useMemo(() => {
     const list: TimelineItem[] = [];
@@ -137,9 +137,17 @@ const CalendarPanel: React.FC = () => {
 
       const assignee = item.assigneeId ? state.people.find(p => p.id === item.assigneeId) : null;
 
+      const handleClick = () => {
+          if (item.type === 'task') {
+              setEditingTask({ branchId: item.branchId, taskId: item.id });
+          } else {
+              selectBranch(item.branchId);
+          }
+      };
+
       return (
           <div 
-            onClick={() => selectBranch(item.branchId)}
+            onClick={handleClick}
             className={`flex items-center gap-3 p-3 rounded-lg border shadow-sm transition-all cursor-pointer ${colorClass}`}
           >
               <div className="flex flex-col items-center justify-center min-w-[3.5rem] px-2 py-1 bg-white dark:bg-slate-950 rounded border border-gray-100 dark:border-slate-700">

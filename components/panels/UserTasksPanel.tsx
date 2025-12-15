@@ -1,7 +1,7 @@
 import React, { useMemo } from 'react';
 import { useProject } from '../../context/ProjectContext';
 import { Branch } from '../../types';
-import { CheckSquare, Square, ClipboardList, HelpCircle, ArrowRight, Calendar, Mail } from 'lucide-react';
+import { CheckSquare, Square, ClipboardList, HelpCircle, ArrowRight, Calendar, Mail, MessageCircle } from 'lucide-react';
 import Avatar from '../ui/Avatar';
 
 interface UserTaskGroup {
@@ -24,7 +24,7 @@ interface UserTaskGroup {
 }
 
 const UserTasksPanel: React.FC = () => {
-  const { state, updateTask, selectBranch, showArchived } = useProject();
+  const { state, updateTask, selectBranch, showArchived, setEditingTask, setRemindingUserId } = useProject();
 
   const taskGroups = useMemo(() => {
     const groups: Record<string, UserTaskGroup> = {};
@@ -125,19 +125,32 @@ const UserTasksPanel: React.FC = () => {
                                 )}
                                 <div className="min-w-0">
                                     <h3 className="font-bold text-slate-800 dark:text-white truncate">{group.userName}</h3>
-                                    {!isUnassigned && group.person.email && (
-                                         <p className="text-xs text-slate-500 dark:text-slate-400 truncate flex items-center gap-1">
-                                             <Mail className="w-3 h-3" />
-                                             {group.person.email}
-                                         </p>
+                                    {!isUnassigned && (
+                                        <div className="flex flex-col">
+                                            {group.person.email && (
+                                                <p className="text-xs text-slate-500 dark:text-slate-400 truncate flex items-center gap-1">
+                                                    <Mail className="w-3 h-3" />
+                                                    {group.person.email}
+                                                </p>
+                                            )}
+                                        </div>
                                     )}
                                     <p className="text-xs text-slate-500 dark:text-slate-400 mt-0.5">
                                         {group.stats.completed} / {group.stats.total} completati
                                     </p>
                                 </div>
                             </div>
-                            <div className="text-right pl-2">
+                            <div className="text-right pl-2 flex flex-col items-end gap-1">
                                 <span className="text-xl font-bold text-indigo-600 dark:text-indigo-400">{group.stats.percentage}%</span>
+                                {!isUnassigned && (
+                                    <button 
+                                        onClick={() => setRemindingUserId(group.userId)}
+                                        className="text-xs bg-indigo-50 dark:bg-indigo-900/30 text-indigo-600 dark:text-indigo-400 px-2 py-1 rounded-md hover:bg-indigo-100 dark:hover:bg-indigo-900/50 transition-colors flex items-center gap-1"
+                                        title="Invia Sollecito"
+                                    >
+                                        <MessageCircle className="w-3 h-3" /> Contatta
+                                    </button>
+                                )}
                             </div>
                         </div>
                         
@@ -169,7 +182,11 @@ const UserTasksPanel: React.FC = () => {
                                             </button>
                                             
                                             <div className="flex-1 min-w-0">
-                                                <p className={`text-sm font-medium mb-0.5 ${task.completed ? 'line-through text-slate-400' : 'text-slate-700 dark:text-slate-200'}`}>
+                                                <p 
+                                                    className={`text-sm font-medium mb-0.5 cursor-pointer hover:underline ${task.completed ? 'line-through text-slate-400' : 'text-slate-700 dark:text-slate-200'}`}
+                                                    onClick={() => setEditingTask({ branchId: task.branchId, taskId: task.id })}
+                                                    title="Modifica Task"
+                                                >
                                                     {task.title}
                                                 </p>
                                                 

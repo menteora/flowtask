@@ -25,6 +25,7 @@ create table public.flowtask_people (
   project_id text references public.flowtask_projects(id) on delete cascade,
   name text not null,
   email text,
+  phone text,
   initials text,
   color text
 );

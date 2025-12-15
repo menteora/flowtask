@@ -9,7 +9,8 @@ export enum BranchStatus {
 export interface Person {
   id: string;
   name: string;
-  email?: string; // Added email field
+  email?: string;
+  phone?: string; // Added phone field
   initials: string;
   color: string;
 }

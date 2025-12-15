@@ -12,7 +12,7 @@ interface FolderNodeProps {
 }
 
 const FolderNode: React.FC<FolderNodeProps> = ({ branchId, depth = 0, index, siblingsCount }) => {
-  const { state, selectBranch, selectedBranchId, addBranch, updateTask, moveTask, moveBranch, showArchived } = useProject();
+  const { state, selectBranch, selectedBranchId, addBranch, updateTask, moveTask, moveBranch, showArchived, setEditingTask } = useProject();
   const branch = state.branches[branchId];
   const [isOpen, setIsOpen] = useState(true);
 
@@ -121,7 +121,7 @@ const FolderNode: React.FC<FolderNodeProps> = ({ branchId, depth = 0, index, sib
           {branch.tasks.map((task, index) => (
              <div 
                 key={task.id}
-                className="flex items-center gap-3 py-2 border-b border-gray-50 dark:border-slate-800/50 bg-gray-50/50 dark:bg-slate-900/50 pr-2"
+                className="flex items-center gap-3 py-2 border-b border-gray-50 dark:border-slate-800/50 bg-gray-50/50 dark:bg-slate-900/50 pr-2 group"
                 style={{ paddingLeft: `${(depth + 1) * 1.5 + 2.5}rem` }}
              >
                 <div className="text-gray-400">
@@ -136,8 +136,11 @@ const FolderNode: React.FC<FolderNodeProps> = ({ branchId, depth = 0, index, sib
                 >
                     {task.completed ? <CheckSquare className="w-4 h-4" /> : <Square className="w-4 h-4" />}
                 </button>
-                <div className="flex-1 min-w-0 flex items-center justify-between">
-                    <span className={`text-sm truncate ${task.completed ? 'line-through text-gray-400' : 'text-slate-600 dark:text-slate-300'}`}>
+                <div 
+                    className="flex-1 min-w-0 flex items-center justify-between cursor-pointer"
+                    onClick={() => setEditingTask({ branchId, taskId: task.id })}
+                >
+                    <span className={`text-sm truncate hover:text-indigo-600 dark:hover:text-indigo-400 ${task.completed ? 'line-through text-gray-400' : 'text-slate-600 dark:text-slate-300'}`}>
                         {task.title}
                     </span>
                     {task.assigneeId && (
