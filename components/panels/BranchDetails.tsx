@@ -2,11 +2,11 @@ import React, { useState, useEffect, useRef } from 'react';
 import { useProject } from '../../context/ProjectContext';
 import { BranchStatus, Branch } from '../../types';
 import { STATUS_CONFIG } from '../../constants';
-import { X, Save, Trash2, CheckSquare, Square, ArrowUpLeft, Calendar, Plus, Link as LinkIcon, Unlink, PlayCircle, StopCircle, Clock, AlertTriangle, Archive, RefreshCw, Bold, Italic, List, Eye, Edit2, FileText, ChevronUp, ChevronDown, DownloadCloud, Loader2, GitMerge } from 'lucide-react';
+import { X, Save, Trash2, CheckSquare, Square, ArrowUpLeft, Calendar, Plus, Link as LinkIcon, Unlink, PlayCircle, StopCircle, Clock, AlertTriangle, Archive, RefreshCw, Bold, Italic, List, Eye, Edit2, FileText, ChevronUp, ChevronDown, DownloadCloud, Loader2, GitMerge, ArrowRightLeft } from 'lucide-react';
 import Avatar from '../ui/Avatar';
 
 const BranchDetails: React.FC = () => {
-  const { state, selectedBranchId, selectBranch, updateBranch, deleteBranch, linkBranch, unlinkBranch, addTask, updateTask, deleteTask, moveTask, bulkUpdateTasks, toggleBranchArchive, listProjectsFromSupabase, getProjectBranchesFromSupabase, importBranchAsParent, session, showNotification } = useProject();
+  const { state, selectedBranchId, selectBranch, updateBranch, deleteBranch, linkBranch, unlinkBranch, addTask, updateTask, deleteTask, moveTask, bulkUpdateTasks, toggleBranchArchive, listProjectsFromSupabase, getProjectBranchesFromSupabase, moveRemoteBranchToCurrentProject, session, showNotification } = useProject();
   const [isBulkMode, setIsBulkMode] = useState(false);
   const [bulkText, setBulkText] = useState('');
   const [newTaskTitle, setNewTaskTitle] = useState('');
@@ -107,15 +107,19 @@ const BranchDetails: React.FC = () => {
   const handleAddParent = () => {
       if (isImportMode) {
           if (selectedRemoteProj && selectedRemoteBranch) {
+              if (!confirm("ATTENZIONE: Stai per SPOSTARE il ramo selezionato da un altro progetto a questo. Il ramo verrà RIMOSSO dal progetto originale. Continuare?")) {
+                  return;
+              }
+
               setIsLoadingRemote(true);
-              importBranchAsParent(selectedRemoteProj, selectedRemoteBranch, branch.id)
+              moveRemoteBranchToCurrentProject(selectedRemoteProj, selectedRemoteBranch, branch.id)
                 .then(() => {
                     setIsImportMode(false);
                     setSelectedRemoteProj('');
                     setSelectedRemoteBranch('');
-                    showNotification("Ramo importato con successo!", 'success');
+                    showNotification("Ramo spostato con successo!", 'success');
                 })
-                .catch(err => showNotification("Errore importazione: " + err, 'error'))
+                .catch(err => showNotification("Errore nello spostamento: " + err.message, 'error'))
                 .finally(() => setIsLoadingRemote(false));
           }
       } else {
@@ -580,14 +584,14 @@ const BranchDetails: React.FC = () => {
                             className={`flex-1 py-1 rounded flex items-center justify-center gap-1 ${isImportMode ? 'bg-white dark:bg-slate-700 text-indigo-600 shadow-sm' : 'hover:bg-gray-200 dark:hover:bg-slate-700'}`}
                             onClick={() => {
                                 if(!session) {
-                                    showNotification("Devi essere connesso per importare da altri progetti.", 'error');
+                                    showNotification("Devi essere connesso per gestire progetti esterni.", 'error');
                                     return;
                                 }
                                 setIsImportMode(true);
                             }}
                          >
                              <DownloadCloud className="w-3 h-3" />
-                             Importa da Altro
+                             Sposta da Altro
                          </button>
                      </div>
 
@@ -639,15 +643,21 @@ const BranchDetails: React.FC = () => {
                         <button 
                             onClick={handleAddParent}
                             disabled={isLoadingRemote || (isImportMode ? (!selectedRemoteBranch) : (!parentToAdd))}
-                            className="p-2 bg-indigo-600 text-white rounded-md disabled:opacity-50 disabled:cursor-not-allowed hover:bg-indigo-700 flex items-center justify-center w-10 shrink-0 self-start"
+                            className={`p-2 bg-indigo-600 text-white rounded-md disabled:opacity-50 disabled:cursor-not-allowed hover:bg-indigo-700 flex items-center justify-center w-10 shrink-0 self-start ${isImportMode ? 'bg-amber-600 hover:bg-amber-700' : ''}`}
+                            title={isImportMode ? "Sposta Qui" : "Collega"}
                         >
-                            {isLoadingRemote ? <Loader2 className="w-4 h-4 animate-spin" /> : <Plus className="w-4 h-4" />}
+                            {isLoadingRemote ? <Loader2 className="w-4 h-4 animate-spin" /> : isImportMode ? <ArrowRightLeft className="w-4 h-4" /> : <Plus className="w-4 h-4" />}
                         </button>
                      </div>
                      {isImportMode && selectedRemoteBranch && (
-                         <p className="text-[10px] text-indigo-500 mt-2">
-                             Il ramo selezionato verrà copiato in questo progetto. Non sarà sincronizzato con l'originale.
-                         </p>
+                         <div className="mt-2 p-2 bg-amber-50 dark:bg-amber-900/20 rounded border border-amber-100 dark:border-amber-800">
+                             <p className="text-[10px] text-amber-700 dark:text-amber-400 font-bold flex items-center gap-1">
+                                 <AlertTriangle className="w-3 h-3" /> Attenzione: Azione Distruttiva
+                             </p>
+                             <p className="text-[10px] text-amber-600 dark:text-amber-500 mt-1 leading-tight">
+                                 Il ramo selezionato (e i suoi sotto-rami) verranno <strong>rimossi</strong> dal progetto originale e spostati qui come figli di questo nodo.
+                             </p>
+                         </div>
                      )}
                  </div>
             </div>

@@ -74,7 +74,7 @@ interface ProjectContextType {
   deleteProjectFromSupabase: (projectId: string) => Promise<void>;
   listProjectsFromSupabase: () => Promise<Array<{ id: string, name: string, updated_at: string }>>;
   getProjectBranchesFromSupabase: (projectId: string) => Promise<Branch[]>;
-  importBranchAsParent: (sourceProjectId: string, sourceBranchId: string, targetChildId: string) => Promise<void>;
+  moveRemoteBranchToCurrentProject: (sourceProjectId: string, sourceBranchId: string, targetChildId: string) => Promise<void>;
   logout: () => Promise<void>;
   
   autoSaveStatus: 'idle' | 'saving' | 'saved' | 'error';
@@ -952,89 +952,6 @@ export const ProjectProvider: React.FC<{ children: React.ReactNode }> = ({ child
     }));
   }, [supabaseClient]);
 
-  const importBranchAsParent = useCallback(async (sourceProjectId: string, sourceBranchId: string, targetChildId: string) => {
-    if (!supabaseClient) throw new Error("Client Supabase non inizializzato");
-
-    // 1. Fetch Source Branch Data (Single)
-    const { data: bData, error: bError } = await supabaseClient
-        .from('flowtask_branches')
-        .select('*')
-        .eq('id', sourceBranchId)
-        .single();
-    if (bError) throw bError;
-
-    // 2. Fetch Tasks for that branch
-    const { data: tData, error: tError } = await supabaseClient
-        .from('flowtask_tasks')
-        .select('*')
-        .eq('branch_id', sourceBranchId)
-        .order('position', { ascending: true });
-    if (tError) throw tError;
-
-    // 3. Create NEW Branch object (Copy)
-    const newBranchId = generateId();
-    
-    const importedBranch: Branch = {
-        id: newBranchId,
-        title: `${bData.title} (Importato)`,
-        description: bData.description,
-        status: bData.status as BranchStatus,
-        startDate: bData.start_date,
-        endDate: bData.end_date,
-        dueDate: bData.due_date,
-        archived: false,
-        collapsed: false,
-        // CRITICAL FIX: Link to Root Branch so it's visible in FlowCanvas
-        parentIds: [activeProject.rootBranchId], 
-        childrenIds: [targetChildId], // It becomes parent of our target
-        tasks: (tData || []).map((t: any, idx: number) => ({
-            id: generateId(),
-            title: t.title,
-            completed: t.completed,
-            dueDate: t.due_date,
-            assigneeId: undefined, 
-            position: idx
-        }))
-    };
-
-    setProjectState(prev => {
-        const targetChild = prev.branches[targetChildId];
-        const rootBranch = prev.branches[prev.rootBranchId];
-        
-        if (!targetChild || !rootBranch) return prev; 
-
-        // 1. Add imported branch
-        // 2. Update target child to include new parent
-        // 3. Update Root Branch to include new child (the imported branch) for visibility
-        const updatedBranches = {
-            ...prev.branches,
-            [newBranchId]: importedBranch,
-            [targetChildId]: {
-                ...targetChild,
-                parentIds: [...targetChild.parentIds, newBranchId]
-            },
-            [prev.rootBranchId]: {
-                ...rootBranch,
-                childrenIds: [...rootBranch.childrenIds, newBranchId]
-            }
-        };
-
-        return {
-            ...prev,
-            branches: updatedBranches
-        };
-    });
-
-  }, [supabaseClient, activeProject.rootBranchId, setProjectState]);
-
-  const deleteProjectFromSupabase = useCallback(async (projectId: string) => {
-    if (!supabaseClient) throw new Error("Client Supabase non inizializzato");
-    
-    const { error } = await supabaseClient.from('flowtask_projects').delete().eq('id', projectId);
-    
-    if (error) throw error;
-  }, [supabaseClient]);
-
   const downloadProjectFromSupabase = useCallback(async (projectId: string, activate = true, removeDefault = false) => {
     if (!supabaseClient) throw new Error("Client Supabase non inizializzato");
 
@@ -1167,6 +1084,121 @@ export const ProjectProvider: React.FC<{ children: React.ReactNode }> = ({ child
     loadProject(newState, activate, removeDefault);
   }, [supabaseClient, loadProject]);
 
+  const moveRemoteBranchToCurrentProject = useCallback(async (sourceProjectId: string, sourceBranchId: string, targetChildId: string) => {
+    if (!supabaseClient) throw new Error("Client Supabase non inizializzato");
+
+    // 1. Fetch ALL branches from source project to build the tree and find descendants
+    const { data: allRemoteBranches, error: bError } = await supabaseClient
+        .from('flowtask_branches')
+        .select('id, parent_ids, children_ids')
+        .eq('project_id', sourceProjectId);
+    if (bError) throw bError;
+
+    // Helper to find all descendants recursively
+    const findAllDescendants = (branchId: string, allBranches: any[]): string[] => {
+        const descendants: string[] = [];
+        const children = allBranches.filter(b => b.parent_ids?.includes(branchId));
+        children.forEach(child => {
+            descendants.push(child.id);
+            descendants.push(...findAllDescendants(child.id, allBranches));
+        });
+        return descendants;
+    };
+
+    const descendants = findAllDescendants(sourceBranchId, allRemoteBranches || []);
+    const idsToMove = [sourceBranchId, ...descendants];
+
+    // 2. Unlink from OLD parents in the REMOTE project
+    // We need to find branches in the remote project that have 'sourceBranchId' in their children_ids
+    // AND are NOT in the 'idsToMove' list (external parents).
+    const remoteParents = (allRemoteBranches || []).filter(b => 
+        b.children_ids?.includes(sourceBranchId) && !idsToMove.includes(b.id)
+    );
+
+    for (const parent of remoteParents) {
+        const newChildren = (parent.children_ids || []).filter((id: string) => id !== sourceBranchId);
+        await supabaseClient
+            .from('flowtask_branches')
+            .update({ children_ids: newChildren })
+            .eq('id', parent.id);
+    }
+
+    // 3. Move the Branch and Descendants (Change Project ID)
+    // Note: 'tasks' don't have project_id in our schema (they link to branch), 
+    // but Row Level Security might check project ownership via join. 
+    // Since we are moving the branch to a project we own, visibility should be fine.
+    
+    // We update project_id for all branches in the subtree
+    const { error: updateError } = await supabaseClient
+        .from('flowtask_branches')
+        .update({ project_id: activeProjectId })
+        .in('id', idsToMove);
+    
+    if (updateError) throw updateError;
+
+    // 4. Link the moved root (sourceBranchId) to the new parent (targetChildId) in DB
+    // We also fetch the current parent_ids of the source branch to clean them up (remove old remote parents)
+    const { data: sourceBranchData } = await supabaseClient.from('flowtask_branches').select('parent_ids').eq('id', sourceBranchId).single();
+    
+    // For the moved branch, reset parents to include ONLY the new target (and maybe root for visibility safety?)
+    // The requirement is "Link as parent". So it becomes a parent of 'targetChildId'.
+    // BUT 'targetChildId' is in the LOCAL state (and DB).
+    // The moved branch needs to be visible in the tree. 
+    // To ensure it's not an orphan in the new project structure, let's link it to the ROOT of the current project as a secondary parent?
+    // OR just trust that it's linked to 'targetChildId'.
+    // WAIT: If we link it as a parent OF 'targetChildId', 'targetChildId' must be updated to include 'sourceBranchId' in its 'parent_ids'.
+    // AND 'sourceBranchId' must include 'targetChildId' in its 'children_ids'.
+    
+    // Let's update the moved branch to point to the new project root as a parent, so it's discoverable at top level?
+    // User said: "sostituirsi a quello attuale" -> "Import as Parent" logic means it becomes a parent of the node we clicked.
+    // So 'sourceBranchId' becomes a parent of 'targetChildId'.
+    
+    // Update Moved Branch: 
+    // - project_id: already updated.
+    // - children_ids: add 'targetChildId'.
+    // - parent_ids: reset to avoid pointing to old project parents. Set to [rootBranchId] to keep it anchored.
+    const { data: movedBranchCurrent } = await supabaseClient.from('flowtask_branches').select('children_ids').eq('id', sourceBranchId).single();
+    const newChildrenForMoved = [...(movedBranchCurrent?.children_ids || []), targetChildId];
+    
+    await supabaseClient
+        .from('flowtask_branches')
+        .update({ 
+            parent_ids: [activeProject.rootBranchId], // Anchor to root
+            children_ids: newChildrenForMoved
+        })
+        .eq('id', sourceBranchId);
+
+    // Update Target Child (Local node):
+    // - parent_ids: add 'sourceBranchId'.
+    const { data: targetNode } = await supabaseClient.from('flowtask_branches').select('parent_ids').eq('id', targetChildId).single();
+    const newParentsForTarget = [...(targetNode?.parent_ids || []), sourceBranchId];
+    
+    await supabaseClient
+        .from('flowtask_branches')
+        .update({ parent_ids: newParentsForTarget })
+        .eq('id', targetChildId);
+        
+    // Also update Root to include the moved branch as child (since we anchored it there)
+    const { data: rootNode } = await supabaseClient.from('flowtask_branches').select('children_ids').eq('id', activeProject.rootBranchId).single();
+    const newChildrenForRoot = [...(rootNode?.children_ids || []), sourceBranchId];
+    await supabaseClient
+        .from('flowtask_branches')
+        .update({ children_ids: newChildrenForRoot })
+        .eq('id', activeProject.rootBranchId);
+
+    // 5. Reload Project to sync everything cleanly
+    await downloadProjectFromSupabase(activeProjectId, false, false);
+
+  }, [supabaseClient, activeProjectId, activeProject.rootBranchId, downloadProjectFromSupabase]);
+
+  const deleteProjectFromSupabase = useCallback(async (projectId: string) => {
+    if (!supabaseClient) throw new Error("Client Supabase non inizializzato");
+    
+    const { error } = await supabaseClient.from('flowtask_projects').delete().eq('id', projectId);
+    
+    if (error) throw error;
+  }, [supabaseClient]);
+
   // AUTO SYNC EFFECT (Local -> Cloud)
   useEffect(() => {
     if (!session || isOfflineMode || !supabaseClient) return;
@@ -1280,7 +1312,7 @@ export const ProjectProvider: React.FC<{ children: React.ReactNode }> = ({ child
       deleteProjectFromSupabase,
       listProjectsFromSupabase,
       getProjectBranchesFromSupabase,
-      importBranchAsParent,
+      moveRemoteBranchToCurrentProject,
       logout,
       
       autoSaveStatus,
