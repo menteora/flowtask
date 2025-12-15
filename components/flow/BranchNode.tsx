@@ -68,23 +68,27 @@ const BranchNode: React.FC<BranchNodeProps> = ({ branchId }) => {
               {branch.archived && <Archive className="w-3 h-3 text-slate-400" />}
             </h3>
             
-            <div className="flex flex-wrap gap-1">
+            <div className="flex flex-wrap gap-1 items-center">
                 <span className={`inline-flex items-center gap-1 px-2 py-0.5 rounded-full text-[10px] font-medium w-fit ${statusConfig.color}`}>
                   {statusConfig.icon}
                   {statusConfig.label}
                 </span>
                 
                 {isMultiParent && (
-                    <span className="inline-flex items-center gap-1 px-2 py-0.5 rounded-full text-[10px] font-medium w-fit bg-amber-100 text-amber-700 dark:bg-amber-900/30 dark:text-amber-400 border border-amber-200 dark:border-amber-800" title={`Questo ramo ha ${branch.parentIds.length} genitori (appare più volte)`}>
+                    <span 
+                        className="inline-flex items-center justify-center w-5 h-5 rounded-full bg-amber-100 text-amber-700 dark:bg-amber-900/30 dark:text-amber-400 border border-amber-200 dark:border-amber-800" 
+                        title={`Multi-Link: Questo ramo ha ${branch.parentIds.length} genitori nel grafico.`}
+                    >
                         <GitMerge className="w-3 h-3" />
-                        Multi-Link
                     </span>
                 )}
                 
                 {isImported && (
-                    <span className="inline-flex items-center gap-1 px-2 py-0.5 rounded-full text-[10px] font-medium w-fit bg-blue-100 text-blue-700 dark:bg-blue-900/30 dark:text-blue-400 border border-blue-200 dark:border-blue-800" title="Importato da altro progetto">
+                    <span 
+                        className="inline-flex items-center justify-center w-5 h-5 rounded-full bg-blue-100 text-blue-700 dark:bg-blue-900/30 dark:text-blue-400 border border-blue-200 dark:border-blue-800" 
+                        title="Ramo importato (Esterno)"
+                    >
                         <Globe className="w-3 h-3" />
-                        Esterno
                     </span>
                 )}
             </div>
