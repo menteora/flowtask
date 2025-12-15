@@ -358,8 +358,8 @@ export const ProjectProvider: React.FC<{ children: React.ReactNode }> = ({ child
       const currentBranch = prev.branches[branchId];
       if (!currentBranch) return prev;
 
-      // USE spread instead of Object.assign to avoid potential spread type errors
-      const updates = { ...data };
+      // USE Object.assign instead of spread to avoid potential spread type errors
+      const updates = Object.assign({}, data);
       
       const now = new Date();
       const localToday = now.getFullYear() + '-' + String(now.getMonth() + 1).padStart(2, '0') + '-' + String(now.getDate()).padStart(2, '0');
@@ -525,15 +525,15 @@ export const ProjectProvider: React.FC<{ children: React.ReactNode }> = ({ child
               const temp = newChildren[currentIndex - 1];
               newChildren[currentIndex - 1] = newChildren[currentIndex];
               newChildren[currentIndex] = temp;
-              // Use Object.assign to avoid spread type error
-              newBranches[parentId] = Object.assign({}, parent, { childrenIds: newChildren });
+              // Use spread syntax for immutability
+              newBranches[parentId] = { ...parent, childrenIds: newChildren };
               changed = true;
           } else if (direction === 'right' && currentIndex < newChildren.length - 1) {
               const temp = newChildren[currentIndex + 1];
               newChildren[currentIndex + 1] = newChildren[currentIndex];
               newChildren[currentIndex] = temp;
-              // Use Object.assign to avoid spread type error
-              newBranches[parentId] = Object.assign({}, parent, { childrenIds: newChildren });
+              // Use spread syntax for immutability
+              newBranches[parentId] = { ...parent, childrenIds: newChildren };
               changed = true;
           }
       });
@@ -620,7 +620,7 @@ export const ProjectProvider: React.FC<{ children: React.ReactNode }> = ({ child
         }
 
         // CRITICAL FIX: Re-assign 'position' property to all tasks to match new array order
-        const reorderedTasks = tasks.map((t, i) => ({ ...t, position: i }));
+        const reorderedTasks = tasks.map((t, i) => Object.assign({}, t, { position: i }));
         
         return {
             ...prev,
@@ -644,7 +644,7 @@ export const ProjectProvider: React.FC<{ children: React.ReactNode }> = ({ child
         const newTasks: Task[] = lines.map((line, index) => {
             const existingTask = currentTasksMap.get(line);
             if (existingTask) {
-                return { ...existingTask, position: index };
+                return Object.assign({}, existingTask, { position: index });
             }
             return {
                 id: generateId(),
@@ -828,24 +828,49 @@ export const ProjectProvider: React.FC<{ children: React.ReactNode }> = ({ child
     if (!supabaseClient) throw new Error("Client Supabase non inizializzato");
 
     // 1. Fetch Project Info
-    const { data: projectData, error: pError } = await supabaseClient.from('flowtask_projects').select('*').eq('id', projectId).single();
+    const { data: projectData, error: pError } = await supabaseClient
+        .from('flowtask_projects')
+        .select('*')
+        .eq('id', projectId)
+        .single();
     if (pError) throw pError;
 
-    // 2. Fetch People
-    const { data: peopleData, error: ppError } = await supabaseClient.from('flowtask_people').select('*').eq('project_id', projectId);
+    // 2. Fetch People (Increase Limit)
+    const { data: peopleData, error: ppError } = await supabaseClient
+        .from('flowtask_people')
+        .select('*')
+        .eq('project_id', projectId)
+        .limit(1000); 
     if (ppError) throw ppError;
 
-    // 3. Fetch Branches
-    const { data: branchesData, error: bError } = await supabaseClient.from('flowtask_branches').select('*').eq('project_id', projectId);
+    // 3. Fetch Branches (Increase Limit)
+    const { data: branchesData, error: bError } = await supabaseClient
+        .from('flowtask_branches')
+        .select('*')
+        .eq('project_id', projectId)
+        .limit(5000); 
     if (bError) throw bError;
 
-    // 4. Fetch Tasks
+    // 4. Fetch Tasks (Chunking + Limit)
     const branchIds = branchesData.map((b: any) => b.id);
     let tasksData: any[] = [];
+    
     if (branchIds.length > 0) {
-        const { data: tData, error: tError } = await supabaseClient.from('flowtask_tasks').select('*').in('branch_id', branchIds).order('position', { ascending: true });
-        if (tError) throw tError;
-        tasksData = tData || [];
+        const CHUNK_SIZE = 50; 
+        for (let i = 0; i < branchIds.length; i += CHUNK_SIZE) {
+            const chunk = branchIds.slice(i, i + CHUNK_SIZE);
+            const { data: chunkData, error: tError } = await supabaseClient
+                .from('flowtask_tasks')
+                .select('*')
+                .in('branch_id', chunk)
+                .order('position', { ascending: true })
+                .limit(5000);
+            
+            if (tError) throw tError;
+            if (chunkData) {
+                tasksData = [...tasksData, ...chunkData];
+            }
+        }
     }
 
     // --- RECONSTRUCT STATE ---

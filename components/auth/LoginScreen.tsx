@@ -1,6 +1,6 @@
 import React, { useState, useEffect } from 'react';
 import { useProject } from '../../context/ProjectContext';
-import { Database, Key, LogIn, Loader2, AlertCircle, Save, WifiOff } from 'lucide-react';
+import { Database, Key, LogIn, Loader2, AlertCircle, Save, WifiOff, Check, Link2 } from 'lucide-react';
 
 const LoginScreen: React.FC = () => {
   const { setSupabaseConfig, supabaseConfig, supabaseClient, loadingAuth, enableOfflineMode } = useProject();
@@ -65,6 +65,14 @@ const LoginScreen: React.FC = () => {
     } finally {
         setAuthLoading(false);
     }
+  };
+
+  const getHostname = (u: string) => {
+      try {
+          return new URL(u).hostname;
+      } catch {
+          return u;
+      }
   };
 
   if (loadingAuth) {
@@ -151,16 +159,31 @@ const LoginScreen: React.FC = () => {
   return (
     <div className="flex h-screen w-screen items-center justify-center bg-slate-50 dark:bg-slate-950 p-4">
         <div className="w-full max-w-md bg-white dark:bg-slate-900 rounded-xl shadow-lg border border-slate-200 dark:border-slate-800 p-8">
-            <div className="text-center mb-8">
-                <div className="bg-indigo-100 dark:bg-indigo-900/30 w-16 h-16 rounded-full flex items-center justify-center mx-auto mb-4">
-                    <Key className="w-8 h-8 text-indigo-600 dark:text-indigo-400" />
+            
+            {/* SUCCESS BANNER: Shows when config is present (e.g. from link) */}
+            <div className="mb-6 bg-emerald-50 dark:bg-emerald-900/20 border border-emerald-200 dark:border-emerald-800 rounded-lg p-3 flex items-start gap-3 animate-in fade-in slide-in-from-top-2">
+                 <div className="bg-emerald-100 dark:bg-emerald-800 p-1.5 rounded-full mt-0.5 shrink-0">
+                     <Check className="w-4 h-4 text-emerald-600 dark:text-emerald-400" />
+                 </div>
+                 <div>
+                     <p className="text-sm font-bold text-emerald-800 dark:text-emerald-300">Configurazione Caricata</p>
+                     <p className="text-xs text-emerald-600 dark:text-emerald-400 mt-1 leading-relaxed">
+                        Database collegato: <span className="font-mono bg-emerald-100 dark:bg-emerald-900/50 px-1 rounded">{getHostname(url)}</span>.
+                        <br/>
+                        Effettua il login qui sotto per accedere.
+                     </p>
+                 </div>
+            </div>
+
+            <div className="text-center mb-6">
+                <div className="flex justify-center mb-4">
+                    <div className="bg-indigo-100 dark:bg-indigo-900/30 w-12 h-12 rounded-full flex items-center justify-center">
+                        <Key className="w-6 h-6 text-indigo-600 dark:text-indigo-400" />
+                    </div>
                 </div>
                 <h1 className="text-2xl font-bold text-slate-900 dark:text-white">
-                    {isLogin ? 'Accedi' : 'Registrati'}
+                    {isLogin ? 'Accedi al Progetto' : 'Crea Account Team'}
                 </h1>
-                <p className="text-slate-500 dark:text-slate-400 mt-2">
-                    {isLogin ? 'Inserisci le tue credenziali per accedere ai progetti.' : 'Crea un nuovo account.'}
-                </p>
             </div>
 
             {authError && (
