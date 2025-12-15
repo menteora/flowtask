@@ -386,10 +386,9 @@ export const ProjectProvider: React.FC<{ children: React.ReactNode }> = ({ child
         ...prev,
         branches: {
           ...prev.branches,
-          [parentId]: {
-            ...parent,
+          [parentId]: Object.assign({}, parent, {
             childrenIds: [...parent.childrenIds, newId],
-          },
+          }),
           [newId]: newBranch,
         },
       };
@@ -420,7 +419,7 @@ export const ProjectProvider: React.FC<{ children: React.ReactNode }> = ({ child
         ...prev,
         branches: {
           ...prev.branches,
-          [branchId]: { ...currentBranch, ...updates },
+          [branchId]: Object.assign({}, currentBranch, updates),
         },
       };
     });
@@ -434,7 +433,7 @@ export const ProjectProvider: React.FC<{ children: React.ReactNode }> = ({ child
               ...prev,
               branches: {
                   ...prev.branches,
-                  [branchId]: { ...current, archived: !current.archived }
+                  [branchId]: Object.assign({}, current, { archived: !current.archived })
               }
           }
       })
@@ -470,14 +469,12 @@ export const ProjectProvider: React.FC<{ children: React.ReactNode }> = ({ child
             ...prev,
             branches: {
                 ...prev.branches,
-                [parentId]: {
-                    ...parent,
+                [parentId]: Object.assign({}, parent, {
                     childrenIds: [...parent.childrenIds, childId]
-                },
-                [childId]: {
-                    ...child,
+                }),
+                [childId]: Object.assign({}, child, {
                     parentIds: [...child.parentIds, parentId]
-                }
+                })
             }
         };
     });
@@ -494,14 +491,12 @@ export const ProjectProvider: React.FC<{ children: React.ReactNode }> = ({ child
             ...prev,
             branches: {
                 ...prev.branches,
-                [parentId]: {
-                    ...parent,
+                [parentId]: Object.assign({}, parent, {
                     childrenIds: parent.childrenIds.filter(id => id !== childId)
-                },
-                [childId]: {
-                    ...child,
+                }),
+                [childId]: Object.assign({}, child, {
                     parentIds: child.parentIds.filter(id => id !== parentId)
-                }
+                })
             }
         };
       });
@@ -603,10 +598,9 @@ export const ProjectProvider: React.FC<{ children: React.ReactNode }> = ({ child
         ...prev,
         branches: {
           ...prev.branches,
-          [branchId]: {
-            ...branch,
+          [branchId]: Object.assign({}, branch, {
             tasks: [...branch.tasks, newTask],
-          },
+          }),
         },
       };
     });
@@ -617,12 +611,12 @@ export const ProjectProvider: React.FC<{ children: React.ReactNode }> = ({ child
         const branch = prev.branches[branchId];
         if (!branch) return prev;
         
-        const newTasks = branch.tasks.map(t => t.id === taskId ? { ...t, ...data } : t);
+        const newTasks = branch.tasks.map(t => t.id === taskId ? Object.assign({}, t, data) : t);
         return {
             ...prev,
             branches: {
                 ...prev.branches,
-                [branchId]: { ...branch, tasks: newTasks }
+                [branchId]: Object.assign({}, branch, { tasks: newTasks })
             }
         };
     });
@@ -638,7 +632,7 @@ export const ProjectProvider: React.FC<{ children: React.ReactNode }> = ({ child
             ...prev,
             branches: {
                 ...prev.branches,
-                [branchId]: { ...branch, tasks: newTasks }
+                [branchId]: Object.assign({}, branch, { tasks: newTasks })
             }
         };
     });
@@ -669,7 +663,7 @@ export const ProjectProvider: React.FC<{ children: React.ReactNode }> = ({ child
             ...prev,
             branches: {
                 ...prev.branches,
-                [branchId]: { ...branch, tasks: reorderedTasks }
+                [branchId]: Object.assign({}, branch, { tasks: reorderedTasks })
             }
         };
     });
@@ -687,7 +681,7 @@ export const ProjectProvider: React.FC<{ children: React.ReactNode }> = ({ child
         const newTasks: Task[] = lines.map((line, index) => {
             const existingTask = currentTasksMap.get(line);
             if (existingTask) {
-                return { ...existingTask, position: index };
+                return Object.assign({}, existingTask, { position: index });
             }
             return {
                 id: generateId(),
@@ -701,7 +695,7 @@ export const ProjectProvider: React.FC<{ children: React.ReactNode }> = ({ child
             ...prev,
             branches: {
                 ...prev.branches,
-                [branchId]: { ...branch, tasks: newTasks }
+                [branchId]: Object.assign({}, branch, { tasks: newTasks })
             }
         };
     });
@@ -739,7 +733,7 @@ export const ProjectProvider: React.FC<{ children: React.ReactNode }> = ({ child
 
         return {
             ...prev,
-            people: prev.people.map(p => p.id === id ? { ...p, ...updates } : p)
+            people: prev.people.map(p => p.id === id ? Object.assign({}, p, updates) : p)
         };
     });
   }, [setProjectState]);
@@ -766,17 +760,17 @@ export const ProjectProvider: React.FC<{ children: React.ReactNode }> = ({ child
             const newBranches = { ...p.branches };
             delete newBranches['root'];
             
-            newBranches[newRootId] = { ...oldRoot, id: newRootId };
+            newBranches[newRootId] = Object.assign({}, oldRoot, { id: newRootId });
             
             oldRoot.childrenIds.forEach(childId => {
                 if (newBranches[childId]) {
                      const updatedParentIds = newBranches[childId].parentIds.map(pid => pid === 'root' ? newRootId : pid);
-                     newBranches[childId] = { ...newBranches[childId], parentIds: updatedParentIds };
+                     newBranches[childId] = Object.assign({}, newBranches[childId], { parentIds: updatedParentIds });
                 }
             });
     
-            p = { ...p, rootBranchId: newRootId, branches: newBranches };
-            setProjectState(prev => ({ ...prev, rootBranchId: newRootId, branches: newBranches }));
+            p = Object.assign({}, p, { rootBranchId: newRootId, branches: newBranches });
+            setProjectState(prev => Object.assign({}, prev, { rootBranchId: newRootId, branches: newBranches }));
         }
     }
 
@@ -861,7 +855,7 @@ export const ProjectProvider: React.FC<{ children: React.ReactNode }> = ({ child
         id: t.id,
         branch_id: b.id,
         title: t.title,
-        assignee_id: t.assigneeId,
+        assignee_id: t.assignee_id,
         due_date: t.dueDate,
         completed: t.completed,
         position: index
