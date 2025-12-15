@@ -157,6 +157,9 @@ export const ProjectProvider: React.FC<{ children: React.ReactNode }> = ({ child
   
   // Flag to prevent auto-save loops when loading data from cloud
   const isRemoteUpdate = useRef(false);
+  
+  // Track the last saved JSON string to prevent loops on identical data
+  const lastSavedState = useRef<string>('');
 
   // Supabase State
   const [supabaseConfig, setSupabaseState] = useState<{ url: string; key: string }>({
@@ -928,6 +931,9 @@ export const ProjectProvider: React.FC<{ children: React.ReactNode }> = ({ child
         const { error: tError } = await supabaseClient.from('flowtask_tasks').upsert(tasks);
         if (tError) throw tError;
     }
+    
+    // Update local ref to match uploaded data
+    lastSavedState.current = JSON.stringify(p);
   }, [supabaseClient, activeProject, setProjectState]);
 
   const listProjectsFromSupabase = useCallback(async () => {
@@ -1070,7 +1076,7 @@ export const ProjectProvider: React.FC<{ children: React.ReactNode }> = ({ child
             archived: b.archived,
             position: b.position,
             collapsed: b.collapsed || false, // Sync collapsed state
-            isLabel: b.is_label // Map from DB
+            isLabel: b.is_label || false // Sync isLabel
         };
     });
     
@@ -1099,6 +1105,8 @@ export const ProjectProvider: React.FC<{ children: React.ReactNode }> = ({ child
     };
 
     isRemoteUpdate.current = true;
+    // Update local ref to avoid saving what we just downloaded
+    lastSavedState.current = JSON.stringify(newState);
     loadProject(newState, activate, removeDefault);
   }, [supabaseClient, loadProject]);
 
@@ -1188,10 +1196,18 @@ export const ProjectProvider: React.FC<{ children: React.ReactNode }> = ({ child
 
   // AUTO SYNC EFFECT (Local -> Cloud)
   useEffect(() => {
-    if (!session || isOfflineMode || !supabaseClient) return;
+    if (isInitializing || !session || isOfflineMode || !supabaseClient) return;
     
+    const currentJson = JSON.stringify(activeProject);
+
     if (isRemoteUpdate.current) {
         isRemoteUpdate.current = false;
+        lastSavedState.current = currentJson;
+        return;
+    }
+    
+    // Deep compare to prevent unnecessary uploads
+    if (currentJson === lastSavedState.current) {
         return;
     }
     
@@ -1207,7 +1223,7 @@ export const ProjectProvider: React.FC<{ children: React.ReactNode }> = ({ child
     }, 2000); 
 
     return () => clearTimeout(timeoutId);
-  }, [activeProject, session, isOfflineMode, supabaseClient, uploadProjectToSupabase]);
+  }, [activeProject, session, isOfflineMode, supabaseClient, uploadProjectToSupabase, isInitializing]);
 
   // INITIAL LOAD & REALTIME SYNC (Cloud -> Local)
   useEffect(() => {
