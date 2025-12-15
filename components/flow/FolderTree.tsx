@@ -1,7 +1,7 @@
 import React, { useState } from 'react';
 import { useProject } from '../../context/ProjectContext';
 import { STATUS_CONFIG } from '../../constants';
-import { ChevronRight, ChevronDown, Plus, FileText, CheckSquare, Square, Archive, GitBranch, ChevronUp } from 'lucide-react';
+import { ChevronRight, ChevronDown, Plus, FileText, CheckSquare, Square, Archive, GitBranch, ChevronUp, Tag } from 'lucide-react';
 import Avatar from '../ui/Avatar';
 
 interface FolderNodeProps {
@@ -66,8 +66,8 @@ const FolderNode: React.FC<FolderNodeProps> = ({ branchId, depth = 0, index, sib
            {isOpen ? <ChevronDown className="w-4 h-4 text-gray-400" /> : <ChevronRight className="w-4 h-4 text-gray-400" />}
         </button>
 
-        <div className={`${statusConfig.color} bg-transparent p-0 relative`}>
-             <GitBranch className="w-5 h-5" />
+        <div className={`${branch.isLabel ? 'text-amber-500' : statusConfig.color} bg-transparent p-0 relative`}>
+             {branch.isLabel ? <Tag className="w-5 h-5" /> : <GitBranch className="w-5 h-5" />}
              {branch.archived && (
                  <div className="absolute -bottom-1 -right-1 bg-gray-200 dark:bg-gray-700 rounded-full p-0.5">
                      <Archive className="w-2 h-2 text-gray-500" />
@@ -80,9 +80,16 @@ const FolderNode: React.FC<FolderNodeProps> = ({ branchId, depth = 0, index, sib
                  <span className={`font-medium text-sm truncate ${isSelected ? 'text-indigo-700 dark:text-indigo-300' : 'text-slate-700 dark:text-slate-200'}`}>
                     {branch.title}
                  </span>
-                 <span className={`text-[10px] px-1.5 rounded-full border border-current opacity-70 ${statusConfig.color} bg-transparent`}>
-                    {branch.status}
-                 </span>
+                 {!branch.isLabel && (
+                     <span className={`text-[10px] px-1.5 rounded-full border border-current opacity-70 ${statusConfig.color} bg-transparent`}>
+                        {branch.status}
+                     </span>
+                 )}
+                 {branch.isLabel && (
+                     <span className="text-[10px] px-1.5 rounded-full border border-amber-300 text-amber-600 dark:text-amber-400 dark:border-amber-700 bg-transparent">
+                        Label
+                     </span>
+                 )}
              </div>
         </div>
 

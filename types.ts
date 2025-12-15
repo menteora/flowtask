@@ -29,6 +29,7 @@ export interface Branch {
   title: string;
   description?: string;
   status: BranchStatus;
+  isLabel?: boolean; // New field: treats branch as a label/container
   startDate?: string; // ISO Date string YYYY-MM-DD (Automatic on ACTIVE)
   endDate?: string;   // ISO Date string YYYY-MM-DD (Automatic on CLOSED/CANCELLED)
   dueDate?: string;   // ISO Date string YYYY-MM-DD (Deadline)

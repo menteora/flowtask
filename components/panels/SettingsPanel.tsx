@@ -41,7 +41,8 @@ create table public.flowtask_branches (
   end_date text,
   due_date text,
   archived boolean default false,
-  collapsed boolean default false, -- Added for collapsing branches
+  collapsed boolean default false,
+  is_label boolean default false, -- New field for Labels
   parent_ids text[],
   children_ids text[],
   position integer default 0
@@ -407,7 +408,7 @@ const SettingsPanel: React.FC = () => {
                         value={key}
                         onChange={(e) => setKey(e.target.value)}
                         placeholder="eyJ..."
-                        className="w-full p-2 rounded-md border border-slate-300 dark:border-slate-600 bg-white dark:bg-slate-900 focus:ring-2 focus:ring-indigo-500 outline-none text-sm min-w-0"
+                        className="w-full p-2.5 rounded-lg border border-slate-300 dark:border-slate-700 bg-white dark:bg-slate-900 focus:ring-2 focus:ring-indigo-500 outline-none text-sm min-w-0"
                       />
                   </div>
                   

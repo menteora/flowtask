@@ -2,7 +2,7 @@ import React, { useState, useEffect, useRef } from 'react';
 import { useProject } from '../../context/ProjectContext';
 import { BranchStatus, Branch } from '../../types';
 import { STATUS_CONFIG } from '../../constants';
-import { X, Save, Trash2, CheckSquare, Square, ArrowUpLeft, Calendar, Plus, Link as LinkIcon, Unlink, PlayCircle, StopCircle, Clock, AlertTriangle, Archive, RefreshCw, Bold, Italic, List, Eye, Edit2, FileText, ChevronUp, ChevronDown, DownloadCloud, Loader2, GitMerge, ArrowRight, UploadCloud } from 'lucide-react';
+import { X, Save, Trash2, CheckSquare, Square, ArrowUpLeft, Calendar, Plus, Link as LinkIcon, Unlink, PlayCircle, StopCircle, Clock, AlertTriangle, Archive, RefreshCw, Bold, Italic, List, Eye, Edit2, FileText, ChevronUp, ChevronDown, DownloadCloud, Loader2, GitMerge, ArrowRight, UploadCloud, Tag } from 'lucide-react';
 import Avatar from '../ui/Avatar';
 
 const BranchDetails: React.FC = () => {
@@ -181,7 +181,7 @@ const BranchDetails: React.FC = () => {
       <div className="p-4 border-b border-gray-100 dark:border-slate-700 flex justify-between items-center bg-gray-50 dark:bg-slate-800/50">
         <div className="flex-1 mr-4">
            <span className="text-xs font-bold text-gray-400 uppercase tracking-wider flex items-center gap-2">
-               Dettagli Ramo
+               {branch.isLabel ? 'Etichetta' : 'Dettagli Ramo'}
                {branch.archived && <span className="bg-slate-200 dark:bg-slate-700 text-slate-500 px-2 py-0.5 rounded text-[10px]">Archiviato</span>}
            </span>
            <div className="flex items-center gap-2 mt-1">
@@ -213,6 +213,24 @@ const BranchDetails: React.FC = () => {
                 </div>
             </div>
         )}
+
+        {/* Type Toggle: Branch / Label */}
+        {/* Allow toggling even for root to manually migrate */}
+        <div className="flex items-center justify-between p-3 rounded-lg border border-slate-200 dark:border-slate-700 bg-white dark:bg-slate-800/50">
+            <div className="flex items-center gap-2">
+                <Tag className="w-4 h-4 text-slate-500" />
+                <div className="flex flex-col">
+                    <span className="text-sm font-medium text-slate-700 dark:text-slate-200">Tipo: {branch.isLabel ? 'Etichetta' : 'Ramo Standard'}</span>
+                    <span className="text-[10px] text-slate-400">{branch.isLabel ? 'Visualizzazione compatta, senza stato/task.' : 'Visualizzazione completa con task.'}</span>
+                </div>
+            </div>
+            <button 
+                onClick={() => updateBranch(branch.id, { isLabel: !branch.isLabel })}
+                className={`px-3 py-1.5 rounded-md text-xs font-medium border transition-colors ${branch.isLabel ? 'bg-amber-100 text-amber-800 border-amber-300 dark:bg-amber-900/40 dark:text-amber-200 dark:border-amber-800' : 'bg-slate-100 text-slate-700 border-slate-300 dark:bg-slate-700 dark:text-slate-200 dark:border-slate-600'}`}
+            >
+                {branch.isLabel ? 'Converti in Ramo' : 'Converti in Etichetta'}
+            </button>
+        </div>
 
         {/* Description Section with Markdown Editor */}
         <div className="space-y-2">
@@ -262,291 +280,297 @@ const BranchDetails: React.FC = () => {
             )}
         </div>
 
-        {/* Tasks Section (Moved UP) */}
-        <div>
-            <div className="flex items-center justify-between mb-2">
-                <label className="text-xs font-semibold text-gray-500 dark:text-gray-400">Tasks</label>
-                <button 
-                    onClick={() => setIsBulkMode(!isBulkMode)}
-                    className="text-xs text-indigo-600 dark:text-indigo-400 hover:underline"
-                >
-                    {isBulkMode ? 'Lista Singola' : 'Modifica Bulk'}
-                </button>
-            </div>
-
-            {isBulkMode ? (
-                <div className="space-y-2">
-                    <textarea 
-                        value={bulkText}
-                        onChange={(e) => setBulkText(e.target.value)}
-                        className="w-full h-64 p-3 text-sm border rounded-md font-mono bg-gray-50 dark:bg-slate-800 dark:border-slate-600 dark:text-white focus:ring-2 focus:ring-indigo-500 focus:outline-none resize-none"
-                        placeholder="Inserisci un task per riga..."
-                    />
+        {/* Tasks Section (HIDDEN FOR LABELS) */}
+        {!branch.isLabel && (
+            <div>
+                <div className="flex items-center justify-between mb-2">
+                    <label className="text-xs font-semibold text-gray-500 dark:text-gray-400">Tasks</label>
                     <button 
-                        onClick={handleBulkSave}
-                        className="w-full py-2 bg-indigo-600 hover:bg-indigo-700 text-white rounded-md flex items-center justify-center gap-2 text-sm font-medium"
+                        onClick={() => setIsBulkMode(!isBulkMode)}
+                        className="text-xs text-indigo-600 dark:text-indigo-400 hover:underline"
                     >
-                        <Save className="w-4 h-4" />
-                        Salva Bulk
+                        {isBulkMode ? 'Lista Singola' : 'Modifica Bulk'}
                     </button>
-                    <p className="text-[10px] text-gray-400 text-center">Ogni riga diventerà un task separato. I nomi esistenti verranno mantenuti.</p>
                 </div>
-            ) : (
-                <div className="space-y-3">
-                    {/* Add Task Input */}
-                    <form onSubmit={handleAddTask} className="flex gap-2">
-                        <input
-                            type="text"
-                            value={newTaskTitle}
-                            onChange={(e) => setNewTaskTitle(e.target.value)}
-                            placeholder="Aggiungi task veloce..."
-                            className="flex-1 text-sm border border-gray-300 dark:border-slate-600 rounded-md px-3 py-1.5 bg-white dark:bg-slate-800 text-slate-900 dark:text-white focus:outline-none focus:ring-2 focus:ring-indigo-500"
+
+                {isBulkMode ? (
+                    <div className="space-y-2">
+                        <textarea 
+                            value={bulkText}
+                            onChange={(e) => setBulkText(e.target.value)}
+                            className="w-full h-64 p-3 text-sm border rounded-md font-mono bg-gray-50 dark:bg-slate-800 dark:border-slate-600 dark:text-white focus:ring-2 focus:ring-indigo-500 focus:outline-none resize-none"
+                            placeholder="Inserisci un task per riga..."
                         />
-                    </form>
+                        <button 
+                            onClick={handleBulkSave}
+                            className="w-full py-2 bg-indigo-600 hover:bg-indigo-700 text-white rounded-md flex items-center justify-center gap-2 text-sm font-medium"
+                        >
+                            <Save className="w-4 h-4" />
+                            Salva Bulk
+                        </button>
+                        <p className="text-[10px] text-gray-400 text-center">Ogni riga diventerà un task separato. I nomi esistenti verranno mantenuti.</p>
+                    </div>
+                ) : (
+                    <div className="space-y-3">
+                        {/* Add Task Input */}
+                        <form onSubmit={handleAddTask} className="flex gap-2">
+                            <input
+                                type="text"
+                                value={newTaskTitle}
+                                onChange={(e) => setNewTaskTitle(e.target.value)}
+                                placeholder="Aggiungi task veloce..."
+                                className="flex-1 text-sm border border-gray-300 dark:border-slate-600 rounded-md px-3 py-1.5 bg-white dark:bg-slate-800 text-slate-900 dark:text-white focus:outline-none focus:ring-2 focus:ring-indigo-500"
+                            />
+                        </form>
 
-                    {/* Task List */}
-                    <ul className="space-y-2">
-                        {branch.tasks.length === 0 && <p className="text-sm text-gray-400 italic text-center py-4">Nessun task.</p>}
-                        {branch.tasks.map((task, index) => (
-                            <li key={task.id} className="group bg-white dark:bg-slate-800 border border-gray-100 dark:border-slate-700 rounded-md p-2 hover:shadow-sm transition-all relative">
-                                <div className="flex items-start gap-2">
-                                    <button 
-                                        onClick={() => updateTask(branch.id, task.id, { completed: !task.completed })}
-                                        className={`mt-0.5 ${task.completed ? 'text-green-500' : 'text-gray-300 dark:text-slate-500 hover:text-indigo-500'}`}
-                                    >
-                                        {task.completed ? <CheckSquare className="w-4 h-4" /> : <Square className="w-4 h-4" />}
-                                    </button>
-                                    
-                                    <div className="flex-1 min-w-0 space-y-2">
-                                        <p className={`text-sm ${task.completed ? 'line-through text-gray-400' : 'text-gray-800 dark:text-gray-200'}`}>
-                                            {task.title}
-                                        </p>
+                        {/* Task List */}
+                        <ul className="space-y-2">
+                            {branch.tasks.length === 0 && <p className="text-sm text-gray-400 italic text-center py-4">Nessun task.</p>}
+                            {branch.tasks.map((task, index) => (
+                                <li key={task.id} className="group bg-white dark:bg-slate-800 border border-gray-100 dark:border-slate-700 rounded-md p-2 hover:shadow-sm transition-all relative">
+                                    <div className="flex items-start gap-2">
+                                        <button 
+                                            onClick={() => updateTask(branch.id, task.id, { completed: !task.completed })}
+                                            className={`mt-0.5 ${task.completed ? 'text-green-500' : 'text-gray-300 dark:text-slate-500 hover:text-indigo-500'}`}
+                                        >
+                                            {task.completed ? <CheckSquare className="w-4 h-4" /> : <Square className="w-4 h-4" />}
+                                        </button>
                                         
-                                        <div className="flex flex-wrap items-center gap-2">
-                                            {/* Assignee Selector */}
-                                            <div className="flex items-center gap-1">
-                                                <select
-                                                    value={task.assigneeId || ''}
-                                                    onChange={(e) => updateTask(branch.id, task.id, { assigneeId: e.target.value || undefined })}
-                                                    className="text-[10px] bg-gray-50 dark:bg-slate-700 border-none rounded py-0.5 px-1.5 text-gray-600 dark:text-gray-300 cursor-pointer focus:ring-0 max-w-[100px]"
-                                                >
-                                                    <option value="">Chiunque</option>
-                                                    {state.people.map(p => (
-                                                        <option key={p.id} value={p.id}>{p.name}</option>
-                                                    ))}
-                                                </select>
-                                                {task.assigneeId && (
-                                                    <Avatar person={state.people.find(p => p.id === task.assigneeId)!} size="sm" />
-                                                )}
-                                            </div>
+                                        <div className="flex-1 min-w-0 space-y-2">
+                                            <p className={`text-sm ${task.completed ? 'line-through text-gray-400' : 'text-gray-800 dark:text-gray-200'}`}>
+                                                {task.title}
+                                            </p>
+                                            
+                                            <div className="flex flex-wrap items-center gap-2">
+                                                {/* Assignee Selector */}
+                                                <div className="flex items-center gap-1">
+                                                    <select
+                                                        value={task.assigneeId || ''}
+                                                        onChange={(e) => updateTask(branch.id, task.id, { assigneeId: e.target.value || undefined })}
+                                                        className="text-[10px] bg-gray-50 dark:bg-slate-700 border-none rounded py-0.5 px-1.5 text-gray-600 dark:text-gray-300 cursor-pointer focus:ring-0 max-w-[100px]"
+                                                    >
+                                                        <option value="">Chiunque</option>
+                                                        {state.people.map(p => (
+                                                            <option key={p.id} value={p.id}>{p.name}</option>
+                                                        ))}
+                                                    </select>
+                                                    {task.assigneeId && (
+                                                        <Avatar person={state.people.find(p => p.id === task.assigneeId)!} size="sm" />
+                                                    )}
+                                                </div>
 
-                                            {/* Task Due Date Picker (Using the Invisible Overlay pattern) */}
-                                            <div className="flex items-center gap-1 bg-gray-50 dark:bg-slate-700 rounded px-1.5 py-0.5 relative group/date">
-                                                <span className="text-[10px] text-gray-600 dark:text-gray-300 min-w-[3rem]">
-                                                    {task.dueDate ? new Date(task.dueDate).toLocaleDateString(undefined, {day: '2-digit', month: '2-digit'}) : 'No date'}
-                                                </span>
-                                                <Calendar className={`w-3 h-3 ${task.dueDate ? 'text-indigo-500' : 'text-gray-400'}`} />
-                                                <input 
-                                                    type="date" 
-                                                    value={task.dueDate || ''}
-                                                    onChange={(e) => updateTask(branch.id, task.id, { dueDate: e.target.value })}
-                                                    className="absolute inset-0 w-full h-full opacity-0 cursor-pointer z-10"
-                                                    title="Imposta scadenza task"
-                                                />
+                                                {/* Task Due Date Picker (Using the Invisible Overlay pattern) */}
+                                                <div className="flex items-center gap-1 bg-gray-50 dark:bg-slate-700 rounded px-1.5 py-0.5 relative group/date">
+                                                    <span className="text-[10px] text-gray-600 dark:text-gray-300 min-w-[3rem]">
+                                                        {task.dueDate ? new Date(task.dueDate).toLocaleDateString(undefined, {day: '2-digit', month: '2-digit'}) : 'No date'}
+                                                    </span>
+                                                    <Calendar className={`w-3 h-3 ${task.dueDate ? 'text-indigo-500' : 'text-gray-400'}`} />
+                                                    <input 
+                                                        type="date" 
+                                                        value={task.dueDate || ''}
+                                                        onChange={(e) => updateTask(branch.id, task.id, { dueDate: e.target.value })}
+                                                        className="absolute inset-0 w-full h-full opacity-0 cursor-pointer z-10"
+                                                        title="Imposta scadenza task"
+                                                    />
+                                                </div>
                                             </div>
                                         </div>
-                                    </div>
 
-                                    {/* Action Buttons (Right side) */}
-                                    <div className="flex flex-col gap-1 opacity-0 group-hover:opacity-100 transition-opacity">
-                                        {index > 0 && (
+                                        {/* Action Buttons (Right side) */}
+                                        <div className="flex flex-col gap-1 opacity-0 group-hover:opacity-100 transition-opacity">
+                                            {index > 0 && (
+                                                <button 
+                                                    onClick={() => moveTask(branch.id, task.id, 'up')}
+                                                    className="text-slate-300 hover:text-indigo-500"
+                                                    title="Sposta su"
+                                                >
+                                                    <ChevronUp className="w-3.5 h-3.5" />
+                                                </button>
+                                            )}
+                                            {index < branch.tasks.length - 1 && (
+                                                <button 
+                                                    onClick={() => moveTask(branch.id, task.id, 'down')}
+                                                    className="text-slate-300 hover:text-indigo-500"
+                                                    title="Sposta giù"
+                                                >
+                                                    <ChevronDown className="w-3.5 h-3.5" />
+                                                </button>
+                                            )}
                                             <button 
-                                                onClick={() => moveTask(branch.id, task.id, 'up')}
-                                                className="text-slate-300 hover:text-indigo-500"
-                                                title="Sposta su"
+                                                onClick={() => deleteTask(branch.id, task.id)}
+                                                className="text-slate-300 hover:text-red-500"
+                                                title="Elimina"
                                             >
-                                                <ChevronUp className="w-3.5 h-3.5" />
+                                                <X className="w-3.5 h-3.5" />
                                             </button>
-                                        )}
-                                        {index < branch.tasks.length - 1 && (
-                                            <button 
-                                                onClick={() => moveTask(branch.id, task.id, 'down')}
-                                                className="text-slate-300 hover:text-indigo-500"
-                                                title="Sposta giù"
-                                            >
-                                                <ChevronDown className="w-3.5 h-3.5" />
-                                            </button>
-                                        )}
-                                        <button 
-                                            onClick={() => deleteTask(branch.id, task.id)}
-                                            className="text-slate-300 hover:text-red-500"
-                                            title="Elimina"
-                                        >
-                                            <X className="w-3.5 h-3.5" />
-                                        </button>
+                                        </div>
                                     </div>
-                                </div>
-                            </li>
-                        ))}
-                    </ul>
-                </div>
-            )}
-        </div>
+                                </li>
+                            ))}
+                        </ul>
+                    </div>
+                )}
+            </div>
+        )}
 
-        {/* Dates Section */}
-        <div className="space-y-3 p-3 bg-slate-50 dark:bg-slate-800/50 rounded-lg border border-slate-100 dark:border-slate-700">
-            <h4 className="text-xs font-semibold text-gray-500 dark:text-gray-400 uppercase tracking-wider">Timeline</h4>
-            
-            {/* Start Date */}
-            <div>
-                <label className="text-[10px] font-medium text-gray-400 dark:text-gray-500 mb-1 flex items-center gap-1">
-                    <PlayCircle className="w-3 h-3" />
-                    Data Inizio
-                </label>
-                <div className="relative group">
-                    <input 
-                        type="date"
-                        value={branch.startDate || ''}
-                        onChange={(e) => updateBranch(branch.id, { startDate: e.target.value })}
-                        className="w-full text-xs bg-white dark:bg-slate-800 border border-gray-200 dark:border-slate-600 rounded p-1.5 pr-14 text-slate-700 dark:text-slate-200 focus:ring-1 focus:ring-indigo-500 outline-none [&::-webkit-calendar-picker-indicator]:hidden"
-                    />
-                    <div className="absolute right-1 top-1/2 -translate-y-1/2 flex items-center gap-1">
-                        {branch.startDate && (
-                            <button 
-                                type="button"
-                                onClick={(e) => {
-                                    e.stopPropagation();
-                                    updateBranch(branch.id, { startDate: '' });
-                                }}
-                                className="p-1 text-gray-300 hover:text-red-500 transition-colors"
-                                title="Rimuovi data"
-                            >
-                                <X className="w-3 h-3" />
-                            </button>
-                        )}
-                        <div className="relative p-1 text-gray-400 hover:text-indigo-600 dark:hover:text-indigo-400 transition-colors">
-                            <Calendar className="w-3.5 h-3.5" />
-                            <input 
-                                type="date"
-                                value={branch.startDate || ''}
-                                onChange={(e) => updateBranch(branch.id, { startDate: e.target.value })}
-                                className="absolute inset-0 w-full h-full opacity-0 cursor-pointer z-10"
-                                title="Seleziona data"
-                            />
+        {/* Dates Section - HIDDEN FOR LABELS */}
+        {!branch.isLabel && (
+            <div className="space-y-3 p-3 bg-slate-50 dark:bg-slate-800/50 rounded-lg border border-slate-100 dark:border-slate-700">
+                <h4 className="text-xs font-semibold text-gray-500 dark:text-gray-400 uppercase tracking-wider">Timeline</h4>
+                
+                {/* Start Date */}
+                <div>
+                    <label className="text-[10px] font-medium text-gray-400 dark:text-gray-500 mb-1 flex items-center gap-1">
+                        <PlayCircle className="w-3 h-3" />
+                        Data Inizio
+                    </label>
+                    <div className="relative group">
+                        <input 
+                            type="date"
+                            value={branch.startDate || ''}
+                            onChange={(e) => updateBranch(branch.id, { startDate: e.target.value })}
+                            className="w-full text-xs bg-white dark:bg-slate-800 border border-gray-200 dark:border-slate-600 rounded p-1.5 pr-14 text-slate-700 dark:text-slate-200 focus:ring-1 focus:ring-indigo-500 outline-none [&::-webkit-calendar-picker-indicator]:hidden"
+                        />
+                        <div className="absolute right-1 top-1/2 -translate-y-1/2 flex items-center gap-1">
+                            {branch.startDate && (
+                                <button 
+                                    type="button"
+                                    onClick={(e) => {
+                                        e.stopPropagation();
+                                        updateBranch(branch.id, { startDate: '' });
+                                    }}
+                                    className="p-1 text-gray-300 hover:text-red-500 transition-colors"
+                                    title="Rimuovi data"
+                                >
+                                    <X className="w-3 h-3" />
+                                </button>
+                            )}
+                            <div className="relative p-1 text-gray-400 hover:text-indigo-600 dark:hover:text-indigo-400 transition-colors">
+                                <Calendar className="w-3.5 h-3.5" />
+                                <input 
+                                    type="date"
+                                    value={branch.startDate || ''}
+                                    onChange={(e) => updateBranch(branch.id, { startDate: e.target.value })}
+                                    className="absolute inset-0 w-full h-full opacity-0 cursor-pointer z-10"
+                                    title="Seleziona data"
+                                />
+                            </div>
+                        </div>
+                    </div>
+                </div>
+
+                {/* Due Date */}
+                <div>
+                     <label className="text-[10px] font-medium text-gray-400 dark:text-gray-500 mb-1 flex items-center gap-1">
+                         <Clock className="w-3 h-3" />
+                         Scadenza (Deadline)
+                     </label>
+                     <div className="relative group">
+                        <input 
+                            type="date"
+                            value={branch.dueDate || ''}
+                            onChange={(e) => updateBranch(branch.id, { dueDate: e.target.value })}
+                            className="w-full text-xs bg-white dark:bg-slate-800 border border-gray-200 dark:border-slate-600 rounded p-1.5 pr-14 text-slate-700 dark:text-slate-200 focus:ring-1 focus:ring-indigo-500 outline-none [&::-webkit-calendar-picker-indicator]:hidden"
+                        />
+                         <div className="absolute right-1 top-1/2 -translate-y-1/2 flex items-center gap-1">
+                            {branch.dueDate && (
+                                <button 
+                                    type="button"
+                                    onClick={(e) => {
+                                        e.stopPropagation();
+                                        updateBranch(branch.id, { dueDate: '' });
+                                    }}
+                                    className="p-1 text-gray-300 hover:text-red-500 transition-colors"
+                                    title="Rimuovi data"
+                                >
+                                    <X className="w-3 h-3" />
+                                </button>
+                            )}
+                            <div className="relative p-1 text-gray-400 hover:text-indigo-600 dark:hover:text-indigo-400 transition-colors">
+                                <Calendar className="w-3.5 h-3.5" />
+                                <input 
+                                    type="date"
+                                    value={branch.dueDate || ''}
+                                    onChange={(e) => updateBranch(branch.id, { dueDate: e.target.value })}
+                                    className="absolute inset-0 w-full h-full opacity-0 cursor-pointer z-10"
+                                    title="Seleziona data"
+                                />
+                            </div>
+                        </div>
+                    </div>
+                </div>
+
+                {/* End Date */}
+                <div>
+                    <label className="text-[10px] font-medium text-gray-400 dark:text-gray-500 mb-1 flex items-center gap-1">
+                        <StopCircle className="w-3 h-3" />
+                        Data Chiusura
+                    </label>
+                    <div className="relative group">
+                        <input 
+                            type="date"
+                            value={branch.endDate || ''}
+                            onChange={(e) => updateBranch(branch.id, { endDate: e.target.value })}
+                            className="w-full text-xs bg-white dark:bg-slate-800 border border-gray-200 dark:border-slate-600 rounded p-1.5 pr-14 text-slate-700 dark:text-slate-200 focus:ring-1 focus:ring-indigo-500 outline-none [&::-webkit-calendar-picker-indicator]:hidden"
+                        />
+                         <div className="absolute right-1 top-1/2 -translate-y-1/2 flex items-center gap-1">
+                            {branch.endDate && (
+                                <button 
+                                    type="button"
+                                    onClick={(e) => {
+                                        e.stopPropagation();
+                                        updateBranch(branch.id, { endDate: '' });
+                                    }}
+                                    className="p-1 text-gray-300 hover:text-red-500 transition-colors"
+                                    title="Rimuovi data"
+                                >
+                                    <X className="w-3 h-3" />
+                                </button>
+                            )}
+                             <div className="relative p-1 text-gray-400 hover:text-indigo-600 dark:hover:text-indigo-400 transition-colors">
+                                <Calendar className="w-3.5 h-3.5" />
+                                <input 
+                                    type="date"
+                                    value={branch.endDate || ''}
+                                    onChange={(e) => updateBranch(branch.id, { endDate: e.target.value })}
+                                    className="absolute inset-0 w-full h-full opacity-0 cursor-pointer z-10"
+                                    title="Seleziona data"
+                                />
+                            </div>
                         </div>
                     </div>
                 </div>
             </div>
+        )}
 
-            {/* Due Date */}
+        {/* Status Selector - HIDDEN FOR LABELS */}
+        {!branch.isLabel && (
             <div>
-                 <label className="text-[10px] font-medium text-gray-400 dark:text-gray-500 mb-1 flex items-center gap-1">
-                     <Clock className="w-3 h-3" />
-                     Scadenza (Deadline)
-                 </label>
-                 <div className="relative group">
-                    <input 
-                        type="date"
-                        value={branch.dueDate || ''}
-                        onChange={(e) => updateBranch(branch.id, { dueDate: e.target.value })}
-                        className="w-full text-xs bg-white dark:bg-slate-800 border border-gray-200 dark:border-slate-600 rounded p-1.5 pr-14 text-slate-700 dark:text-slate-200 focus:ring-1 focus:ring-indigo-500 outline-none [&::-webkit-calendar-picker-indicator]:hidden"
-                    />
-                     <div className="absolute right-1 top-1/2 -translate-y-1/2 flex items-center gap-1">
-                        {branch.dueDate && (
-                            <button 
-                                type="button"
-                                onClick={(e) => {
-                                    e.stopPropagation();
-                                    updateBranch(branch.id, { dueDate: '' });
-                                }}
-                                className="p-1 text-gray-300 hover:text-red-500 transition-colors"
-                                title="Rimuovi data"
-                            >
-                                <X className="w-3 h-3" />
-                            </button>
-                        )}
-                        <div className="relative p-1 text-gray-400 hover:text-indigo-600 dark:hover:text-indigo-400 transition-colors">
-                            <Calendar className="w-3.5 h-3.5" />
-                            <input 
-                                type="date"
-                                value={branch.dueDate || ''}
-                                onChange={(e) => updateBranch(branch.id, { dueDate: e.target.value })}
-                                className="absolute inset-0 w-full h-full opacity-0 cursor-pointer z-10"
-                                title="Seleziona data"
-                            />
-                        </div>
-                    </div>
-                </div>
+              <label className="text-xs font-semibold text-gray-500 dark:text-gray-400 mb-2 block">Stato</label>
+              <div className="grid grid-cols-2 gap-2">
+                {Object.keys(BranchStatus).map((statusKey) => {
+                  const status = statusKey as BranchStatus;
+                  const config = STATUS_CONFIG[status];
+                  const isActive = branch.status === status;
+                  return (
+                    <button
+                      key={status}
+                      onClick={() => updateBranch(branch.id, { status })}
+                      className={`
+                        flex items-center justify-center gap-2 px-3 py-2 rounded-md text-sm font-medium border transition-all
+                        ${isActive 
+                          ? `${config.color} border-current ring-1 ring-current` 
+                          : 'border-gray-200 dark:border-slate-700 text-gray-500 dark:text-gray-400 hover:bg-gray-50 dark:hover:bg-slate-800'}
+                      `}
+                    >
+                      {config.icon}
+                      {config.label}
+                    </button>
+                  );
+                })}
+              </div>
             </div>
-
-            {/* End Date */}
-            <div>
-                <label className="text-[10px] font-medium text-gray-400 dark:text-gray-500 mb-1 flex items-center gap-1">
-                    <StopCircle className="w-3 h-3" />
-                    Data Chiusura
-                </label>
-                <div className="relative group">
-                    <input 
-                        type="date"
-                        value={branch.endDate || ''}
-                        onChange={(e) => updateBranch(branch.id, { endDate: e.target.value })}
-                        className="w-full text-xs bg-white dark:bg-slate-800 border border-gray-200 dark:border-slate-600 rounded p-1.5 pr-14 text-slate-700 dark:text-slate-200 focus:ring-1 focus:ring-indigo-500 outline-none [&::-webkit-calendar-picker-indicator]:hidden"
-                    />
-                     <div className="absolute right-1 top-1/2 -translate-y-1/2 flex items-center gap-1">
-                        {branch.endDate && (
-                            <button 
-                                type="button"
-                                onClick={(e) => {
-                                    e.stopPropagation();
-                                    updateBranch(branch.id, { endDate: '' });
-                                }}
-                                className="p-1 text-gray-300 hover:text-red-500 transition-colors"
-                                title="Rimuovi data"
-                            >
-                                <X className="w-3 h-3" />
-                            </button>
-                        )}
-                         <div className="relative p-1 text-gray-400 hover:text-indigo-600 dark:hover:text-indigo-400 transition-colors">
-                            <Calendar className="w-3.5 h-3.5" />
-                            <input 
-                                type="date"
-                                value={branch.endDate || ''}
-                                onChange={(e) => updateBranch(branch.id, { endDate: e.target.value })}
-                                className="absolute inset-0 w-full h-full opacity-0 cursor-pointer z-10"
-                                title="Seleziona data"
-                            />
-                        </div>
-                    </div>
-                </div>
-            </div>
-        </div>
-
-        {/* Status Selector */}
-        <div>
-          <label className="text-xs font-semibold text-gray-500 dark:text-gray-400 mb-2 block">Stato</label>
-          <div className="grid grid-cols-2 gap-2">
-            {Object.keys(BranchStatus).map((statusKey) => {
-              const status = statusKey as BranchStatus;
-              const config = STATUS_CONFIG[status];
-              const isActive = branch.status === status;
-              return (
-                <button
-                  key={status}
-                  onClick={() => updateBranch(branch.id, { status })}
-                  className={`
-                    flex items-center justify-center gap-2 px-3 py-2 rounded-md text-sm font-medium border transition-all
-                    ${isActive 
-                      ? `${config.color} border-current ring-1 ring-current` 
-                      : 'border-gray-200 dark:border-slate-700 text-gray-500 dark:text-gray-400 hover:bg-gray-50 dark:hover:bg-slate-800'}
-                  `}
-                >
-                  {config.icon}
-                  {config.label}
-                </button>
-              );
-            })}
-          </div>
-        </div>
+        )}
 
         {/* Parent Branches (Multiple) */}
         {branch.id !== state.rootBranchId && (

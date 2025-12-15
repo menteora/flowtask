@@ -15,6 +15,7 @@ export const INITIAL_STATE: ProjectState = {
       title: 'Inizio Progetto',
       description: 'Punto di partenza del flusso',
       status: BranchStatus.PLANNED,
+      isLabel: true, // Default to Label for root
       tasks: [],
       childrenIds: [],
       parentIds: [],
