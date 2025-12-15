@@ -103,6 +103,9 @@ export const ProjectProvider: React.FC<{ children: React.ReactNode }> = ({ child
   
   // Auto-save Status
   const [autoSaveStatus, setAutoSaveStatus] = useState<'idle' | 'saving' | 'saved' | 'error'>('idle');
+  
+  // Flag to prevent auto-save loops when loading data from cloud
+  const isRemoteUpdate = useRef(false);
 
   // Supabase State
   const [supabaseConfig, setSupabaseState] = useState<{ url: string; key: string }>({
@@ -644,7 +647,7 @@ export const ProjectProvider: React.FC<{ children: React.ReactNode }> = ({ child
         const newTasks: Task[] = lines.map((line, index) => {
             const existingTask = currentTasksMap.get(line);
             if (existingTask) {
-                return Object.assign({}, existingTask, { position: index });
+                return { ...existingTask, position: index };
             }
             return {
                 id: generateId(),
@@ -937,12 +940,20 @@ export const ProjectProvider: React.FC<{ children: React.ReactNode }> = ({ child
         rootBranchId: rootBranchId
     };
 
+    // Flag that this update comes from the cloud to prevent auto-save loop
+    isRemoteUpdate.current = true;
     loadProject(newState, activate, removeDefault);
   }, [supabaseClient, loadProject]);
 
-  // AUTO SYNC EFFECT
+  // AUTO SYNC EFFECT (Local -> Cloud)
   useEffect(() => {
     if (!session || isOfflineMode || !supabaseClient) return;
+    
+    // Prevent auto-save if the change came from a cloud download
+    if (isRemoteUpdate.current) {
+        isRemoteUpdate.current = false;
+        return;
+    }
     
     if (autoSaveStatus !== 'saving') setAutoSaveStatus('saving');
 
@@ -958,6 +969,34 @@ export const ProjectProvider: React.FC<{ children: React.ReactNode }> = ({ child
     return () => clearTimeout(timeoutId);
   }, [activeProject, session, isOfflineMode, supabaseClient, uploadProjectToSupabase]);
 
+  // INITIAL LOAD & REALTIME SYNC (Cloud -> Local)
+  useEffect(() => {
+      if (!session || !supabaseClient || isOfflineMode || !activeProjectId || activeProjectId === 'default-project') return;
+
+      const sync = async () => {
+           try {
+              // Check existence first to prevent errors on local-only projects
+              const { count } = await supabaseClient.from('flowtask_projects').select('id', { count: 'exact', head: true }).eq('id', activeProjectId);
+              if (count && count > 0) {
+                   await downloadProjectFromSupabase(activeProjectId, false, false);
+              }
+           } catch(e) { console.error("Sync error", e); }
+      };
+
+      // 1. Initial Fetch on Mount/Switch
+      sync();
+
+      // 2. Realtime Subscription (Branches only to avoid high-frequency text overwrite loops)
+      const channel = supabaseClient.channel(`project-sync-${activeProjectId}`)
+          .on('postgres_changes', { event: '*', schema: 'public', table: 'flowtask_branches', filter: `project_id=eq.${activeProjectId}` }, () => {
+              console.log("Remote change detected, syncing...");
+              sync();
+          })
+          .subscribe();
+
+      return () => { supabaseClient.removeChannel(channel); };
+  }, [activeProjectId, session, isOfflineMode, supabaseClient]); // Removed downloadProjectFromSupabase from deps to prevent re-subscriptions
+
   // Handle Offline Mode toggles
   useEffect(() => {
     if (isOfflineMode) {
@@ -965,7 +1004,7 @@ export const ProjectProvider: React.FC<{ children: React.ReactNode }> = ({ child
     }
   }, [isOfflineMode]);
 
-  // Initial Load (Sync)
+  // Initial Load (Auth State)
   useEffect(() => {
     let isMounted = true;
     if (!loadingAuth) {
