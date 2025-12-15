@@ -2,23 +2,23 @@ import React, { useState, useEffect, useRef } from 'react';
 import { useProject } from '../../context/ProjectContext';
 import { BranchStatus, Branch } from '../../types';
 import { STATUS_CONFIG } from '../../constants';
-import { X, Save, Trash2, CheckSquare, Square, ArrowUpLeft, Calendar, Plus, Link as LinkIcon, Unlink, PlayCircle, StopCircle, Clock, AlertTriangle, Archive, RefreshCw, Bold, Italic, List, Eye, Edit2, FileText, ChevronUp, ChevronDown, DownloadCloud, Loader2, GitMerge, ArrowRightLeft } from 'lucide-react';
+import { X, Save, Trash2, CheckSquare, Square, ArrowUpLeft, Calendar, Plus, Link as LinkIcon, Unlink, PlayCircle, StopCircle, Clock, AlertTriangle, Archive, RefreshCw, Bold, Italic, List, Eye, Edit2, FileText, ChevronUp, ChevronDown, DownloadCloud, Loader2, GitMerge, ArrowRight, UploadCloud } from 'lucide-react';
 import Avatar from '../ui/Avatar';
 
 const BranchDetails: React.FC = () => {
-  const { state, selectedBranchId, selectBranch, updateBranch, deleteBranch, linkBranch, unlinkBranch, addTask, updateTask, deleteTask, moveTask, bulkUpdateTasks, toggleBranchArchive, listProjectsFromSupabase, getProjectBranchesFromSupabase, moveRemoteBranchToCurrentProject, session, showNotification } = useProject();
+  const { state, selectedBranchId, selectBranch, updateBranch, deleteBranch, linkBranch, unlinkBranch, addTask, updateTask, deleteTask, moveTask, bulkUpdateTasks, toggleBranchArchive, listProjectsFromSupabase, getProjectBranchesFromSupabase, moveLocalBranchToRemoteProject, session, showNotification } = useProject();
   const [isBulkMode, setIsBulkMode] = useState(false);
   const [bulkText, setBulkText] = useState('');
   const [newTaskTitle, setNewTaskTitle] = useState('');
   const [showDeleteConfirm, setShowDeleteConfirm] = useState(false);
   const [parentToAdd, setParentToAdd] = useState('');
   
-  // Import Mode State
-  const [isImportMode, setIsImportMode] = useState(false);
+  // Move Mode State (Push to Remote)
+  const [isMoveMode, setIsMoveMode] = useState(false);
   const [remoteProjects, setRemoteProjects] = useState<any[]>([]);
   const [selectedRemoteProj, setSelectedRemoteProj] = useState('');
   const [remoteBranches, setRemoteBranches] = useState<Branch[]>([]);
-  const [selectedRemoteBranch, setSelectedRemoteBranch] = useState('');
+  const [selectedRemoteParent, setSelectedRemoteParent] = useState('');
   const [isLoadingRemote, setIsLoadingRemote] = useState(false);
 
   // Description State
@@ -34,9 +34,9 @@ const BranchDetails: React.FC = () => {
       setParentToAdd('');
       // Reset formatting mode on branch switch
       setIsPreviewMode(false); 
-      setIsImportMode(false);
+      setIsMoveMode(false);
       setSelectedRemoteProj('');
-      setSelectedRemoteBranch('');
+      setSelectedRemoteParent('');
     }
   }, [branch?.tasks, branch?.id]); 
 
@@ -47,16 +47,16 @@ const BranchDetails: React.FC = () => {
       }
   }, [branch?.id]);
 
-  // Load remote projects when import mode is toggled
+  // Load remote projects when move mode is toggled
   useEffect(() => {
-      if (isImportMode && session && remoteProjects.length === 0) {
+      if (isMoveMode && session && remoteProjects.length === 0) {
           setIsLoadingRemote(true);
           listProjectsFromSupabase()
             .then(projs => setRemoteProjects(projs.filter(p => p.id !== state.id)))
             .catch(err => console.error(err))
             .finally(() => setIsLoadingRemote(false));
       }
-  }, [isImportMode, session]);
+  }, [isMoveMode, session]);
 
   // Load branches when remote project is selected
   useEffect(() => {
@@ -105,19 +105,25 @@ const BranchDetails: React.FC = () => {
   };
 
   const handleAddParent = () => {
-      if (isImportMode) {
-          if (selectedRemoteProj && selectedRemoteBranch) {
-              if (!confirm("ATTENZIONE: Stai per SPOSTARE il ramo selezionato da un altro progetto a questo. Il ramo verrà RIMOSSO dal progetto originale. Continuare?")) {
+      if (isMoveMode) {
+          if (selectedRemoteProj && selectedRemoteParent) {
+              if (branch.id === state.rootBranchId) {
+                  showNotification("Non puoi spostare il ramo principale del progetto.", 'error');
+                  return;
+              }
+              if (!confirm("ATTENZIONE: Stai per SPOSTARE questo ramo (e i suoi figli) in un altro progetto. Verrà RIMOSSO da questo progetto. Continuare?")) {
                   return;
               }
 
               setIsLoadingRemote(true);
-              moveRemoteBranchToCurrentProject(selectedRemoteProj, selectedRemoteBranch, branch.id)
+              // Push logic: Move THIS branch TO the selected remote parent
+              moveLocalBranchToRemoteProject(branch.id, selectedRemoteProj, selectedRemoteParent)
                 .then(() => {
-                    setIsImportMode(false);
+                    setIsMoveMode(false);
                     setSelectedRemoteProj('');
-                    setSelectedRemoteBranch('');
+                    setSelectedRemoteParent('');
                     showNotification("Ramo spostato con successo!", 'success');
+                    selectBranch(null); // Deselect since it's gone
                 })
                 .catch(err => showNotification("Errore nello spostamento: " + err.message, 'error'))
                 .finally(() => setIsLoadingRemote(false));
@@ -575,38 +581,38 @@ const BranchDetails: React.FC = () => {
                  <div className="bg-gray-50 dark:bg-slate-800/50 p-2 rounded-lg border border-gray-100 dark:border-slate-700">
                      <div className="flex gap-2 text-[10px] font-medium text-slate-500 mb-2">
                          <button 
-                            className={`flex-1 py-1 rounded ${!isImportMode ? 'bg-white dark:bg-slate-700 text-indigo-600 shadow-sm' : 'hover:bg-gray-200 dark:hover:bg-slate-700'}`}
-                            onClick={() => setIsImportMode(false)}
+                            className={`flex-1 py-1 rounded ${!isMoveMode ? 'bg-white dark:bg-slate-700 text-indigo-600 shadow-sm' : 'hover:bg-gray-200 dark:hover:bg-slate-700'}`}
+                            onClick={() => setIsMoveMode(false)}
                          >
                              Progetto Corrente
                          </button>
                          <button 
-                            className={`flex-1 py-1 rounded flex items-center justify-center gap-1 ${isImportMode ? 'bg-white dark:bg-slate-700 text-indigo-600 shadow-sm' : 'hover:bg-gray-200 dark:hover:bg-slate-700'}`}
+                            className={`flex-1 py-1 rounded flex items-center justify-center gap-1 ${isMoveMode ? 'bg-white dark:bg-slate-700 text-indigo-600 shadow-sm' : 'hover:bg-gray-200 dark:hover:bg-slate-700'}`}
                             onClick={() => {
                                 if(!session) {
                                     showNotification("Devi essere connesso per gestire progetti esterni.", 'error');
                                     return;
                                 }
-                                setIsImportMode(true);
+                                setIsMoveMode(true);
                             }}
                          >
-                             <DownloadCloud className="w-3 h-3" />
-                             Sposta da Altro
+                             <UploadCloud className="w-3 h-3" />
+                             Sposta in Altro
                          </button>
                      </div>
 
                      <div className="flex gap-2">
-                        {isImportMode ? (
+                        {isMoveMode ? (
                             <div className="flex-1 space-y-2">
                                 <select
                                     value={selectedRemoteProj}
                                     onChange={(e) => {
                                         setSelectedRemoteProj(e.target.value);
-                                        setSelectedRemoteBranch('');
+                                        setSelectedRemoteParent('');
                                     }}
                                     className="w-full text-sm bg-white dark:bg-slate-800 border border-gray-200 dark:border-slate-700 rounded-md p-2 text-slate-700 dark:text-slate-200 focus:ring-2 focus:ring-indigo-500 outline-none"
                                 >
-                                    <option value="">Seleziona Progetto...</option>
+                                    <option value="">Seleziona Progetto Target...</option>
                                     {remoteProjects.map(p => (
                                         <option key={p.id} value={p.id}>{p.name}</option>
                                     ))}
@@ -614,11 +620,11 @@ const BranchDetails: React.FC = () => {
                                 
                                 {selectedRemoteProj && (
                                      <select
-                                        value={selectedRemoteBranch}
-                                        onChange={(e) => setSelectedRemoteBranch(e.target.value)}
+                                        value={selectedRemoteParent}
+                                        onChange={(e) => setSelectedRemoteParent(e.target.value)}
                                         className="w-full text-sm bg-white dark:bg-slate-800 border border-gray-200 dark:border-slate-700 rounded-md p-2 text-slate-700 dark:text-slate-200 focus:ring-2 focus:ring-indigo-500 outline-none"
                                     >
-                                        <option value="">Seleziona Ramo...</option>
+                                        <option value="">Seleziona Ramo Padre...</option>
                                         {remoteBranches.map(b => (
                                             <option key={b.id} value={b.id}>{b.title}</option>
                                         ))}
@@ -642,20 +648,20 @@ const BranchDetails: React.FC = () => {
                         
                         <button 
                             onClick={handleAddParent}
-                            disabled={isLoadingRemote || (isImportMode ? (!selectedRemoteBranch) : (!parentToAdd))}
-                            className={`p-2 bg-indigo-600 text-white rounded-md disabled:opacity-50 disabled:cursor-not-allowed hover:bg-indigo-700 flex items-center justify-center w-10 shrink-0 self-start ${isImportMode ? 'bg-amber-600 hover:bg-amber-700' : ''}`}
-                            title={isImportMode ? "Sposta Qui" : "Collega"}
+                            disabled={isLoadingRemote || (isMoveMode ? (!selectedRemoteParent) : (!parentToAdd))}
+                            className={`p-2 bg-indigo-600 text-white rounded-md disabled:opacity-50 disabled:cursor-not-allowed hover:bg-indigo-700 flex items-center justify-center w-10 shrink-0 self-start ${isMoveMode ? 'bg-amber-600 hover:bg-amber-700' : ''}`}
+                            title={isMoveMode ? "Sposta Qui" : "Collega"}
                         >
-                            {isLoadingRemote ? <Loader2 className="w-4 h-4 animate-spin" /> : isImportMode ? <ArrowRightLeft className="w-4 h-4" /> : <Plus className="w-4 h-4" />}
+                            {isLoadingRemote ? <Loader2 className="w-4 h-4 animate-spin" /> : isMoveMode ? <ArrowRight className="w-4 h-4" /> : <Plus className="w-4 h-4" />}
                         </button>
                      </div>
-                     {isImportMode && selectedRemoteBranch && (
+                     {isMoveMode && selectedRemoteParent && (
                          <div className="mt-2 p-2 bg-amber-50 dark:bg-amber-900/20 rounded border border-amber-100 dark:border-amber-800">
                              <p className="text-[10px] text-amber-700 dark:text-amber-400 font-bold flex items-center gap-1">
                                  <AlertTriangle className="w-3 h-3" /> Attenzione: Azione Distruttiva
                              </p>
                              <p className="text-[10px] text-amber-600 dark:text-amber-500 mt-1 leading-tight">
-                                 Il ramo selezionato (e i suoi sotto-rami) verranno <strong>rimossi</strong> dal progetto originale e spostati qui come figli di questo nodo.
+                                 Questo ramo verrà <strong>rimosso</strong> dal progetto attuale e spostato nel progetto selezionato.
                              </p>
                          </div>
                      )}
