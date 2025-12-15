@@ -528,15 +528,15 @@ export const ProjectProvider: React.FC<{ children: React.ReactNode }> = ({ child
               const temp = newChildren[currentIndex - 1];
               newChildren[currentIndex - 1] = newChildren[currentIndex];
               newChildren[currentIndex] = temp;
-              // Use spread syntax for immutability
-              newBranches[parentId] = { ...parent, childrenIds: newChildren };
+              // Use Object.assign instead of spread to avoid TS error "Spread types may only be created from object types"
+              newBranches[parentId] = Object.assign({}, parent, { childrenIds: newChildren });
               changed = true;
           } else if (direction === 'right' && currentIndex < newChildren.length - 1) {
               const temp = newChildren[currentIndex + 1];
               newChildren[currentIndex + 1] = newChildren[currentIndex];
               newChildren[currentIndex] = temp;
-              // Use spread syntax for immutability
-              newBranches[parentId] = { ...parent, childrenIds: newChildren };
+              // Use Object.assign instead of spread to avoid TS error "Spread types may only be created from object types"
+              newBranches[parentId] = Object.assign({}, parent, { childrenIds: newChildren });
               changed = true;
           }
       });
@@ -910,6 +910,10 @@ export const ProjectProvider: React.FC<{ children: React.ReactNode }> = ({ child
     
     branchesData.forEach((b: any) => {
         const branchTasks = (tasksByBranch[b.id] || []).sort((a, b) => (a.position ?? 0) - (b.position ?? 0));
+        
+        // Handle potential nulls from DB arrays
+        const parentIds = b.parent_ids || [];
+        const childrenIds = b.children_ids || [];
 
         branches[b.id] = {
             id: b.id,
@@ -920,8 +924,8 @@ export const ProjectProvider: React.FC<{ children: React.ReactNode }> = ({ child
             endDate: b.end_date,
             dueDate: b.due_date,
             tasks: branchTasks,
-            childrenIds: b.children_ids || [], 
-            parentIds: b.parent_ids || [],
+            childrenIds: childrenIds, 
+            parentIds: parentIds,
             archived: b.archived,
             position: b.position
         };
@@ -929,9 +933,22 @@ export const ProjectProvider: React.FC<{ children: React.ReactNode }> = ({ child
     
     // Fallback logic if root_branch_id was missing or invalid
     if ((!rootBranchId || !branches[rootBranchId]) && branchesData.length > 0) {
-        const root = branchesData.find((b: any) => b.parent_ids.length === 0);
-        if (root) rootBranchId = root.id;
-        else rootBranchId = branchesData[0].id; // Fallback to first available if strictly cyclic or weird data
+        // Try to find a branch with no parents (candidate for root)
+        const orphans = branchesData.filter((b: any) => (b.parent_ids || []).length === 0);
+        
+        if (orphans.length > 0) {
+             // Prefer an orphan that HAS children (likely the true root) over a standalone box
+             const trueRootCandidate = orphans.find((b: any) => (b.children_ids || []).length > 0);
+             if (trueRootCandidate) {
+                 rootBranchId = trueRootCandidate.id;
+             } else {
+                 // If all orphans are single boxes, just pick the first one
+                 rootBranchId = orphans[0].id;
+             }
+        } else {
+             // If everything has a parent (cyclic?), fallback to first in list
+             rootBranchId = branchesData[0].id;
+        }
     }
 
     const newState: ProjectState = {
