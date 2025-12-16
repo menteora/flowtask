@@ -19,6 +19,7 @@ export interface Person {
 export interface Task {
   id: string;
   title: string;
+  description?: string; // Added markdown description
   assigneeId?: string;
   dueDate?: string; // ISO Date string YYYY-MM-DD
   completed: boolean;

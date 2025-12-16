@@ -1,3 +1,4 @@
+
 import React, { useState, useEffect, useRef } from 'react';
 import { useProject } from '../../context/ProjectContext';
 import { Database, Save, Download, Key, ShieldCheck, Check, Copy, Terminal, Cloud, CloudRain, Loader2, AlertCircle, Upload, User, LogOut, LogIn, WifiOff, X, Share2, Link, Trash2, MessageSquare } from 'lucide-react';
@@ -53,9 +54,11 @@ create table public.flowtask_tasks (
   id text primary key,
   branch_id text references public.flowtask_branches(id) on delete cascade,
   title text not null,
+  description text, -- Added Markdown description
   assignee_id text references public.flowtask_people(id) on delete set null,
   due_date text,
   completed boolean default false,
+  completed_at text, -- Added completion timestamp
   position integer default 0
 );
 

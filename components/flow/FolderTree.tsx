@@ -154,9 +154,14 @@ const FolderNode: React.FC<FolderNodeProps> = ({ branchId, depth = 0, index, sib
                     className="flex-1 min-w-0 flex items-center justify-between cursor-pointer"
                     onClick={() => setEditingTask({ branchId, taskId: task.id })}
                 >
-                    <span className={`text-sm truncate hover:text-indigo-600 dark:hover:text-indigo-400 ${task.completed ? 'line-through text-gray-400' : 'text-slate-600 dark:text-slate-300'}`}>
-                        {task.title}
-                    </span>
+                    <div className="flex items-center gap-2 min-w-0">
+                        <span className={`text-sm truncate hover:text-indigo-600 dark:hover:text-indigo-400 ${task.completed ? 'line-through text-gray-400' : 'text-slate-600 dark:text-slate-300'}`}>
+                            {task.title}
+                        </span>
+                        {task.description && task.description.trim() !== '' && (
+                            <FileText className="w-3 h-3 text-slate-400 shrink-0" />
+                        )}
+                    </div>
                     {task.assigneeId && (
                         <Avatar person={state.people.find(p => p.id === task.assigneeId)!} size="sm" className="w-5 h-5 text-[10px] mr-2" />
                     )}
@@ -202,13 +207,12 @@ const FolderNode: React.FC<FolderNodeProps> = ({ branchId, depth = 0, index, sib
 };
 
 const FolderTree: React.FC = () => {
-  const { state } = useProject();
-  
-  return (
-    <div className="w-full h-full overflow-y-auto bg-white dark:bg-slate-900 pb-20" id="export-tree-content">
-      <FolderNode branchId={state.rootBranchId} />
-    </div>
-  );
+    const { state } = useProject();
+    return (
+        <div className="w-full h-full overflow-y-auto bg-slate-50 dark:bg-slate-950 pb-24">
+            <FolderNode branchId={state.rootBranchId} />
+        </div>
+    );
 };
 
 export default FolderTree;
