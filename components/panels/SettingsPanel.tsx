@@ -1,6 +1,6 @@
 import React, { useState, useEffect, useRef } from 'react';
 import { useProject } from '../../context/ProjectContext';
-import { Database, Save, Download, Key, ShieldCheck, Check, Copy, Terminal, Cloud, CloudRain, Loader2, AlertCircle, Upload, User, LogOut, LogIn, WifiOff, X, Share2, Link, Trash2 } from 'lucide-react';
+import { Database, Save, Download, Key, ShieldCheck, Check, Copy, Terminal, Cloud, CloudRain, Loader2, AlertCircle, Upload, User, LogOut, LogIn, WifiOff, X, Share2, Link, Trash2, MessageSquare } from 'lucide-react';
 
 const SQL_SCHEMA = `
 -- CANCELLAZIONE VECCHIE TABELLE (Se esistono)
@@ -120,7 +120,9 @@ const SettingsPanel: React.FC = () => {
     logout,
     disableOfflineMode,
     isOfflineMode,
-    showNotification
+    showNotification,
+    messageTemplates,
+    updateMessageTemplates
   } = useProject();
 
   const [url, setUrl] = useState(supabaseConfig.url);
@@ -372,6 +374,39 @@ const SettingsPanel: React.FC = () => {
       </div>
 
       <div className="grid gap-6 md:gap-8 w-full min-w-0 max-w-full">
+
+          {/* Message Settings Section */}
+          <div className="bg-white dark:bg-slate-800 rounded-xl shadow-sm border border-slate-200 dark:border-slate-700 p-4 md:p-6 w-full min-w-0 max-w-full">
+              <h3 className="text-lg font-semibold text-slate-800 dark:text-white mb-4 flex items-center gap-2">
+                  <MessageSquare className="w-5 h-5 text-indigo-500" />
+                  Preferenze Messaggi
+              </h3>
+              <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
+                  <div>
+                      <label className="block text-sm font-medium text-slate-700 dark:text-slate-300 mb-1">
+                          Formula di Apertura
+                          <span className="text-xs font-normal text-slate-500 ml-2">(Usa {'{name}'} per il nome)</span>
+                      </label>
+                      <textarea 
+                        rows={3}
+                        value={messageTemplates.opening}
+                        onChange={(e) => updateMessageTemplates({ opening: e.target.value })}
+                        className="w-full p-2.5 rounded-lg border border-slate-300 dark:border-slate-700 bg-white dark:bg-slate-900 focus:ring-2 focus:ring-indigo-500 outline-none text-sm transition-all resize-none"
+                      />
+                  </div>
+                  <div>
+                      <label className="block text-sm font-medium text-slate-700 dark:text-slate-300 mb-1">
+                          Formula di Chiusura
+                      </label>
+                      <textarea 
+                        rows={3}
+                        value={messageTemplates.closing}
+                        onChange={(e) => updateMessageTemplates({ closing: e.target.value })}
+                        className="w-full p-2.5 rounded-lg border border-slate-300 dark:border-slate-700 bg-white dark:bg-slate-900 focus:ring-2 focus:ring-indigo-500 outline-none text-sm transition-all resize-none"
+                      />
+                  </div>
+              </div>
+          </div>
           
           {/* Credentials Section */}
           <div className="bg-white dark:bg-slate-800 rounded-xl shadow-sm border border-slate-200 dark:border-slate-700 p-4 md:p-6 w-full min-w-0 max-w-full">
