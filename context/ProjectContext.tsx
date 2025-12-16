@@ -11,6 +11,11 @@ interface Notification {
     type: 'success' | 'error';
 }
 
+interface MessageTemplates {
+    opening: string;
+    closing: string;
+}
+
 interface ProjectContextType {
   state: ProjectState; // The CURRENTLY ACTIVE project state
   
@@ -57,6 +62,10 @@ interface ProjectContextType {
   toggleBranchArchive: (branchId: string) => void;
   showArchived: boolean;
   toggleShowArchived: () => void;
+
+  // App Settings (Message Templates)
+  messageTemplates: MessageTemplates;
+  updateMessageTemplates: (templates: Partial<MessageTemplates>) => void;
 
   // Supabase & Auth
   supabaseConfig: { url: string; key: string };
@@ -151,6 +160,31 @@ export const ProjectProvider: React.FC<{ children: React.ReactNode }> = ({ child
   const [editingTask, setEditingTask] = useState<{ branchId: string, taskId: string } | null>(null);
   const [remindingUserId, setRemindingUserId] = useState<string | null>(null);
   const [showArchived, setShowArchived] = useState(false);
+
+  // Message Templates State
+  const [messageTemplates, setMessageTemplates] = useState<MessageTemplates>(() => {
+    if (typeof window !== 'undefined') {
+        const saved = localStorage.getItem('flowtask_message_templates');
+        if (saved) {
+            try {
+                return JSON.parse(saved);
+            } catch (e) {}
+        }
+    }
+    return {
+        opening: "Ciao {name}, ecco un riepilogo delle attività in sospeso:",
+        closing: "Fammi sapere quando riesci a completarle. Grazie!"
+    };
+  });
+
+  // Save templates effect
+  useEffect(() => {
+    localStorage.setItem('flowtask_message_templates', JSON.stringify(messageTemplates));
+  }, [messageTemplates]);
+
+  const updateMessageTemplates = useCallback((templates: Partial<MessageTemplates>) => {
+      setMessageTemplates(prev => ({ ...prev, ...templates }));
+  }, []);
   
   // Notification State
   const [notification, setNotification] = useState<Notification | null>(null);
@@ -1306,6 +1340,9 @@ export const ProjectProvider: React.FC<{ children: React.ReactNode }> = ({ child
       toggleBranchArchive,
       showArchived,
       toggleShowArchived,
+
+      messageTemplates,
+      updateMessageTemplates,
 
       supabaseConfig,
       supabaseClient,

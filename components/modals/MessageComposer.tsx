@@ -4,7 +4,7 @@ import { X, Send, Mail, Smartphone, Copy } from 'lucide-react';
 import { Branch } from '../../types';
 
 const MessageComposer: React.FC = () => {
-  const { remindingUserId, setRemindingUserId, state } = useProject();
+  const { remindingUserId, setRemindingUserId, state, messageTemplates } = useProject();
   const [isVisible, setIsVisible] = useState(false);
   
   const [preamble, setPreamble] = useState('');
@@ -32,16 +32,21 @@ const MessageComposer: React.FC = () => {
   useEffect(() => {
     if (remindingUserId) {
       setIsVisible(true);
-      // Set defaults
-      setPreamble(`Ciao ${person?.name.split(' ')[0] || ''}, ecco un riepilogo delle attività in sospeso:`);
-      setPostamble('Fammi sapere quando riesci a completarle. Grazie!');
+      
+      // Replace placeholders
+      const firstName = person?.name.split(' ')[0] || '';
+      const initialPreamble = messageTemplates.opening.replace('{name}', firstName);
+      
+      setPreamble(initialPreamble);
+      setPostamble(messageTemplates.closing);
+      
       // Auto-select method based on available data
       if (person?.phone && !person.email) setMethod('whatsapp');
       else if (!person?.phone && person?.email) setMethod('email');
     } else {
       setTimeout(() => setIsVisible(false), 200);
     }
-  }, [remindingUserId, person]);
+  }, [remindingUserId, person, messageTemplates]);
 
   if (!remindingUserId && !isVisible) return null;
   if (!person) return null;
