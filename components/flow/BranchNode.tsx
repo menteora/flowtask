@@ -1,8 +1,8 @@
-import React, { useState } from 'react';
+import React, { useState, useEffect } from 'react';
 import { Branch, BranchStatus } from '../../types';
 import { STATUS_CONFIG } from '../../constants';
 import { useProject } from '../../context/ProjectContext';
-import { MoreHorizontal, Plus, Calendar, Archive, ChevronLeft, ChevronRight, FileText, ChevronDown, ChevronUp, GitMerge, Globe, Tag } from 'lucide-react';
+import { MoreHorizontal, Plus, Calendar, Archive, ChevronLeft, ChevronRight, FileText, ChevronDown, ChevronUp, GitMerge, Globe, Tag, Eye, EyeOff } from 'lucide-react';
 import Avatar from '../ui/Avatar';
 
 interface BranchNodeProps {
@@ -14,6 +14,18 @@ const BranchNode: React.FC<BranchNodeProps> = ({ branchId }) => {
   const [isTasksExpanded, setIsTasksExpanded] = useState(false);
   const branch = state.branches[branchId];
   
+  // Logic for compacted view on inactive branches
+  const isInactive = branch?.status === BranchStatus.CLOSED || branch?.status === BranchStatus.CANCELLED;
+  const [isDetailsOpen, setIsDetailsOpen] = useState(!isInactive);
+
+  // Sync details visibility when status changes
+  useEffect(() => {
+      if (branch) {
+        const inactive = branch.status === BranchStatus.CLOSED || branch.status === BranchStatus.CANCELLED;
+        setIsDetailsOpen(!inactive);
+      }
+  }, [branch?.status]);
+
   if (!branch) return null;
 
   const isSelected = selectedBranchId === branchId;
@@ -244,90 +256,119 @@ const BranchNode: React.FC<BranchNodeProps> = ({ branchId }) => {
 
         </div>
 
-        {/* Body */}
-        <div className="p-3 space-y-2">
-            {/* Progress Bar */}
-            <div className="flex items-center justify-between text-xs text-slate-500 dark:text-slate-400 mb-1">
-                <span>Tasks</span>
-                <span>{completedTasks}/{totalTasks}</span>
-            </div>
-            <div className="h-1.5 w-full bg-slate-100 dark:bg-slate-700 rounded-full overflow-hidden">
-                <div 
-                    className={`h-full transition-all duration-500 ${branch.archived ? 'bg-slate-400' : 'bg-indigo-500'}`}
-                    style={{ width: `${progress}%` }}
-                />
-            </div>
-            
-            {/* Quick Task Preview (Top 3 or All) */}
-            <ul className="mt-2 space-y-2">
-                {visibleTasks.map(task => {
-                    const assignee = task.assigneeId ? state.people.find(p => p.id === task.assigneeId) : null;
-                    return (
-                        <li key={task.id} className="text-xs flex items-center justify-between gap-2">
-                            <div className="flex items-center gap-1.5 flex-1 min-w-0">
-                                <div className={`flex-shrink-0 w-1.5 h-1.5 rounded-full ${task.completed ? 'bg-green-400' : 'bg-slate-300 dark:bg-slate-600'}`} />
-                                <span className={`truncate text-slate-600 dark:text-slate-300 ${task.completed ? 'line-through opacity-60' : ''}`}>
-                                    {task.title}
-                                </span>
-                                {task.description && task.description.trim() !== '' && (
-                                    <button 
-                                        onClick={(e) => {
-                                            e.stopPropagation();
-                                            setReadingTask({ branchId: branchId, taskId: task.id });
-                                        }}
-                                        className="text-slate-400 hover:text-indigo-500 p-0.5 rounded shrink-0"
-                                        title="Leggi descrizione task"
-                                    >
-                                        <FileText className="w-3 h-3" />
-                                    </button>
-                                )}
-                            </div>
+        {/* Body (Collapsible based on status) */}
+        {isDetailsOpen ? (
+            <div className="p-3 space-y-2 animate-in fade-in zoom-in-95 duration-200">
+                {/* Progress Bar */}
+                <div className="flex items-center justify-between text-xs text-slate-500 dark:text-slate-400 mb-1">
+                    <span>Tasks</span>
+                    <span>{completedTasks}/{totalTasks}</span>
+                </div>
+                <div className="h-1.5 w-full bg-slate-100 dark:bg-slate-700 rounded-full overflow-hidden">
+                    <div 
+                        className={`h-full transition-all duration-500 ${branch.archived ? 'bg-slate-400' : 'bg-indigo-500'}`}
+                        style={{ width: `${progress}%` }}
+                    />
+                </div>
+                
+                {/* Quick Task Preview (Top 3 or All) */}
+                <ul className="mt-2 space-y-2">
+                    {visibleTasks.map(task => {
+                        const assignee = task.assigneeId ? state.people.find(p => p.id === task.assigneeId) : null;
+                        return (
+                            <li key={task.id} className="text-xs flex items-center justify-between gap-2">
+                                <div className="flex items-center gap-1.5 flex-1 min-w-0">
+                                    <div className={`flex-shrink-0 w-1.5 h-1.5 rounded-full ${task.completed ? 'bg-green-400' : 'bg-slate-300 dark:bg-slate-600'}`} />
+                                    <span className={`truncate text-slate-600 dark:text-slate-300 ${task.completed ? 'line-through opacity-60' : ''}`}>
+                                        {task.title}
+                                    </span>
+                                    {task.description && task.description.trim() !== '' && (
+                                        <button 
+                                            onClick={(e) => {
+                                                e.stopPropagation();
+                                                setReadingTask({ branchId: branchId, taskId: task.id });
+                                            }}
+                                            className="text-slate-400 hover:text-indigo-500 p-0.5 rounded shrink-0"
+                                            title="Leggi descrizione task"
+                                        >
+                                            <FileText className="w-3 h-3" />
+                                        </button>
+                                    )}
+                                </div>
 
-                            <div className="flex items-center gap-2 flex-shrink-0">
-                                {task.dueDate && (
-                                    <div className="flex items-center gap-0.5 text-[10px] text-slate-400" title={`Scadenza: ${task.dueDate}`}>
-                                        <Calendar className="w-3 h-3" />
-                                        <span>{new Date(task.dueDate).getDate()}/{new Date(task.dueDate).getMonth() + 1}</span>
-                                    </div>
-                                )}
-                                {assignee && (
-                                    <Avatar person={assignee} size="sm" className="w-4 h-4 text-[8px]" />
-                                )}
-                            </div>
+                                <div className="flex items-center gap-2 flex-shrink-0">
+                                    {task.dueDate && (
+                                        <div className="flex items-center gap-0.5 text-[10px] text-slate-400" title={`Scadenza: ${task.dueDate}`}>
+                                            <Calendar className="w-3 h-3" />
+                                            <span>{new Date(task.dueDate).getDate()}/{new Date(task.dueDate).getMonth() + 1}</span>
+                                        </div>
+                                    )}
+                                    {assignee && (
+                                        <Avatar person={assignee} size="sm" className="w-4 h-4 text-[8px]" />
+                                    )}
+                                </div>
+                            </li>
+                        );
+                    })}
+                    
+                    {/* Expand / Collapse Controls */}
+                    {!isTasksExpanded && hiddenTasksCount > 0 && (
+                        <li 
+                            className="text-[10px] text-indigo-500 hover:text-indigo-600 dark:text-indigo-400 dark:hover:text-indigo-300 pl-3 cursor-pointer underline decoration-dotted"
+                            onClick={(e) => {
+                                e.stopPropagation();
+                                setIsTasksExpanded(true);
+                            }}
+                        >
+                            + altri {hiddenTasksCount} tasks
                         </li>
-                    );
-                })}
-                
-                {/* Expand / Collapse Controls */}
-                {!isTasksExpanded && hiddenTasksCount > 0 && (
-                    <li 
-                        className="text-[10px] text-indigo-500 hover:text-indigo-600 dark:text-indigo-400 dark:hover:text-indigo-300 pl-3 cursor-pointer underline decoration-dotted"
-                        onClick={(e) => {
-                            e.stopPropagation();
-                            setIsTasksExpanded(true);
-                        }}
-                    >
-                        + altri {hiddenTasksCount} tasks
-                    </li>
-                )}
-                
-                {isTasksExpanded && branch.tasks.length > 3 && (
-                    <li 
-                        className="text-[10px] text-slate-400 hover:text-slate-500 pl-3 cursor-pointer underline decoration-dotted"
-                        onClick={(e) => {
-                            e.stopPropagation();
-                            setIsTasksExpanded(false);
-                        }}
-                    >
-                        Mostra meno
-                    </li>
-                )}
+                    )}
+                    
+                    {isTasksExpanded && branch.tasks.length > 3 && (
+                        <li 
+                            className="text-[10px] text-slate-400 hover:text-slate-500 pl-3 cursor-pointer underline decoration-dotted"
+                            onClick={(e) => {
+                                e.stopPropagation();
+                                setIsTasksExpanded(false);
+                            }}
+                        >
+                            Mostra meno
+                        </li>
+                    )}
 
-                {branch.tasks.length === 0 && (
-                    <li className="text-[10px] text-slate-400 italic pl-1">Nessun task</li>
+                    {branch.tasks.length === 0 && (
+                        <li className="text-[10px] text-slate-400 italic pl-1">Nessun task</li>
+                    )}
+                </ul>
+
+                {/* Hide toggle for inactive branches */}
+                {isInactive && (
+                    <button 
+                        onClick={(e) => {
+                            e.stopPropagation();
+                            setIsDetailsOpen(false);
+                        }}
+                        className="w-full text-[10px] text-center text-slate-400 hover:text-slate-600 dark:hover:text-slate-300 py-1 hover:bg-slate-50 dark:hover:bg-slate-700/50 rounded flex items-center justify-center gap-1 transition-colors"
+                    >
+                        <EyeOff className="w-3 h-3" /> Nascondi dettagli
+                    </button>
                 )}
-            </ul>
-        </div>
+            </div>
+        ) : (
+            // Compact View for Inactive Branches
+            <div 
+                className="p-2 flex items-center justify-center cursor-pointer hover:bg-slate-50 dark:hover:bg-slate-700/30 transition-colors"
+                onClick={(e) => {
+                    e.stopPropagation();
+                    setIsDetailsOpen(true);
+                }}
+            >
+                <div className="text-[10px] text-slate-400 flex items-center gap-1.5 font-medium">
+                    <Eye className="w-3 h-3" />
+                    Mostra {branch.tasks.length} task & progressi...
+                </div>
+            </div>
+        )}
 
         {/* Collapse Toggle Button (Bottom of card) */}
         {hasChildren && (
