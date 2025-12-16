@@ -1,4 +1,4 @@
-import React, { useMemo, useState, useEffect } from 'react';
+import React, { useMemo, useState, useRef } from 'react';
 import { useProject } from '../../context/ProjectContext';
 import { Branch, BranchStatus } from '../../types';
 import { STATUS_CONFIG } from '../../constants';
@@ -11,6 +11,10 @@ const SIDEBAR_WIDTH = 200;
 const TimelinePanel: React.FC = () => {
   const { state, selectBranch, showArchived } = useProject();
   const [zoomLevel, setZoomLevel] = useState(1); // 1 = Normal, 0.5 = Zoom Out
+
+  // Refs for synchronized scrolling
+  const sidebarRef = useRef<HTMLDivElement>(null);
+  const timelineRef = useRef<HTMLDivElement>(null);
 
   // 1. Prepare Data
   const { branches, minDate, maxDate, totalDays } = useMemo(() => {
@@ -69,6 +73,13 @@ const TimelinePanel: React.FC = () => {
         totalDays: days 
     };
   }, [state.branches, state.rootBranchId, showArchived]);
+
+  // Handle Scroll Sync
+  const handleScroll = (e: React.UIEvent<HTMLDivElement>) => {
+      if (sidebarRef.current) {
+          sidebarRef.current.scrollTop = e.currentTarget.scrollTop;
+      }
+  };
 
   // Helper to get X position for a date
   const getXForDate = (dateStr: string | undefined) => {
@@ -143,7 +154,7 @@ const TimelinePanel: React.FC = () => {
     <div className="flex flex-col h-full bg-slate-50 dark:bg-slate-950 overflow-hidden relative">
       
       {/* Toolbar */}
-      <div className="flex items-center justify-between px-4 py-3 border-b border-slate-200 dark:border-slate-800 bg-white dark:bg-slate-900 z-20">
+      <div className="flex items-center justify-between px-4 py-3 border-b border-slate-200 dark:border-slate-800 bg-white dark:bg-slate-900 z-20 flex-shrink-0">
           <div className="flex items-center gap-2">
               <GanttChart className="w-5 h-5 text-indigo-600" />
               <h2 className="text-lg font-bold text-slate-800 dark:text-white">Timeline di Progetto</h2>
@@ -171,16 +182,17 @@ const TimelinePanel: React.FC = () => {
           
           {/* Sidebar (Branch List) */}
           <div 
-            className="flex-shrink-0 bg-white dark:bg-slate-900 border-r border-slate-200 dark:border-slate-800 z-10 shadow-lg"
+            ref={sidebarRef}
+            className="flex-shrink-0 bg-white dark:bg-slate-900 border-r border-slate-200 dark:border-slate-800 z-10 shadow-lg overflow-hidden"
             style={{ width: SIDEBAR_WIDTH, marginTop: HEADER_HEIGHT }}
           >
-              <div className="overflow-y-hidden h-full"> {/* Synced via main scroll container logic usually, but here distinct for simplicity */}
+              <div className="flex flex-col"> 
                   {branches.map(branch => {
                       const statusConfig = STATUS_CONFIG[branch.status];
                       return (
                           <div 
                             key={branch.id} 
-                            className="h-12 border-b border-slate-100 dark:border-slate-800 flex items-center px-3 gap-2 hover:bg-slate-50 dark:hover:bg-slate-800 cursor-pointer"
+                            className="h-12 border-b border-slate-100 dark:border-slate-800 flex items-center px-3 gap-2 hover:bg-slate-50 dark:hover:bg-slate-800 cursor-pointer flex-shrink-0"
                             onClick={() => selectBranch(branch.id)}
                           >
                               <div className={`w-2 h-2 rounded-full ${statusConfig.color.replace('bg-', 'bg-opacity-100 bg-').split(' ')[1] || 'bg-slate-400'}`}></div>
@@ -195,15 +207,19 @@ const TimelinePanel: React.FC = () => {
               </div>
           </div>
 
-          {/* Chart Area */}
-          <div className="flex-1 overflow-auto relative custom-scrollbar bg-slate-50 dark:bg-slate-950">
+          {/* Chart Area (With Vertical Scrollbar) */}
+          <div 
+            ref={timelineRef}
+            onScroll={handleScroll}
+            className="flex-1 overflow-auto relative custom-scrollbar bg-slate-50 dark:bg-slate-950"
+          >
               <div 
                 className="relative min-w-full"
                 style={{ width: (totalDays + 1) * (CELL_WIDTH * zoomLevel), height: (branches.length * 48) + HEADER_HEIGHT }}
               >
                   {/* Time Header (Sticky Top) */}
                   <div 
-                    className="sticky top-0 left-0 right-0 bg-white dark:bg-slate-900 border-b border-slate-200 dark:border-slate-800 z-10 shadow-sm"
+                    className="sticky top-0 left-0 right-0 bg-white dark:bg-slate-900 border-b border-slate-200 dark:border-slate-800 z-30 shadow-sm"
                     style={{ height: HEADER_HEIGHT }}
                   >
                       {renderTimeHeader()}
@@ -223,7 +239,7 @@ const TimelinePanel: React.FC = () => {
                   {/* Today Line */}
                   {todayX !== null && (
                       <div 
-                        className="absolute top-0 bottom-0 border-l-2 border-red-400/50 z-0 pointer-events-none"
+                        className="absolute top-0 bottom-0 border-l-2 border-red-400/50 z-10 pointer-events-none"
                         style={{ left: todayX, marginTop: HEADER_HEIGHT }}
                       >
                           <div className="absolute -top-6 -left-1.5 w-3 h-3 bg-red-500 rounded-full"></div>
@@ -231,7 +247,7 @@ const TimelinePanel: React.FC = () => {
                   )}
 
                   {/* Bars Container */}
-                  <div className="relative z-0">
+                  <div className="relative z-20">
                       {branches.map(branch => {
                           const dims = getBarDimensions(branch);
                           // Calculate Due Date X Position
@@ -280,7 +296,7 @@ const TimelinePanel: React.FC = () => {
                                   {/* Deadline Marker */}
                                   {dueX !== null && (
                                     <div 
-                                        className="absolute top-4 w-2.5 h-2.5 bg-red-500 rotate-45 border border-white dark:border-slate-900 shadow-sm z-20 hover:scale-125 transition-transform group/marker cursor-help"
+                                        className="absolute top-4 w-2.5 h-2.5 bg-red-500 rotate-45 border border-white dark:border-slate-900 shadow-sm z-30 hover:scale-125 transition-transform group/marker cursor-help"
                                         style={{ left: dueX + (CELL_WIDTH * zoomLevel) - 5 }} // Position at end of day cell
                                     >
                                         <div className="hidden group-hover/marker:block absolute bottom-full left-1/2 -translate-x-1/2 mb-2 px-2 py-1 bg-slate-800 text-white text-[10px] rounded whitespace-nowrap z-50 shadow-lg pointer-events-none">
