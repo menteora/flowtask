@@ -2,7 +2,7 @@ import React, { useState, useEffect, useRef } from 'react';
 import { useProject } from '../../context/ProjectContext';
 import { BranchStatus, Branch } from '../../types';
 import { STATUS_CONFIG } from '../../constants';
-import { X, Save, Trash2, CheckSquare, Square, ArrowUpLeft, Calendar, Plus, Link as LinkIcon, Unlink, PlayCircle, StopCircle, Clock, AlertTriangle, Archive, RefreshCw, Bold, Italic, List, Eye, Edit2, FileText, ChevronUp, ChevronDown, DownloadCloud, Loader2, GitMerge, ArrowRight, UploadCloud, Tag } from 'lucide-react';
+import { X, Save, Trash2, CheckSquare, Square, ArrowUpLeft, Calendar, Plus, Link as LinkIcon, Unlink, PlayCircle, StopCircle, Clock, AlertTriangle, Archive, RefreshCw, Bold, Italic, List, Eye, Edit2, FileText, ChevronUp, ChevronDown, DownloadCloud, Loader2, GitMerge, ArrowRight, UploadCloud, Tag, Mail, Check } from 'lucide-react';
 import Avatar from '../ui/Avatar';
 
 const BranchDetails: React.FC = () => {
@@ -25,6 +25,11 @@ const BranchDetails: React.FC = () => {
   const [isPreviewMode, setIsPreviewMode] = useState(false);
   const textareaRef = useRef<HTMLTextAreaElement>(null);
 
+  // Editor Popup State
+  const [popupMode, setPopupMode] = useState<'link' | 'email' | null>(null);
+  const [popupInput, setPopupInput] = useState('');
+  const popupInputRef = useRef<HTMLInputElement>(null);
+
   const branch = selectedBranchId ? state.branches[selectedBranchId] : null;
 
   useEffect(() => {
@@ -37,6 +42,8 @@ const BranchDetails: React.FC = () => {
       setIsMoveMode(false);
       setSelectedRemoteProj('');
       setSelectedRemoteParent('');
+      setPopupMode(null);
+      setPopupInput('');
     }
   }, [branch?.tasks, branch?.id]); 
 
@@ -46,6 +53,12 @@ const BranchDetails: React.FC = () => {
           setNewTaskTitle('');
       }
   }, [branch?.id]);
+
+  useEffect(() => {
+      if (popupMode && popupInputRef.current) {
+          popupInputRef.current.focus();
+      }
+  }, [popupMode]);
 
   // Load remote projects when move mode is toggled
   useEffect(() => {
@@ -137,32 +150,74 @@ const BranchDetails: React.FC = () => {
   };
 
   // --- Markdown Logic ---
-  const insertFormat = (prefix: string, suffix: string) => {
+  const insertFormat = (prefix: string, suffix: string, selectionOverride?: string) => {
     if (!textareaRef.current) return;
     const start = textareaRef.current.selectionStart;
     const end = textareaRef.current.selectionEnd;
     const text = branch.description || '';
+    
     const before = text.substring(0, start);
-    const selection = text.substring(start, end);
+    const selection = selectionOverride !== undefined ? selectionOverride : text.substring(start, end);
     const after = text.substring(end);
 
-    const newText = before + prefix + (selection || 'text') + suffix + after;
+    const newText = before + prefix + selection + suffix + after;
     updateBranch(branch.id, { description: newText });
 
-    // Restore focus and cursor (approximate)
+    // Restore focus and cursor
     setTimeout(() => {
         if (textareaRef.current) {
             textareaRef.current.focus();
-            const newCursorPos = start + prefix.length + (selection.length || 4);
-            textareaRef.current.setSelectionRange(newCursorPos, newCursorPos);
+            if (selectionOverride !== undefined && prefix === '[' && suffix.includes('](')) {
+                // Special case for Links: Select the description part
+                const descStart = start + 1;
+                const descEnd = start + 1 + selection.length;
+                textareaRef.current.setSelectionRange(descStart, descEnd);
+            } else {
+                 const newCursorPos = start + prefix.length + selection.length + suffix.length;
+                 textareaRef.current.setSelectionRange(newCursorPos, newCursorPos);
+            }
         }
     }, 0);
+  };
+  
+  const handleToolbarAction = (action: string) => {
+      if (action === 'link') {
+          setPopupMode('link');
+          setPopupInput('');
+      } else if (action === 'email') {
+          setPopupMode('email');
+          setPopupInput('');
+      } else if (action === 'bold') {
+          insertFormat('**', '**');
+      } else if (action === 'italic') {
+          insertFormat('*', '*');
+      } else if (action === 'list') {
+          insertFormat('\n- ', '');
+      }
+  };
+
+  const applyPopupValue = () => {
+      if (popupMode === 'link') {
+          // Standard Link: [link description](URL)
+          const url = popupInput.trim() || 'url';
+          // Using insertFormat with special suffix to enable auto-selection of "link description"
+          // We pass "link description" as the selection to be wrapped
+          insertFormat('[', `](${url})`, 'link');
+      } else if (popupMode === 'email') {
+          // Email Link: [📨 Subject](https://mail.google.com/...)
+          const subject = popupInput.trim() || 'Oggetto';
+          const encodedSubject = encodeURIComponent(subject);
+          const mailUrl = `https://mail.google.com/mail/u/0/#search/subject%3A%22${encodedSubject}%22`;
+          insertFormat(`[📨 ${subject}](${mailUrl})`, '', '');
+      }
+      setPopupMode(null);
+      setPopupInput('');
   };
 
   const renderMarkdown = (text: string) => {
       if (!text) return <p className="text-gray-400 italic text-sm">Nessuna descrizione.</p>;
       
-      // Simple regex-based parser (Client-side only, use caution in production with user input)
+      // Simple regex-based parser
       let html = text
         .replace(/&/g, '&amp;').replace(/</g, '&lt;').replace(/>/g, '&gt;') // Basic sanitize
         .replace(/\*\*(.*?)\*\*/g, '<strong>$1</strong>') // Bold
@@ -253,22 +308,50 @@ const BranchDetails: React.FC = () => {
                     {renderMarkdown(branch.description || '')}
                 </div>
             ) : (
-                <div className="border border-slate-200 dark:border-slate-700 rounded-lg overflow-hidden transition-all focus-within:ring-2 focus-within:ring-indigo-500/50 focus-within:border-indigo-500">
+                <div className="border border-slate-200 dark:border-slate-700 rounded-lg overflow-hidden transition-all focus-within:ring-2 focus-within:ring-indigo-500/50 focus-within:border-indigo-500 relative">
                     {/* WYSIWYG Toolbar */}
                     <div className="flex items-center gap-1 p-1 bg-slate-50 dark:bg-slate-800 border-b border-slate-200 dark:border-slate-700">
-                        <button onClick={() => insertFormat('**', '**')} className="p-1.5 rounded hover:bg-slate-200 dark:hover:bg-slate-700 text-slate-600 dark:text-slate-300" title="Grassetto">
+                        <button onClick={() => handleToolbarAction('bold')} className="p-1.5 rounded hover:bg-slate-200 dark:hover:bg-slate-700 text-slate-600 dark:text-slate-300" title="Grassetto">
                             <Bold className="w-3.5 h-3.5" />
                         </button>
-                        <button onClick={() => insertFormat('*', '*')} className="p-1.5 rounded hover:bg-slate-200 dark:hover:bg-slate-700 text-slate-600 dark:text-slate-300" title="Corsivo">
+                        <button onClick={() => handleToolbarAction('italic')} className="p-1.5 rounded hover:bg-slate-200 dark:hover:bg-slate-700 text-slate-600 dark:text-slate-300" title="Corsivo">
                             <Italic className="w-3.5 h-3.5" />
                         </button>
-                        <button onClick={() => insertFormat('[', '](url)')} className="p-1.5 rounded hover:bg-slate-200 dark:hover:bg-slate-700 text-slate-600 dark:text-slate-300" title="Link Markdown">
+                        <button onClick={() => handleToolbarAction('link')} className="p-1.5 rounded hover:bg-slate-200 dark:hover:bg-slate-700 text-slate-600 dark:text-slate-300" title="Inserisci Link (URL)">
                             <LinkIcon className="w-3.5 h-3.5" />
                         </button>
-                        <button onClick={() => insertFormat('\n- ', '')} className="p-1.5 rounded hover:bg-slate-200 dark:hover:bg-slate-700 text-slate-600 dark:text-slate-300" title="Lista">
+                        <button onClick={() => handleToolbarAction('email')} className="p-1.5 rounded hover:bg-slate-200 dark:hover:bg-slate-700 text-slate-600 dark:text-slate-300" title="Link a Gmail Search">
+                            <Mail className="w-3.5 h-3.5" />
+                        </button>
+                        <button onClick={() => handleToolbarAction('list')} className="p-1.5 rounded hover:bg-slate-200 dark:hover:bg-slate-700 text-slate-600 dark:text-slate-300" title="Lista">
                             <List className="w-3.5 h-3.5" />
                         </button>
                     </div>
+
+                    {/* Editor Popup (Absolute over textarea) */}
+                    {popupMode && (
+                        <div className="absolute top-[40px] left-2 right-2 z-10 bg-white dark:bg-slate-900 border border-indigo-200 dark:border-indigo-800 shadow-lg rounded-lg p-2 flex gap-2 animate-in fade-in zoom-in-95 duration-150">
+                            <input 
+                                ref={popupInputRef}
+                                type="text"
+                                value={popupInput}
+                                onChange={(e) => setPopupInput(e.target.value)}
+                                onKeyDown={(e) => {
+                                    if(e.key === 'Enter') applyPopupValue();
+                                    if(e.key === 'Escape') { setPopupMode(null); setPopupInput(''); }
+                                }}
+                                placeholder={popupMode === 'link' ? "Inserisci URL (es. https://...)" : "Inserisci Oggetto Mail..."}
+                                className="flex-1 text-sm border border-slate-300 dark:border-slate-600 rounded px-2 py-1 bg-slate-50 dark:bg-slate-800 focus:outline-none focus:ring-1 focus:ring-indigo-500"
+                            />
+                            <button onClick={applyPopupValue} className="p-1 bg-indigo-600 text-white rounded hover:bg-indigo-700">
+                                <Check className="w-4 h-4" />
+                            </button>
+                            <button onClick={() => { setPopupMode(null); setPopupInput(''); }} className="p-1 bg-slate-200 dark:bg-slate-700 text-slate-600 dark:text-slate-300 rounded hover:bg-slate-300 dark:hover:bg-slate-600">
+                                <X className="w-4 h-4" />
+                            </button>
+                        </div>
+                    )}
+
                     <textarea 
                         ref={textareaRef}
                         value={branch.description || ''}
