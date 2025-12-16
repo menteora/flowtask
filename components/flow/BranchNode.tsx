@@ -10,7 +10,7 @@ interface BranchNodeProps {
 }
 
 const BranchNode: React.FC<BranchNodeProps> = ({ branchId }) => {
-  const { state, addBranch, selectBranch, selectedBranchId, moveBranch, setReadingDescriptionId, updateBranch } = useProject();
+  const { state, addBranch, selectBranch, selectedBranchId, moveBranch, setReadingDescriptionId, updateBranch, setReadingTask } = useProject();
   const [isTasksExpanded, setIsTasksExpanded] = useState(false);
   const branch = state.branches[branchId];
   
@@ -270,7 +270,16 @@ const BranchNode: React.FC<BranchNodeProps> = ({ branchId }) => {
                                     {task.title}
                                 </span>
                                 {task.description && task.description.trim() !== '' && (
-                                    <FileText className="w-3 h-3 text-slate-400 shrink-0" />
+                                    <button 
+                                        onClick={(e) => {
+                                            e.stopPropagation();
+                                            setReadingTask({ branchId: branchId, taskId: task.id });
+                                        }}
+                                        className="text-slate-400 hover:text-indigo-500 p-0.5 rounded shrink-0"
+                                        title="Leggi descrizione task"
+                                    >
+                                        <FileText className="w-3 h-3" />
+                                    </button>
                                 )}
                             </div>
 

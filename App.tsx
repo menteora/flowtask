@@ -1,3 +1,4 @@
+
 import React, { useState, useRef, useEffect } from 'react';
 import { useTheme } from './context/ThemeContext';
 import { useProject } from './context/ProjectContext';
@@ -11,6 +12,7 @@ import UserTasksPanel from './components/panels/UserTasksPanel';
 import SettingsPanel from './components/panels/SettingsPanel';
 import LoginScreen from './components/auth/LoginScreen';
 import DescriptionReader from './components/modals/DescriptionReader';
+import TaskDescriptionReader from './components/modals/TaskDescriptionReader';
 import TaskEditorModal from './components/modals/TaskEditorModal';
 import MessageComposer from './components/modals/MessageComposer';
 import { toPng } from 'html-to-image';
@@ -172,6 +174,7 @@ const App: React.FC = () => {
       />
       
       <DescriptionReader />
+      <TaskDescriptionReader />
       <TaskEditorModal />
       <MessageComposer />
 

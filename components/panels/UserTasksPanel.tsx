@@ -25,7 +25,7 @@ interface UserTaskGroup {
 }
 
 const UserTasksPanel: React.FC = () => {
-  const { state, updateTask, selectBranch, showArchived, setEditingTask, setRemindingUserId } = useProject();
+  const { state, updateTask, selectBranch, showArchived, setEditingTask, setRemindingUserId, setReadingTask } = useProject();
 
   const taskGroups = useMemo(() => {
     const groups: Record<string, UserTaskGroup> = {};
@@ -193,7 +193,16 @@ const UserTasksPanel: React.FC = () => {
                                                         {task.title}
                                                     </p>
                                                     {task.description && task.description.trim() !== '' && (
-                                                        <FileText className="w-3.5 h-3.5 text-slate-400 shrink-0" />
+                                                        <button
+                                                            onClick={(e) => {
+                                                                e.stopPropagation();
+                                                                setReadingTask({ branchId: task.branchId, taskId: task.id });
+                                                            }}
+                                                            className="text-slate-400 hover:text-indigo-500 p-0.5"
+                                                            title="Leggi Descrizione"
+                                                        >
+                                                            <FileText className="w-3.5 h-3.5" />
+                                                        </button>
                                                     )}
                                                 </div>
                                                 

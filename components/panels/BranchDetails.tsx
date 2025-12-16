@@ -6,7 +6,7 @@ import { X, Save, Trash2, CheckSquare, Square, ArrowUpLeft, Calendar, Plus, Link
 import Avatar from '../ui/Avatar';
 
 const BranchDetails: React.FC = () => {
-  const { state, selectedBranchId, selectBranch, updateBranch, deleteBranch, linkBranch, unlinkBranch, addTask, updateTask, deleteTask, moveTask, bulkUpdateTasks, toggleBranchArchive, listProjectsFromSupabase, getProjectBranchesFromSupabase, moveLocalBranchToRemoteProject, session, showNotification, setEditingTask } = useProject();
+  const { state, selectedBranchId, selectBranch, updateBranch, deleteBranch, linkBranch, unlinkBranch, addTask, updateTask, deleteTask, moveTask, bulkUpdateTasks, toggleBranchArchive, listProjectsFromSupabase, getProjectBranchesFromSupabase, moveLocalBranchToRemoteProject, session, showNotification, setEditingTask, setReadingTask } = useProject();
   const [isBulkMode, setIsBulkMode] = useState(false);
   const [bulkText, setBulkText] = useState('');
   const [newTaskTitle, setNewTaskTitle] = useState('');
@@ -430,9 +430,16 @@ const BranchDetails: React.FC = () => {
                                                 </p>
                                                 {/* Description Icon Indicator */}
                                                 {task.description && task.description.trim() !== '' && (
-                                                    <span className="text-slate-400" title="Contiene descrizione">
+                                                    <button 
+                                                        onClick={(e) => {
+                                                            e.stopPropagation();
+                                                            setReadingTask({ branchId: branch.id, taskId: task.id });
+                                                        }}
+                                                        className="text-slate-400 hover:text-indigo-500 transition-colors p-0.5 rounded"
+                                                        title="Leggi descrizione"
+                                                    >
                                                         <FileText className="w-3 h-3" />
-                                                    </span>
+                                                    </button>
                                                 )}
                                                 <button 
                                                     onClick={() => setEditingTask({ branchId: branch.id, taskId: task.id })}

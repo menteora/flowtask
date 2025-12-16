@@ -12,7 +12,7 @@ interface FolderNodeProps {
 }
 
 const FolderNode: React.FC<FolderNodeProps> = ({ branchId, depth = 0, index, siblingsCount }) => {
-  const { state, selectBranch, selectedBranchId, addBranch, updateTask, moveTask, moveBranch, showArchived, setEditingTask } = useProject();
+  const { state, selectBranch, selectedBranchId, addBranch, updateTask, moveTask, moveBranch, showArchived, setEditingTask, setReadingTask } = useProject();
   const branch = state.branches[branchId];
   const [isOpen, setIsOpen] = useState(true);
 
@@ -138,9 +138,6 @@ const FolderNode: React.FC<FolderNodeProps> = ({ branchId, depth = 0, index, sib
                 className="flex items-center gap-3 py-2 border-b border-gray-50 dark:border-slate-800/50 bg-gray-50/50 dark:bg-slate-900/50 pr-2 group"
                 style={{ paddingLeft: `${(depth + 1) * 1.5 + 2.5}rem` }}
              >
-                <div className="text-gray-400">
-                    <FileText className="w-4 h-4" />
-                </div>
                 <button 
                     onClick={(e) => {
                         e.stopPropagation();
@@ -150,6 +147,8 @@ const FolderNode: React.FC<FolderNodeProps> = ({ branchId, depth = 0, index, sib
                 >
                     {task.completed ? <CheckSquare className="w-4 h-4" /> : <Square className="w-4 h-4" />}
                 </button>
+                
+                {/* Task Title Area */}
                 <div 
                     className="flex-1 min-w-0 flex items-center justify-between cursor-pointer"
                     onClick={() => setEditingTask({ branchId, taskId: task.id })}
@@ -159,7 +158,15 @@ const FolderNode: React.FC<FolderNodeProps> = ({ branchId, depth = 0, index, sib
                             {task.title}
                         </span>
                         {task.description && task.description.trim() !== '' && (
-                            <FileText className="w-3 h-3 text-slate-400 shrink-0" />
+                            <button 
+                                onClick={(e) => {
+                                    e.stopPropagation();
+                                    setReadingTask({ branchId, taskId: task.id });
+                                }}
+                                className="text-slate-400 hover:text-indigo-500 shrink-0 p-0.5"
+                            >
+                                <FileText className="w-3 h-3" />
+                            </button>
                         )}
                     </div>
                     {task.assigneeId && (
