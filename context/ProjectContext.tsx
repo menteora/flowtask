@@ -49,9 +49,13 @@ interface ProjectContextType {
   selectedBranchId: string | null;
   selectBranch: (id: string | null) => void;
   
-  // Reading Mode State
+  // Reading Mode State (Branch)
   readingDescriptionId: string | null;
   setReadingDescriptionId: (id: string | null) => void;
+
+  // Reading Mode State (Task)
+  readingTask: { branchId: string, taskId: string } | null;
+  setReadingTask: (data: { branchId: string, taskId: string } | null) => void;
 
   // Task Editing State (Global Modal)
   editingTask: { branchId: string, taskId: string } | null;
@@ -159,6 +163,7 @@ export const ProjectProvider: React.FC<{ children: React.ReactNode }> = ({ child
 
   const [selectedBranchId, setSelectedBranchId] = useState<string | null>(null);
   const [readingDescriptionId, setReadingDescriptionId] = useState<string | null>(null);
+  const [readingTask, setReadingTask] = useState<{ branchId: string, taskId: string } | null>(null);
   const [editingTask, setEditingTask] = useState<{ branchId: string, taskId: string } | null>(null);
   const [remindingUserId, setRemindingUserId] = useState<string | null>(null);
   const [showArchived, setShowArchived] = useState(false);
@@ -1388,6 +1393,8 @@ export const ProjectProvider: React.FC<{ children: React.ReactNode }> = ({ child
       selectBranch: setSelectedBranchId,
       readingDescriptionId,
       setReadingDescriptionId,
+      readingTask,
+      setReadingTask,
       editingTask,
       setEditingTask,
       remindingUserId,
