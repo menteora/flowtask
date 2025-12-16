@@ -6,7 +6,7 @@ import { X, Save, Trash2, CheckSquare, Square, ArrowUpLeft, Calendar, Plus, Link
 import Avatar from '../ui/Avatar';
 
 const BranchDetails: React.FC = () => {
-  const { state, selectedBranchId, selectBranch, updateBranch, deleteBranch, linkBranch, unlinkBranch, addTask, updateTask, deleteTask, moveTask, bulkUpdateTasks, toggleBranchArchive, listProjectsFromSupabase, getProjectBranchesFromSupabase, moveLocalBranchToRemoteProject, session, showNotification } = useProject();
+  const { state, selectedBranchId, selectBranch, updateBranch, deleteBranch, linkBranch, unlinkBranch, addTask, updateTask, deleteTask, moveTask, bulkUpdateTasks, toggleBranchArchive, listProjectsFromSupabase, getProjectBranchesFromSupabase, moveLocalBranchToRemoteProject, session, showNotification, setEditingTask } = useProject();
   const [isBulkMode, setIsBulkMode] = useState(false);
   const [bulkText, setBulkText] = useState('');
   const [newTaskTitle, setNewTaskTitle] = useState('');
@@ -420,9 +420,22 @@ const BranchDetails: React.FC = () => {
                                         </button>
                                         
                                         <div className="flex-1 min-w-0 space-y-2">
-                                            <p className={`text-sm ${task.completed ? 'line-through text-gray-400' : 'text-gray-800 dark:text-gray-200'}`}>
-                                                {task.title}
-                                            </p>
+                                            <div className="flex items-center gap-2">
+                                                <p 
+                                                    className={`text-sm cursor-pointer hover:text-indigo-600 dark:hover:text-indigo-400 transition-colors ${task.completed ? 'line-through text-gray-400' : 'text-gray-800 dark:text-gray-200'}`}
+                                                    onClick={() => setEditingTask({ branchId: branch.id, taskId: task.id })}
+                                                    title="Clicca per modificare"
+                                                >
+                                                    {task.title}
+                                                </p>
+                                                <button 
+                                                    onClick={() => setEditingTask({ branchId: branch.id, taskId: task.id })}
+                                                    className="opacity-0 group-hover:opacity-100 p-1 text-slate-400 hover:text-indigo-500 rounded transition-opacity"
+                                                    title="Modifica Task"
+                                                >
+                                                    <Edit2 className="w-3 h-3" />
+                                                </button>
+                                            </div>
                                             
                                             <div className="flex flex-wrap items-center gap-2">
                                                 {/* Assignee Selector */}
