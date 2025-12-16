@@ -1,4 +1,4 @@
-import React from 'react';
+import React, { useState } from 'react';
 import { Branch, BranchStatus } from '../../types';
 import { STATUS_CONFIG } from '../../constants';
 import { useProject } from '../../context/ProjectContext';
@@ -11,6 +11,7 @@ interface BranchNodeProps {
 
 const BranchNode: React.FC<BranchNodeProps> = ({ branchId }) => {
   const { state, addBranch, selectBranch, selectedBranchId, moveBranch, setReadingDescriptionId, updateBranch } = useProject();
+  const [isTasksExpanded, setIsTasksExpanded] = useState(false);
   const branch = state.branches[branchId];
   
   if (!branch) return null;
@@ -41,6 +42,10 @@ const BranchNode: React.FC<BranchNodeProps> = ({ branchId }) => {
   // Indicators
   const isMultiParent = branch.parentIds.length > 1;
   const isImported = branch.title.includes('(Importato)');
+
+  // Determine tasks to show
+  const visibleTasks = isTasksExpanded ? branch.tasks : branch.tasks.slice(0, 3);
+  const hiddenTasksCount = branch.tasks.length - 3;
 
   // --- LABEL VIEW ---
   if (branch.isLabel) {
@@ -253,9 +258,9 @@ const BranchNode: React.FC<BranchNodeProps> = ({ branchId }) => {
                 />
             </div>
             
-            {/* Quick Task Preview (Top 3) */}
+            {/* Quick Task Preview (Top 3 or All) */}
             <ul className="mt-2 space-y-2">
-                {branch.tasks.slice(0, 3).map(task => {
+                {visibleTasks.map(task => {
                     const assignee = task.assigneeId ? state.people.find(p => p.id === task.assigneeId) : null;
                     return (
                         <li key={task.id} className="text-xs flex items-center justify-between gap-2">
@@ -280,11 +285,32 @@ const BranchNode: React.FC<BranchNodeProps> = ({ branchId }) => {
                         </li>
                     );
                 })}
-                {branch.tasks.length > 3 && (
-                    <li className="text-[10px] text-slate-400 pl-3">
-                        + altri {branch.tasks.length - 3} tasks
+                
+                {/* Expand / Collapse Controls */}
+                {!isTasksExpanded && hiddenTasksCount > 0 && (
+                    <li 
+                        className="text-[10px] text-indigo-500 hover:text-indigo-600 dark:text-indigo-400 dark:hover:text-indigo-300 pl-3 cursor-pointer underline decoration-dotted"
+                        onClick={(e) => {
+                            e.stopPropagation();
+                            setIsTasksExpanded(true);
+                        }}
+                    >
+                        + altri {hiddenTasksCount} tasks
                     </li>
                 )}
+                
+                {isTasksExpanded && branch.tasks.length > 3 && (
+                    <li 
+                        className="text-[10px] text-slate-400 hover:text-slate-500 pl-3 cursor-pointer underline decoration-dotted"
+                        onClick={(e) => {
+                            e.stopPropagation();
+                            setIsTasksExpanded(false);
+                        }}
+                    >
+                        Mostra meno
+                    </li>
+                )}
+
                 {branch.tasks.length === 0 && (
                     <li className="text-[10px] text-slate-400 italic pl-1">Nessun task</li>
                 )}
