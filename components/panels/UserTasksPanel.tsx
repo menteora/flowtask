@@ -1,7 +1,7 @@
 import React, { useMemo } from 'react';
 import { useProject } from '../../context/ProjectContext';
 import { Branch } from '../../types';
-import { CheckSquare, Square, ClipboardList, HelpCircle, ArrowRight, Calendar, Mail, MessageCircle } from 'lucide-react';
+import { CheckSquare, Square, ClipboardList, HelpCircle, ArrowRight, Calendar, Mail, MessageCircle, FileText } from 'lucide-react';
 import Avatar from '../ui/Avatar';
 
 interface UserTaskGroup {
@@ -11,6 +11,7 @@ interface UserTaskGroup {
   tasks: Array<{
     id: string;
     title: string;
+    description?: string; // Added description
     completed: boolean;
     dueDate?: string;
     branchId: string;
@@ -58,6 +59,7 @@ const UserTasksPanel: React.FC = () => {
         groups[assigneeId].tasks.push({
           id: task.id,
           title: task.title,
+          description: task.description, // Map description
           completed: task.completed,
           dueDate: task.dueDate,
           branchId: branch.id,
@@ -182,13 +184,18 @@ const UserTasksPanel: React.FC = () => {
                                             </button>
                                             
                                             <div className="flex-1 min-w-0">
-                                                <p 
-                                                    className={`text-sm font-medium mb-0.5 cursor-pointer hover:underline ${task.completed ? 'line-through text-slate-400' : 'text-slate-700 dark:text-slate-200'}`}
-                                                    onClick={() => setEditingTask({ branchId: task.branchId, taskId: task.id })}
-                                                    title="Modifica Task"
-                                                >
-                                                    {task.title}
-                                                </p>
+                                                <div className="flex items-center gap-2">
+                                                    <p 
+                                                        className={`text-sm font-medium mb-0.5 cursor-pointer hover:underline ${task.completed ? 'line-through text-slate-400' : 'text-slate-700 dark:text-slate-200'}`}
+                                                        onClick={() => setEditingTask({ branchId: task.branchId, taskId: task.id })}
+                                                        title="Modifica Task"
+                                                    >
+                                                        {task.title}
+                                                    </p>
+                                                    {task.description && task.description.trim() !== '' && (
+                                                        <FileText className="w-3.5 h-3.5 text-slate-400 shrink-0" />
+                                                    )}
+                                                </div>
                                                 
                                                 <div className="flex flex-wrap items-center gap-2 text-xs text-slate-500 dark:text-slate-400">
                                                     <span 

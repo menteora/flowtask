@@ -1,7 +1,7 @@
 
-import React, { useEffect, useState } from 'react';
+import React, { useEffect, useState, useRef } from 'react';
 import { useProject } from '../../context/ProjectContext';
-import { X, Calendar, User, Trash2, CheckSquare, Square, Save, ArrowRight } from 'lucide-react';
+import { X, Calendar, User, Trash2, CheckSquare, Square, Save, ArrowRight, Bold, Italic, List, Link as LinkIcon, Mail, Check, Eye, Edit2 } from 'lucide-react';
 import Avatar from '../ui/Avatar';
 import { Branch } from '../../types';
 
@@ -9,10 +9,20 @@ const TaskEditorModal: React.FC = () => {
   const { editingTask, setEditingTask, state, updateTask, deleteTask, moveTaskToBranch } = useProject();
   const [isVisible, setIsVisible] = useState(false);
   const [title, setTitle] = useState('');
+  const [description, setDescription] = useState('');
   const [assigneeId, setAssigneeId] = useState('');
   const [dueDate, setDueDate] = useState('');
   const [completed, setCompleted] = useState(false);
   
+  // Description/Preview Mode
+  const [isPreviewMode, setIsPreviewMode] = useState(false);
+  
+  // Editor Popup State (Copied from BranchDetails logic)
+  const [popupMode, setPopupMode] = useState<'link' | 'email' | null>(null);
+  const [popupInput, setPopupInput] = useState('');
+  const popupInputRef = useRef<HTMLInputElement>(null);
+  const textareaRef = useRef<HTMLTextAreaElement>(null);
+
   // Move to Branch State
   const [targetBranchId, setTargetBranchId] = useState('');
 
@@ -24,10 +34,13 @@ const TaskEditorModal: React.FC = () => {
         
         if (task) {
             setTitle(task.title);
+            setDescription(task.description || '');
             setAssigneeId(task.assigneeId || '');
             setDueDate(task.dueDate || '');
             setCompleted(task.completed);
             setTargetBranchId(''); // Reset selector
+            setIsPreviewMode(false); // Reset preview mode
+            setPopupMode(null);
             setIsVisible(true);
         } else {
             setEditingTask(null);
@@ -36,6 +49,12 @@ const TaskEditorModal: React.FC = () => {
         setTimeout(() => setIsVisible(false), 200);
     }
   }, [editingTask, state.branches]);
+
+  useEffect(() => {
+      if (popupMode && popupInputRef.current) {
+          popupInputRef.current.focus();
+      }
+  }, [popupMode]);
 
   if (!editingTask && !isVisible) return null;
 
@@ -48,6 +67,7 @@ const TaskEditorModal: React.FC = () => {
       
       updateTask(editingTask.branchId, editingTask.taskId, {
           title: title.trim(),
+          description: description,
           assigneeId: assigneeId || undefined,
           dueDate: dueDate || undefined,
           completed
@@ -70,8 +90,81 @@ const TaskEditorModal: React.FC = () => {
   };
 
   const handleKeyDown = (e: React.KeyboardEvent) => {
-      if (e.key === 'Enter') handleSave();
+      // Only close on Enter if focusing on single-line inputs, not description textarea
+      if (e.key === 'Enter' && (e.target as HTMLElement).tagName !== 'TEXTAREA') handleSave();
       if (e.key === 'Escape') handleClose();
+  };
+
+  // --- EDITOR LOGIC ---
+  const insertFormat = (prefix: string, suffix: string, selectionOverride?: string) => {
+    if (!textareaRef.current) return;
+    const start = textareaRef.current.selectionStart;
+    const end = textareaRef.current.selectionEnd;
+    const text = description;
+    
+    const before = text.substring(0, start);
+    const selection = selectionOverride !== undefined ? selectionOverride : text.substring(start, end);
+    const after = text.substring(end);
+
+    const newText = before + prefix + selection + suffix + after;
+    setDescription(newText);
+
+    // Restore focus and cursor
+    setTimeout(() => {
+        if (textareaRef.current) {
+            textareaRef.current.focus();
+             if (selectionOverride !== undefined && prefix === '[' && suffix.includes('](')) {
+                const descStart = start + 1;
+                const descEnd = start + 1 + selection.length;
+                textareaRef.current.setSelectionRange(descStart, descEnd);
+            } else {
+                 const newCursorPos = start + prefix.length + selection.length + suffix.length;
+                 textareaRef.current.setSelectionRange(newCursorPos, newCursorPos);
+            }
+        }
+    }, 0);
+  };
+
+  const handleToolbarAction = (action: string) => {
+      if (action === 'link') {
+          setPopupMode('link');
+          setPopupInput('');
+      } else if (action === 'email') {
+          setPopupMode('email');
+          setPopupInput('');
+      } else if (action === 'bold') {
+          insertFormat('**', '**');
+      } else if (action === 'italic') {
+          insertFormat('*', '*');
+      } else if (action === 'list') {
+          insertFormat('\n- ', '');
+      }
+  };
+
+  const applyPopupValue = () => {
+      if (popupMode === 'link') {
+          const url = popupInput.trim() || 'url';
+          insertFormat('[', `](${url})`, 'link');
+      } else if (popupMode === 'email') {
+          const subject = popupInput.trim() || 'Oggetto';
+          const encodedSubject = encodeURIComponent(subject);
+          const mailUrl = `https://mail.google.com/mail/u/0/#search/subject%3A%22${encodedSubject}%22`;
+          insertFormat(`[📨 ${subject}](${mailUrl})`, '', '');
+      }
+      setPopupMode(null);
+      setPopupInput('');
+  };
+
+  const renderMarkdown = (text: string) => {
+    if (!text) return <p className="text-gray-400 italic text-sm">Nessuna descrizione.</p>;
+    let html = text
+      .replace(/&/g, '&amp;').replace(/</g, '&lt;').replace(/>/g, '&gt;')
+      .replace(/\*\*(.*?)\*\*/g, '<strong>$1</strong>')
+      .replace(/\*(.*?)\*/g, '<em>$1</em>')
+      .replace(/\[(.*?)\]\((.*?)\)/g, '<a href="$2" target="_blank" rel="noopener noreferrer" class="text-indigo-600 dark:text-indigo-400 hover:underline inline-flex items-center gap-0.5">$1</a>')
+      .replace(/^\s*-\s+(.*)$/gm, '<li class="ml-4 list-disc">$1</li>')
+      .replace(/\n/g, '<br />');
+    return <div className="text-sm text-slate-700 dark:text-slate-300 leading-relaxed break-words" dangerouslySetInnerHTML={{ __html: html }} />;
   };
 
   return (
@@ -80,7 +173,7 @@ const TaskEditorModal: React.FC = () => {
         onClick={handleClose}
     >
       <div 
-        className={`bg-white dark:bg-slate-900 w-full max-w-md rounded-xl shadow-2xl border border-gray-200 dark:border-slate-700 flex flex-col transition-transform duration-200 ${editingTask ? 'scale-100 translate-y-0' : 'scale-95 translate-y-4'}`}
+        className={`bg-white dark:bg-slate-900 w-full max-w-lg rounded-xl shadow-2xl border border-gray-200 dark:border-slate-700 flex flex-col transition-transform duration-200 max-h-[90vh] ${editingTask ? 'scale-100 translate-y-0' : 'scale-95 translate-y-4'}`}
         onClick={e => e.stopPropagation()}
       >
         <div className="flex items-center justify-between p-4 border-b border-gray-100 dark:border-slate-800">
@@ -90,7 +183,7 @@ const TaskEditorModal: React.FC = () => {
             </button>
         </div>
 
-        <div className="p-4 space-y-4 overflow-y-auto max-h-[70vh]">
+        <div className="p-4 space-y-4 overflow-y-auto">
             {/* Title & Check */}
             <div className="flex gap-3">
                 <button 
@@ -108,6 +201,65 @@ const TaskEditorModal: React.FC = () => {
                     placeholder="Nome del task..."
                     className="flex-1 text-lg font-medium bg-transparent border-b border-transparent focus:border-indigo-500 outline-none text-slate-900 dark:text-white placeholder:text-slate-400"
                 />
+            </div>
+
+            {/* Description Editor */}
+            <div>
+                <div className="flex items-center justify-between mb-1.5">
+                    <label className="text-xs font-semibold text-slate-500 dark:text-slate-400 uppercase tracking-wider">Descrizione</label>
+                    <button 
+                        onClick={() => setIsPreviewMode(!isPreviewMode)}
+                        className="text-xs text-indigo-600 dark:text-indigo-400 hover:underline flex items-center gap-1"
+                    >
+                        {isPreviewMode ? <Edit2 className="w-3 h-3" /> : <Eye className="w-3 h-3" />}
+                        {isPreviewMode ? 'Modifica' : 'Anteprima'}
+                    </button>
+                </div>
+                
+                {isPreviewMode ? (
+                    <div className="min-h-[100px] p-3 bg-slate-50 dark:bg-slate-800/50 rounded-lg border border-slate-200 dark:border-slate-700">
+                        {renderMarkdown(description)}
+                    </div>
+                ) : (
+                    <div className="border border-slate-200 dark:border-slate-700 rounded-lg overflow-hidden relative focus-within:ring-2 focus-within:ring-indigo-500/50 focus-within:border-indigo-500 transition-all">
+                        {/* Toolbar */}
+                        <div className="flex items-center gap-1 p-1 bg-slate-50 dark:bg-slate-800 border-b border-slate-200 dark:border-slate-700">
+                            <button onClick={() => handleToolbarAction('bold')} className="p-1 rounded hover:bg-slate-200 dark:hover:bg-slate-700 text-slate-600 dark:text-slate-300" title="Grassetto"><Bold className="w-3.5 h-3.5" /></button>
+                            <button onClick={() => handleToolbarAction('italic')} className="p-1 rounded hover:bg-slate-200 dark:hover:bg-slate-700 text-slate-600 dark:text-slate-300" title="Corsivo"><Italic className="w-3.5 h-3.5" /></button>
+                            <button onClick={() => handleToolbarAction('link')} className="p-1 rounded hover:bg-slate-200 dark:hover:bg-slate-700 text-slate-600 dark:text-slate-300" title="Link"><LinkIcon className="w-3.5 h-3.5" /></button>
+                            <button onClick={() => handleToolbarAction('email')} className="p-1 rounded hover:bg-slate-200 dark:hover:bg-slate-700 text-slate-600 dark:text-slate-300" title="Gmail Search"><Mail className="w-3.5 h-3.5" /></button>
+                            <button onClick={() => handleToolbarAction('list')} className="p-1 rounded hover:bg-slate-200 dark:hover:bg-slate-700 text-slate-600 dark:text-slate-300" title="Lista"><List className="w-3.5 h-3.5" /></button>
+                        </div>
+
+                        {/* Editor Popup */}
+                        {popupMode && (
+                            <div className="absolute top-[40px] left-2 right-2 z-10 bg-white dark:bg-slate-900 border border-indigo-200 dark:border-indigo-800 shadow-lg rounded-lg p-2 flex gap-2 animate-in fade-in zoom-in-95 duration-150">
+                                <input 
+                                    ref={popupInputRef}
+                                    type="text"
+                                    value={popupInput}
+                                    onChange={(e) => setPopupInput(e.target.value)}
+                                    onKeyDown={(e) => {
+                                        if(e.key === 'Enter') applyPopupValue();
+                                        if(e.key === 'Escape') { setPopupMode(null); setPopupInput(''); }
+                                    }}
+                                    placeholder={popupMode === 'link' ? "URL..." : "Oggetto..."}
+                                    className="flex-1 text-xs border border-slate-300 dark:border-slate-600 rounded px-2 py-1 bg-slate-50 dark:bg-slate-800 focus:outline-none focus:ring-1 focus:ring-indigo-500"
+                                />
+                                <button onClick={applyPopupValue} className="p-1 bg-indigo-600 text-white rounded hover:bg-indigo-700"><Check className="w-3 h-3" /></button>
+                                <button onClick={() => { setPopupMode(null); setPopupInput(''); }} className="p-1 bg-slate-200 dark:bg-slate-700 text-slate-600 dark:text-slate-300 rounded hover:bg-slate-300 dark:hover:bg-slate-600"><X className="w-3 h-3" /></button>
+                            </div>
+                        )}
+
+                        <textarea
+                            ref={textareaRef}
+                            value={description}
+                            onChange={(e) => setDescription(e.target.value)}
+                            className="w-full h-24 p-2 text-sm bg-white dark:bg-slate-900 text-slate-800 dark:text-slate-200 focus:outline-none resize-y"
+                            placeholder="Descrizione opzionale..."
+                        />
+                    </div>
+                )}
             </div>
 
             {/* Assignee */}

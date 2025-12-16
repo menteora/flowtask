@@ -690,7 +690,8 @@ export const ProjectProvider: React.FC<{ children: React.ReactNode }> = ({ child
         id: generateId(),
         title: title.trim(),
         completed: false,
-        position: branch.tasks.length // Add to end based on length
+        position: branch.tasks.length, // Add to end based on length
+        description: '' // Init empty description
       };
 
       return {
@@ -834,7 +835,8 @@ export const ProjectProvider: React.FC<{ children: React.ReactNode }> = ({ child
                 id: generateId(),
                 title: line,
                 completed: false,
-                position: index
+                position: index,
+                description: ''
             };
         });
 
@@ -1008,6 +1010,7 @@ export const ProjectProvider: React.FC<{ children: React.ReactNode }> = ({ child
         due_date: t.dueDate,
         completed: t.completed,
         completed_at: t.completedAt || null, // Sync completedAt
+        description: t.description || null, // Sync description
         position: index
     })));
 
@@ -1132,6 +1135,7 @@ export const ProjectProvider: React.FC<{ children: React.ReactNode }> = ({ child
             dueDate: t.due_date,
             completed: t.completed,
             completedAt: t.completed_at || undefined, // Map completedAt
+            description: t.description || undefined, // Map description
             position: t.position
         });
     });

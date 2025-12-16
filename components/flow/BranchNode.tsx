@@ -269,6 +269,9 @@ const BranchNode: React.FC<BranchNodeProps> = ({ branchId }) => {
                                 <span className={`truncate text-slate-600 dark:text-slate-300 ${task.completed ? 'line-through opacity-60' : ''}`}>
                                     {task.title}
                                 </span>
+                                {task.description && task.description.trim() !== '' && (
+                                    <FileText className="w-3 h-3 text-slate-400 shrink-0" />
+                                )}
                             </div>
 
                             <div className="flex items-center gap-2 flex-shrink-0">

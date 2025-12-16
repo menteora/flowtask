@@ -2,7 +2,7 @@ import React, { useState, useEffect, useRef } from 'react';
 import { useProject } from '../../context/ProjectContext';
 import { BranchStatus, Branch } from '../../types';
 import { STATUS_CONFIG } from '../../constants';
-import { X, Save, Trash2, CheckSquare, Square, ArrowUpLeft, Calendar, Plus, Link as LinkIcon, Unlink, PlayCircle, StopCircle, Clock, AlertTriangle, Archive, RefreshCw, Bold, Italic, List, Eye, Edit2, FileText, ChevronUp, ChevronDown, DownloadCloud, Loader2, GitMerge, ArrowRight, UploadCloud, Tag, Mail, Check } from 'lucide-react';
+import { X, Save, Trash2, CheckSquare, Square, ArrowUpLeft, Calendar, Plus, Link as LinkIcon, Unlink, PlayCircle, StopCircle, Clock, AlertTriangle, Archive, RefreshCw, Bold, Italic, List, Eye, Edit2, FileText, ChevronUp, ChevronDown, DownloadCloud, Loader2, GitMerge, ArrowRight, UploadCloud, Tag, Mail, Check, AlignLeft } from 'lucide-react';
 import Avatar from '../ui/Avatar';
 
 const BranchDetails: React.FC = () => {
@@ -428,6 +428,12 @@ const BranchDetails: React.FC = () => {
                                                 >
                                                     {task.title}
                                                 </p>
+                                                {/* Description Icon Indicator */}
+                                                {task.description && task.description.trim() !== '' && (
+                                                    <span className="text-slate-400" title="Contiene descrizione">
+                                                        <FileText className="w-3 h-3" />
+                                                    </span>
+                                                )}
                                                 <button 
                                                     onClick={() => setEditingTask({ branchId: branch.id, taskId: task.id })}
                                                     className="opacity-0 group-hover:opacity-100 p-1 text-slate-400 hover:text-indigo-500 rounded transition-opacity"
