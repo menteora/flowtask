@@ -2,7 +2,7 @@
 import React, { useState, useRef, useEffect } from 'react';
 import { useTheme } from './context/ThemeContext';
 import { useProject } from './context/ProjectContext';
-import { Moon, Sun, GitBranch, Layers, Users, Download, Upload, Archive, Camera, Image as ImageIcon, Smartphone, Plus, X, Edit2, Calendar, ClipboardList, Settings, Cloud, Loader2, Check, AlertCircle, ChevronDown, Folder, MoreVertical } from 'lucide-react';
+import { Moon, Sun, GitBranch, Layers, Users, Download, Upload, Archive, Camera, Image as ImageIcon, Smartphone, Plus, X, Edit2, Calendar, ClipboardList, Settings, Cloud, Loader2, Check, AlertCircle, ChevronDown, Folder, MoreVertical, GanttChart } from 'lucide-react';
 import FlowCanvas from './components/flow/FlowCanvas';
 import FolderTree from './components/flow/FolderTree';
 import BranchDetails from './components/panels/BranchDetails';
@@ -10,6 +10,7 @@ import PeopleManager from './components/panels/PeopleManager';
 import CalendarPanel from './components/panels/CalendarPanel';
 import UserTasksPanel from './components/panels/UserTasksPanel';
 import SettingsPanel from './components/panels/SettingsPanel';
+import TimelinePanel from './components/panels/TimelinePanel';
 import LoginScreen from './components/auth/LoginScreen';
 import DescriptionReader from './components/modals/DescriptionReader';
 import TaskDescriptionReader from './components/modals/TaskDescriptionReader';
@@ -17,7 +18,7 @@ import TaskEditorModal from './components/modals/TaskEditorModal';
 import MessageComposer from './components/modals/MessageComposer';
 import { toPng } from 'html-to-image';
 
-type View = 'workflow' | 'team' | 'calendar' | 'assignments' | 'settings';
+type View = 'workflow' | 'team' | 'calendar' | 'assignments' | 'settings' | 'timeline';
 
 const App: React.FC = () => {
   const { theme, toggleTheme } = useTheme();
@@ -141,14 +142,14 @@ const App: React.FC = () => {
     <button
       onClick={() => setCurrentView(view)}
       className={`
-        flex items-center gap-2 px-4 py-2 rounded-md text-sm font-medium transition-colors
+        flex items-center gap-2 px-3 py-2 rounded-md text-sm font-medium transition-colors
         ${currentView === view 
           ? 'bg-indigo-50 dark:bg-indigo-900/20 text-indigo-700 dark:text-indigo-300' 
           : 'text-slate-600 dark:text-slate-400 hover:bg-slate-100 dark:hover:bg-slate-800'}
       `}
     >
       <Icon className="w-4 h-4" />
-      <span className="hidden sm:inline">{label}</span>
+      <span className="hidden lg:inline">{label}</span>
     </button>
   );
 
@@ -347,8 +348,9 @@ const App: React.FC = () => {
           )}
         </div>
 
-        <div className="hidden md:flex items-center gap-2">
+        <div className="hidden md:flex items-center gap-1">
            <NavItem view="workflow" icon={Layers} label="Workflow" />
+           <NavItem view="timeline" icon={GanttChart} label="Timeline" />
            <NavItem view="assignments" icon={ClipboardList} label="Task" />
            <NavItem view="calendar" icon={Calendar} label="Scadenze" />
            <NavItem view="team" icon={Users} label="Team" />
@@ -500,6 +502,11 @@ const App: React.FC = () => {
 
                 {selectedBranchId && <BranchDetails />}
             </>
+        ) : currentView === 'timeline' ? (
+            <>
+                <TimelinePanel />
+                {selectedBranchId && <BranchDetails />}
+            </>
         ) : currentView === 'calendar' ? (
             <CalendarPanel />
         ) : currentView === 'assignments' ? (
@@ -523,6 +530,13 @@ const App: React.FC = () => {
             <span className="text-[10px] mt-1 font-medium">Workflow</span>
         </button>
         <button 
+            onClick={() => setCurrentView('timeline')}
+            className={`flex flex-col items-center p-2 rounded-md ${currentView === 'timeline' ? 'text-indigo-600 dark:text-indigo-400' : 'text-slate-500'}`}
+        >
+            <GanttChart className="w-6 h-6" />
+            <span className="text-[10px] mt-1 font-medium">Timeline</span>
+        </button>
+        <button 
             onClick={() => setCurrentView('assignments')}
             className={`flex flex-col items-center p-2 rounded-md ${currentView === 'assignments' ? 'text-indigo-600 dark:text-indigo-400' : 'text-slate-500'}`}
         >
@@ -542,13 +556,6 @@ const App: React.FC = () => {
         >
             <Users className="w-6 h-6" />
             <span className="text-[10px] mt-1 font-medium">Team</span>
-        </button>
-         <button 
-            onClick={() => setCurrentView('settings')}
-            className={`flex flex-col items-center p-2 rounded-md ${currentView === 'settings' ? 'text-indigo-600 dark:text-indigo-400' : 'text-slate-500'}`}
-        >
-            <Settings className="w-6 h-6" />
-            <span className="text-[10px] mt-1 font-medium">Settings</span>
         </button>
       </div>
 
