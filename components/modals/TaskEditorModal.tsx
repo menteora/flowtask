@@ -1,15 +1,20 @@
+
 import React, { useEffect, useState } from 'react';
 import { useProject } from '../../context/ProjectContext';
-import { X, Calendar, User, Trash2, CheckSquare, Square, Save } from 'lucide-react';
+import { X, Calendar, User, Trash2, CheckSquare, Square, Save, ArrowRight } from 'lucide-react';
 import Avatar from '../ui/Avatar';
+import { Branch } from '../../types';
 
 const TaskEditorModal: React.FC = () => {
-  const { editingTask, setEditingTask, state, updateTask, deleteTask } = useProject();
+  const { editingTask, setEditingTask, state, updateTask, deleteTask, moveTaskToBranch } = useProject();
   const [isVisible, setIsVisible] = useState(false);
   const [title, setTitle] = useState('');
   const [assigneeId, setAssigneeId] = useState('');
   const [dueDate, setDueDate] = useState('');
   const [completed, setCompleted] = useState(false);
+  
+  // Move to Branch State
+  const [targetBranchId, setTargetBranchId] = useState('');
 
   // Sync state when editingTask changes
   useEffect(() => {
@@ -22,6 +27,7 @@ const TaskEditorModal: React.FC = () => {
             setAssigneeId(task.assigneeId || '');
             setDueDate(task.dueDate || '');
             setCompleted(task.completed);
+            setTargetBranchId(''); // Reset selector
             setIsVisible(true);
         } else {
             setEditingTask(null);
@@ -57,6 +63,12 @@ const TaskEditorModal: React.FC = () => {
       }
   };
 
+  const handleMoveTask = () => {
+      if (!editingTask || !targetBranchId) return;
+      moveTaskToBranch(editingTask.taskId, editingTask.branchId, targetBranchId);
+      handleClose();
+  };
+
   const handleKeyDown = (e: React.KeyboardEvent) => {
       if (e.key === 'Enter') handleSave();
       if (e.key === 'Escape') handleClose();
@@ -78,7 +90,7 @@ const TaskEditorModal: React.FC = () => {
             </button>
         </div>
 
-        <div className="p-4 space-y-4">
+        <div className="p-4 space-y-4 overflow-y-auto max-h-[70vh]">
             {/* Title & Check */}
             <div className="flex gap-3">
                 <button 
@@ -136,6 +148,31 @@ const TaskEditorModal: React.FC = () => {
                         <Calendar className="w-4 h-4" />
                     </div>
                 </div>
+            </div>
+            
+            {/* Move to Branch */}
+            <div className="pt-2 border-t border-slate-100 dark:border-slate-800">
+                 <label className="block text-xs font-semibold text-slate-500 dark:text-slate-400 mb-2 uppercase tracking-wider">Sposta in un altro ramo</label>
+                 <div className="flex gap-2">
+                     <select
+                        value={targetBranchId}
+                        onChange={(e) => setTargetBranchId(e.target.value)}
+                        className="flex-1 text-sm bg-white dark:bg-slate-800 border border-slate-200 dark:border-slate-600 rounded-lg p-2 text-slate-700 dark:text-slate-200 focus:ring-2 focus:ring-indigo-500 outline-none"
+                     >
+                         <option value="">Seleziona ramo...</option>
+                         {(Object.values(state.branches) as Branch[]).filter(b => b.id !== editingTask?.branchId).map(b => (
+                             <option key={b.id} value={b.id}>{b.title}</option>
+                         ))}
+                     </select>
+                     <button
+                        onClick={handleMoveTask}
+                        disabled={!targetBranchId}
+                        className="bg-slate-100 dark:bg-slate-800 text-slate-600 dark:text-slate-300 hover:bg-indigo-50 dark:hover:bg-indigo-900/20 hover:text-indigo-600 dark:hover:text-indigo-400 p-2 rounded-lg border border-slate-200 dark:border-slate-700 disabled:opacity-50 disabled:cursor-not-allowed transition-colors"
+                        title="Sposta"
+                     >
+                         <ArrowRight className="w-5 h-5" />
+                     </button>
+                 </div>
             </div>
         </div>
 

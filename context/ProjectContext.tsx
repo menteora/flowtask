@@ -1,3 +1,4 @@
+
 import React, { createContext, useContext, useState, useCallback, useEffect, useRef } from 'react';
 import { ProjectState, Branch, BranchStatus, Task, Person } from '../types';
 import { INITIAL_STATE } from '../constants';
@@ -39,6 +40,7 @@ interface ProjectContextType {
   updateTask: (branchId: string, taskId: string, data: Partial<Task>) => void;
   deleteTask: (branchId: string, taskId: string) => void;
   moveTask: (branchId: string, taskId: string, direction: 'up' | 'down') => void;
+  moveTaskToBranch: (taskId: string, sourceBranchId: string, targetBranchId: string) => void;
   bulkUpdateTasks: (branchId: string, rawText: string) => void;
   addPerson: (name: string, email: string, phone: string) => void;
   updatePerson: (id: string, data: Partial<Person>) => void;
@@ -123,7 +125,7 @@ export const ProjectProvider: React.FC<{ children: React.ReactNode }> = ({ child
             [defaultRootId]: {
                 ...INITIAL_STATE.branches['root'],
                 id: defaultRootId,
-                isLabel: true // Default to Label
+                isLabel: true // Default to Label for root
             }
         }
     };
@@ -708,7 +710,24 @@ export const ProjectProvider: React.FC<{ children: React.ReactNode }> = ({ child
         const branch = prev.branches[branchId];
         if (!branch) return prev;
         
-        const newTasks = branch.tasks.map(t => t.id === taskId ? Object.assign({}, t, data) : t);
+        const newTasks = branch.tasks.map(t => {
+            if (t.id === taskId) {
+                const updated = Object.assign({}, t, data);
+                
+                // Logic for completedAt timestamp
+                if (data.completed !== undefined) {
+                    if (data.completed && !t.completed) {
+                        updated.completedAt = new Date().toISOString();
+                    } else if (!data.completed) {
+                        updated.completedAt = undefined;
+                    }
+                }
+                
+                return updated;
+            }
+            return t;
+        });
+
         return {
             ...prev,
             branches: {
@@ -761,6 +780,35 @@ export const ProjectProvider: React.FC<{ children: React.ReactNode }> = ({ child
             branches: {
                 ...prev.branches,
                 [branchId]: Object.assign({}, branch, { tasks: reorderedTasks })
+            }
+        };
+    });
+  }, [setProjectState]);
+
+  const moveTaskToBranch = useCallback((taskId: string, sourceBranchId: string, targetBranchId: string) => {
+    if (sourceBranchId === targetBranchId) return;
+
+    setProjectState(prev => {
+        const sourceBranch = prev.branches[sourceBranchId];
+        const targetBranch = prev.branches[targetBranchId];
+        if (!sourceBranch || !targetBranch) return prev;
+
+        const taskToMove = sourceBranch.tasks.find(t => t.id === taskId);
+        if (!taskToMove) return prev;
+
+        // 1. Remove from source
+        const newSourceTasks = sourceBranch.tasks.filter(t => t.id !== taskId);
+
+        // 2. Add to target (append to end)
+        const updatedTask = { ...taskToMove, position: targetBranch.tasks.length };
+        const newTargetTasks = [...targetBranch.tasks, updatedTask];
+
+        return {
+            ...prev,
+            branches: {
+                ...prev.branches,
+                [sourceBranchId]: { ...sourceBranch, tasks: newSourceTasks },
+                [targetBranchId]: { ...targetBranch, tasks: newTargetTasks }
             }
         };
     });
@@ -959,6 +1007,7 @@ export const ProjectProvider: React.FC<{ children: React.ReactNode }> = ({ child
         assignee_id: t.assigneeId,
         due_date: t.dueDate,
         completed: t.completed,
+        completed_at: t.completedAt || null, // Sync completedAt
         position: index
     })));
 
@@ -1082,6 +1131,7 @@ export const ProjectProvider: React.FC<{ children: React.ReactNode }> = ({ child
             assigneeId: t.assignee_id,
             dueDate: t.due_date,
             completed: t.completed,
+            completedAt: t.completed_at || undefined, // Map completedAt
             position: t.position
         });
     });
@@ -1325,6 +1375,7 @@ export const ProjectProvider: React.FC<{ children: React.ReactNode }> = ({ child
       updateTask,
       deleteTask,
       moveTask,
+      moveTaskToBranch,
       bulkUpdateTasks,
       addPerson,
       updatePerson,
