@@ -1,3 +1,4 @@
+
 export enum BranchStatus {
   PLANNED = 'PLANNED',
   ACTIVE = 'ACTIVE',
@@ -21,6 +22,7 @@ export interface Task {
   assigneeId?: string;
   dueDate?: string; // ISO Date string YYYY-MM-DD
   completed: boolean;
+  completedAt?: string; // ISO Date string (Timestamp)
   position?: number; // Added for ordering
 }
 
