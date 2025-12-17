@@ -25,6 +25,7 @@ export interface Task {
   completed: boolean;
   completedAt?: string; // ISO Date string (Timestamp)
   position?: number; // Added for ordering
+  pinned?: boolean; // New field for Focus View
 }
 
 export interface Branch {

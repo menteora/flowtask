@@ -2,7 +2,7 @@
 import React, { useState, useRef, useEffect } from 'react';
 import { useTheme } from './context/ThemeContext';
 import { useProject } from './context/ProjectContext';
-import { Moon, Sun, GitBranch, Layers, Users, Download, Upload, Archive, Camera, Image as ImageIcon, Smartphone, Plus, X, Edit2, Calendar, ClipboardList, Settings, Cloud, Loader2, Check, AlertCircle, ChevronDown, Folder, MoreVertical, GanttChart } from 'lucide-react';
+import { Moon, Sun, GitBranch, Layers, Users, Download, Upload, Archive, Camera, Image as ImageIcon, Smartphone, Plus, X, Edit2, Calendar, ClipboardList, Settings, Cloud, Loader2, Check, AlertCircle, ChevronDown, Folder, MoreVertical, GanttChart, Globe, Eye, Target } from 'lucide-react';
 import FlowCanvas from './components/flow/FlowCanvas';
 import FolderTree from './components/flow/FolderTree';
 import BranchDetails from './components/panels/BranchDetails';
@@ -11,6 +11,7 @@ import CalendarPanel from './components/panels/CalendarPanel';
 import UserTasksPanel from './components/panels/UserTasksPanel';
 import SettingsPanel from './components/panels/SettingsPanel';
 import TimelinePanel from './components/panels/TimelinePanel';
+import FocusPanel from './components/panels/FocusPanel';
 import LoginScreen from './components/auth/LoginScreen';
 import DescriptionReader from './components/modals/DescriptionReader';
 import TaskDescriptionReader from './components/modals/TaskDescriptionReader';
@@ -18,14 +19,15 @@ import TaskEditorModal from './components/modals/TaskEditorModal';
 import MessageComposer from './components/modals/MessageComposer';
 import { toPng } from 'html-to-image';
 
-type View = 'workflow' | 'team' | 'calendar' | 'assignments' | 'settings' | 'timeline';
+type View = 'workflow' | 'team' | 'calendar' | 'assignments' | 'settings' | 'timeline' | 'focus';
 
 const App: React.FC = () => {
   const { theme, toggleTheme } = useTheme();
   const { 
     selectedBranchId, state, loadProject, showArchived, toggleShowArchived,
     projects, activeProjectId, switchProject, createProject, closeProject, renameProject,
-    session, loadingAuth, isInitializing, isOfflineMode, autoSaveStatus, notification
+    session, loadingAuth, isInitializing, isOfflineMode, autoSaveStatus, notification,
+    showAllProjects, toggleShowAllProjects
   } = useProject();
   
   const [currentView, setCurrentView] = useState<View>('workflow');
@@ -350,13 +352,26 @@ const App: React.FC = () => {
 
         <div className="hidden md:flex items-center gap-1">
            <NavItem view="workflow" icon={Layers} label="Workflow" />
-           <NavItem view="timeline" icon={GanttChart} label="Timeline" />
+           <NavItem view="focus" icon={Target} label="Focus" />
            <NavItem view="assignments" icon={ClipboardList} label="Task" />
            <NavItem view="calendar" icon={Calendar} label="Scadenze" />
+           <NavItem view="timeline" icon={GanttChart} label="Timeline" />
            <NavItem view="team" icon={Users} label="Team" />
         </div>
 
         <div className="flex items-center gap-1 md:gap-2">
+            
+            {/* Show All Projects Toggle (Visible only in Calendar/Tasks/Timeline/Focus) */}
+            {(currentView === 'calendar' || currentView === 'assignments' || currentView === 'timeline' || currentView === 'focus') && (
+                <button 
+                  onClick={toggleShowAllProjects}
+                  className={`hidden md:block p-2 rounded-full transition-colors border ${showAllProjects ? 'bg-amber-100 dark:bg-amber-900/40 text-amber-600 border-amber-200' : 'hover:bg-slate-100 dark:hover:bg-slate-800 text-slate-500 dark:text-slate-400 border-transparent'}`}
+                  title={showAllProjects ? "Mostra solo progetto corrente" : "Mostra tutti i progetti aperti"}
+                >
+                  <Globe className="w-4 h-4" />
+                </button>
+            )}
+
             <button 
               onClick={toggleShowArchived}
               className={`hidden md:block p-2 rounded-full transition-colors border ${showArchived ? 'bg-indigo-100 dark:bg-indigo-900/40 text-indigo-600 border-indigo-200' : 'hover:bg-slate-100 dark:hover:bg-slate-800 text-slate-500 dark:text-slate-400 border-transparent'}`}
@@ -507,6 +522,8 @@ const App: React.FC = () => {
                 <TimelinePanel />
                 {selectedBranchId && <BranchDetails />}
             </>
+        ) : currentView === 'focus' ? (
+            <FocusPanel />
         ) : currentView === 'calendar' ? (
             <CalendarPanel />
         ) : currentView === 'assignments' ? (
@@ -527,14 +544,14 @@ const App: React.FC = () => {
             className={`flex flex-col items-center p-2 rounded-md ${currentView === 'workflow' ? 'text-indigo-600 dark:text-indigo-400' : 'text-slate-500'}`}
         >
             <Layers className="w-6 h-6" />
-            <span className="text-[10px] mt-1 font-medium">Workflow</span>
+            <span className="text-[10px] mt-1 font-medium">Flow</span>
         </button>
         <button 
-            onClick={() => setCurrentView('timeline')}
-            className={`flex flex-col items-center p-2 rounded-md ${currentView === 'timeline' ? 'text-indigo-600 dark:text-indigo-400' : 'text-slate-500'}`}
+            onClick={() => setCurrentView('focus')}
+            className={`flex flex-col items-center p-2 rounded-md ${currentView === 'focus' ? 'text-indigo-600 dark:text-indigo-400' : 'text-slate-500'}`}
         >
-            <GanttChart className="w-6 h-6" />
-            <span className="text-[10px] mt-1 font-medium">Timeline</span>
+            <Target className="w-6 h-6" />
+            <span className="text-[10px] mt-1 font-medium">Focus</span>
         </button>
         <button 
             onClick={() => setCurrentView('assignments')}
@@ -551,11 +568,11 @@ const App: React.FC = () => {
             <span className="text-[10px] mt-1 font-medium">Scadenze</span>
         </button>
         <button 
-            onClick={() => setCurrentView('team')}
-            className={`flex flex-col items-center p-2 rounded-md ${currentView === 'team' ? 'text-indigo-600 dark:text-indigo-400' : 'text-slate-500'}`}
+            onClick={() => setCurrentView('timeline')}
+            className={`flex flex-col items-center p-2 rounded-md ${currentView === 'timeline' ? 'text-indigo-600 dark:text-indigo-400' : 'text-slate-500'}`}
         >
-            <Users className="w-6 h-6" />
-            <span className="text-[10px] mt-1 font-medium">Team</span>
+            <GanttChart className="w-6 h-6" />
+            <span className="text-[10px] mt-1 font-medium">Time</span>
         </button>
       </div>
 

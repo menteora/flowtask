@@ -2,7 +2,7 @@ import React, { useState, useEffect, useRef } from 'react';
 import { useProject } from '../../context/ProjectContext';
 import { BranchStatus, Branch } from '../../types';
 import { STATUS_CONFIG } from '../../constants';
-import { X, Save, Trash2, CheckSquare, Square, ArrowUpLeft, Calendar, Plus, Link as LinkIcon, Unlink, PlayCircle, StopCircle, Clock, AlertTriangle, Archive, RefreshCw, Bold, Italic, List, Eye, Edit2, FileText, ChevronUp, ChevronDown, DownloadCloud, Loader2, GitMerge, ArrowRight, UploadCloud, Tag, Mail, Check, AlignLeft } from 'lucide-react';
+import { X, Save, Trash2, CheckSquare, Square, ArrowUpLeft, Calendar, Plus, Link as LinkIcon, Unlink, PlayCircle, StopCircle, Clock, AlertTriangle, Archive, RefreshCw, Bold, Italic, List, Eye, Edit2, FileText, ChevronUp, ChevronDown, DownloadCloud, Loader2, GitMerge, ArrowRight, UploadCloud, Tag, Mail, Check, AlignLeft, Pin } from 'lucide-react';
 import Avatar from '../ui/Avatar';
 
 const BranchDetails: React.FC = () => {
@@ -448,6 +448,13 @@ const BranchDetails: React.FC = () => {
                                                 >
                                                     <Edit2 className="w-3 h-3" />
                                                 </button>
+                                                <button
+                                                    onClick={() => updateTask(branch.id, task.id, { pinned: !task.pinned })}
+                                                    className={`p-1 rounded transition-colors ml-auto ${task.pinned ? 'text-amber-500 hover:text-amber-600' : 'text-slate-300 hover:text-amber-500 opacity-0 group-hover:opacity-100'}`}
+                                                    title={task.pinned ? "Rimuovi da Focus" : "Aggiungi a Focus"}
+                                                >
+                                                    <Pin className={`w-3.5 h-3.5 ${task.pinned ? 'fill-current' : ''}`} />
+                                                </button>
                                             </div>
                                             
                                             <div className="flex flex-wrap items-center gap-2">
@@ -824,7 +831,7 @@ const BranchDetails: React.FC = () => {
 
                 <button 
                     onClick={() => setShowDeleteConfirm(true)}
-                    className="flex items-center justify-center gap-2 w-full px-4 py-2 text-sm text-red-600 bg-red-50 dark:bg-red-900/20 hover:bg-red-100 dark:hover:bg-red-900/40 rounded-md transition-colors"
+                    className="flex-1 py-2 text-sm font-bold bg-red-600 text-white rounded-lg hover:bg-red-700 transition-colors shadow-sm w-full flex items-center justify-center gap-2"
                 >
                     <Trash2 className="w-4 h-4" />
                     Elimina Ramo definitivamente

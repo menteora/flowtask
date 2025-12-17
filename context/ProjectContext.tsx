@@ -1,4 +1,3 @@
-
 import React, { createContext, useContext, useState, useCallback, useEffect, useRef } from 'react';
 import { ProjectState, Branch, BranchStatus, Task, Person } from '../types';
 import { INITIAL_STATE } from '../constants';
@@ -68,6 +67,10 @@ interface ProjectContextType {
   toggleBranchArchive: (branchId: string) => void;
   showArchived: boolean;
   toggleShowArchived: () => void;
+
+  // Cross-Project View State
+  showAllProjects: boolean;
+  toggleShowAllProjects: () => void;
 
   // App Settings (Message Templates)
   messageTemplates: MessageTemplates;
@@ -167,6 +170,7 @@ export const ProjectProvider: React.FC<{ children: React.ReactNode }> = ({ child
   const [editingTask, setEditingTask] = useState<{ branchId: string, taskId: string } | null>(null);
   const [remindingUserId, setRemindingUserId] = useState<string | null>(null);
   const [showArchived, setShowArchived] = useState(false);
+  const [showAllProjects, setShowAllProjects] = useState(false);
 
   // Message Templates State
   const [messageTemplates, setMessageTemplates] = useState<MessageTemplates>(() => {
@@ -404,6 +408,10 @@ export const ProjectProvider: React.FC<{ children: React.ReactNode }> = ({ child
 
   const toggleShowArchived = useCallback(() => {
     setShowArchived(prev => !prev);
+  }, []);
+
+  const toggleShowAllProjects = useCallback(() => {
+    setShowAllProjects(prev => !prev);
   }, []);
 
   const loadProject = useCallback((newState: ProjectState, activate = true, removeDefault = false) => {
@@ -696,7 +704,8 @@ export const ProjectProvider: React.FC<{ children: React.ReactNode }> = ({ child
         title: title.trim(),
         completed: false,
         position: branch.tasks.length, // Add to end based on length
-        description: '' // Init empty description
+        description: '', // Init empty description
+        pinned: false
       };
 
       return {
@@ -841,7 +850,8 @@ export const ProjectProvider: React.FC<{ children: React.ReactNode }> = ({ child
                 title: line,
                 completed: false,
                 position: index,
-                description: ''
+                description: '',
+                pinned: false
             };
         });
 
@@ -1016,7 +1026,8 @@ export const ProjectProvider: React.FC<{ children: React.ReactNode }> = ({ child
         completed: t.completed,
         completed_at: t.completedAt || null, // Sync completedAt
         description: t.description || null, // Sync description
-        position: index
+        position: index,
+        pinned: t.pinned || false // Sync pinned status
     })));
 
     if (tasks.length > 0) {
@@ -1141,7 +1152,8 @@ export const ProjectProvider: React.FC<{ children: React.ReactNode }> = ({ child
             completed: t.completed,
             completedAt: t.completed_at || undefined, // Map completedAt
             description: t.description || undefined, // Map description
-            position: t.position
+            position: t.position,
+            pinned: t.pinned || false // Map pinned
         });
     });
 
@@ -1402,6 +1414,8 @@ export const ProjectProvider: React.FC<{ children: React.ReactNode }> = ({ child
       toggleBranchArchive,
       showArchived,
       toggleShowArchived,
+      showAllProjects,
+      toggleShowAllProjects,
 
       messageTemplates,
       updateMessageTemplates,
