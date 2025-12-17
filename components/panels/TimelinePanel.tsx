@@ -2,14 +2,14 @@ import React, { useMemo, useState, useRef } from 'react';
 import { useProject } from '../../context/ProjectContext';
 import { Branch, BranchStatus } from '../../types';
 import { STATUS_CONFIG } from '../../constants';
-import { GanttChart, ChevronRight, Calendar as CalendarIcon, ZoomIn, ZoomOut, AlertCircle } from 'lucide-react';
+import { GanttChart, ChevronRight, Calendar as CalendarIcon, ZoomIn, ZoomOut, AlertCircle, Folder } from 'lucide-react';
 
 const CELL_WIDTH = 50; // Width of one day in pixels
 const HEADER_HEIGHT = 60;
-const SIDEBAR_WIDTH = 200;
+const SIDEBAR_WIDTH = 220;
 
 const TimelinePanel: React.FC = () => {
-  const { state, selectBranch, showArchived } = useProject();
+  const { state, projects, selectBranch, showArchived, showAllProjects, switchProject } = useProject();
   const [zoomLevel, setZoomLevel] = useState(1); // 1 = Normal, 0.5 = Zoom Out
 
   // Refs for synchronized scrolling
@@ -18,16 +18,34 @@ const TimelinePanel: React.FC = () => {
 
   // 1. Prepare Data
   const { branches, minDate, maxDate, totalDays } = useMemo(() => {
-    const activeBranches = (Object.values(state.branches) as Branch[]).filter(b => {
-        // Exclude Root
-        if (b.id === state.rootBranchId) return false;
-        // Filter Archived
-        if (b.archived && !showArchived) return false;
-        return true;
+    
+    // Select Source: Single Project or All Open Projects
+    const sourceProjects = showAllProjects ? projects : [state];
+    
+    let allActiveBranches: (Branch & { projectName: string, projectId: string })[] = [];
+
+    sourceProjects.forEach(proj => {
+        const projBranches = (Object.values(proj.branches) as Branch[]).filter(b => {
+            // Exclude Root
+            if (b.id === proj.rootBranchId) return false;
+            // Filter Archived
+            if (b.archived && !showArchived) return false;
+            return true;
+        });
+        
+        const enhancedBranches = projBranches.map(b => ({
+            ...b,
+            projectName: proj.name,
+            projectId: proj.id
+        }));
+
+        allActiveBranches = [...allActiveBranches, ...enhancedBranches];
     });
 
     // Sort by start date, then title
-    activeBranches.sort((a, b) => {
+    allActiveBranches.sort((a, b) => {
+        // Group by project first if showing all? No, timeline usually prioritizes time.
+        // Let's sort by Start Date primarily.
         const dateA = a.startDate ? new Date(a.startDate).getTime() : 0;
         const dateB = b.startDate ? new Date(b.startDate).getTime() : 0;
         return dateA - dateB || a.title.localeCompare(b.title);
@@ -40,7 +58,7 @@ const TimelinePanel: React.FC = () => {
     min.setDate(min.getDate() - 7);
     max.setDate(max.getDate() + 30);
 
-    activeBranches.forEach(b => {
+    allActiveBranches.forEach(b => {
         if (b.startDate) {
             const start = new Date(b.startDate);
             if (start < min) min = start;
@@ -67,12 +85,12 @@ const TimelinePanel: React.FC = () => {
     const days = Math.ceil(diffTime / (1000 * 60 * 60 * 24));
 
     return { 
-        branches: activeBranches, 
+        branches: allActiveBranches, 
         minDate: min, 
         maxDate: max, 
         totalDays: days 
     };
-  }, [state.branches, state.rootBranchId, showArchived]);
+  }, [state, projects, showArchived, showAllProjects]);
 
   // Handle Scroll Sync
   const handleScroll = (e: React.UIEvent<HTMLDivElement>) => {
@@ -150,6 +168,16 @@ const TimelinePanel: React.FC = () => {
 
   const todayX = getXForDate(new Date().toISOString());
 
+  const handleBranchClick = (branch: Branch & { projectId: string }) => {
+      if (branch.projectId !== state.id) {
+          switchProject(branch.projectId);
+          // Allow state to settle before selecting
+          setTimeout(() => selectBranch(branch.id), 100);
+      } else {
+          selectBranch(branch.id);
+      }
+  };
+
   return (
     <div className="flex flex-col h-full bg-slate-50 dark:bg-slate-950 overflow-hidden relative">
       
@@ -157,7 +185,10 @@ const TimelinePanel: React.FC = () => {
       <div className="flex items-center justify-between px-4 py-3 border-b border-slate-200 dark:border-slate-800 bg-white dark:bg-slate-900 z-20 flex-shrink-0">
           <div className="flex items-center gap-2">
               <GanttChart className="w-5 h-5 text-indigo-600" />
-              <h2 className="text-lg font-bold text-slate-800 dark:text-white">Timeline di Progetto</h2>
+              <h2 className="text-lg font-bold text-slate-800 dark:text-white flex items-center gap-2">
+                  Timeline
+                  {showAllProjects && <span className="text-xs font-normal text-slate-400 bg-slate-100 dark:bg-slate-800 px-2 py-1 rounded-full">Tutti i progetti</span>}
+              </h2>
           </div>
           <div className="flex items-center gap-2">
               <button 
@@ -191,13 +222,20 @@ const TimelinePanel: React.FC = () => {
                       const statusConfig = STATUS_CONFIG[branch.status];
                       return (
                           <div 
-                            key={branch.id} 
+                            key={`${branch.projectId}-${branch.id}`} 
                             className="h-12 border-b border-slate-100 dark:border-slate-800 flex items-center px-3 gap-2 hover:bg-slate-50 dark:hover:bg-slate-800 cursor-pointer flex-shrink-0"
-                            onClick={() => selectBranch(branch.id)}
+                            onClick={() => handleBranchClick(branch)}
                           >
-                              <div className={`w-2 h-2 rounded-full ${statusConfig.color.replace('bg-', 'bg-opacity-100 bg-').split(' ')[1] || 'bg-slate-400'}`}></div>
-                              <span className="text-sm font-medium text-slate-700 dark:text-slate-300 truncate flex-1">{branch.title}</span>
-                              <ChevronRight className="w-3 h-3 text-slate-400" />
+                              <div className={`w-2 h-2 rounded-full flex-shrink-0 ${statusConfig.color.replace('bg-', 'bg-opacity-100 bg-').split(' ')[1] || 'bg-slate-400'}`}></div>
+                              <div className="flex flex-col min-w-0 flex-1">
+                                  <span className="text-sm font-medium text-slate-700 dark:text-slate-300 truncate">{branch.title}</span>
+                                  {showAllProjects && (
+                                      <span className="text-[9px] text-slate-400 truncate flex items-center gap-1">
+                                          <Folder className="w-2.5 h-2.5" /> {branch.projectName}
+                                      </span>
+                                  )}
+                              </div>
+                              <ChevronRight className="w-3 h-3 text-slate-400 flex-shrink-0" />
                           </div>
                       );
                   })}
@@ -268,12 +306,12 @@ const TimelinePanel: React.FC = () => {
                           else if (branch.status === BranchStatus.CANCELLED) barColor = 'bg-red-500';
 
                           return (
-                              <div key={branch.id} className="h-12 border-b border-transparent relative group">
+                              <div key={`${branch.projectId}-${branch.id}`} className="h-12 border-b border-transparent relative group">
                                   {dims ? (
                                       <div 
                                         className={`absolute top-2 h-8 rounded-md shadow-sm cursor-pointer transition-all hover:brightness-110 flex items-center overflow-hidden ${barColor} bg-opacity-80 dark:bg-opacity-60 border border-white/20`}
                                         style={{ left: dims.x, width: dims.width }}
-                                        onClick={() => selectBranch(branch.id)}
+                                        onClick={() => handleBranchClick(branch)}
                                         title={`${branch.title} (${branch.startDate || '?'} - ${branch.endDate || branch.dueDate || '?'})`}
                                       >
                                           {/* Progress Fill */}

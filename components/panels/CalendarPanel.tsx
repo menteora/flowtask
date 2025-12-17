@@ -1,7 +1,7 @@
 import React, { useMemo } from 'react';
 import { useProject } from '../../context/ProjectContext';
 import { BranchStatus, Branch } from '../../types';
-import { Calendar, Clock, AlertCircle, CheckCircle2, FileText, PlayCircle, StopCircle, ArrowRight } from 'lucide-react';
+import { Calendar, Clock, AlertCircle, CheckCircle2, FileText, PlayCircle, StopCircle, ArrowRight, Folder } from 'lucide-react';
 import Avatar from '../ui/Avatar';
 
 interface TimelineItem {
@@ -16,81 +16,88 @@ interface TimelineItem {
   assigneeId?: string;
   isCompleted?: boolean;
   status?: BranchStatus;
+  projectId: string;
+  projectName: string;
 }
 
 const CalendarPanel: React.FC = () => {
-  const { state, selectBranch, setEditingTask } = useProject();
+  const { state, projects, showAllProjects, selectBranch, setEditingTask, switchProject } = useProject();
 
   const items = useMemo(() => {
     const list: TimelineItem[] = [];
     const now = new Date();
     now.setHours(0,0,0,0);
 
-    (Object.values(state.branches) as Branch[]).forEach(branch => {
-        // Skip archived if needed, but usually deadlines are important regardless. 
-        // Let's skip archived/closed for clarity unless specifically requested.
-        if (branch.archived || branch.status === BranchStatus.CANCELLED) return;
+    const sourceProjects = showAllProjects ? projects : [state];
 
-        // Branch Dates
-        if (branch.startDate) {
-            list.push({
-                id: `${branch.id}-start`,
-                type: 'branch_start',
-                dateStr: branch.startDate,
-                dateObj: new Date(branch.startDate),
-                title: 'Inizio Ramo',
-                branchId: branch.id,
-                branchTitle: branch.title,
-                status: branch.status
-            });
-        }
-        if (branch.dueDate) {
-             list.push({
-                id: `${branch.id}-due`,
-                type: 'branch_due',
-                dateStr: branch.dueDate,
-                dateObj: new Date(branch.dueDate),
-                title: 'Scadenza Ramo',
-                branchId: branch.id,
-                branchTitle: branch.title,
-                status: branch.status
-            });
-        }
-        // End date (only if closed, but we filtered closed above? Let's keep Active deadlines mostly)
-        // If a branch is Active but has an endDate set manually (projection), show it.
-        if (branch.endDate && branch.status !== BranchStatus.CLOSED) {
-             list.push({
-                id: `${branch.id}-end`,
-                type: 'branch_end',
-                dateStr: branch.endDate,
-                dateObj: new Date(branch.endDate),
-                title: 'Chiusura Prevista',
-                branchId: branch.id,
-                branchTitle: branch.title,
-                status: branch.status
-            });
-        }
+    sourceProjects.forEach(project => {
+        (Object.values(project.branches) as Branch[]).forEach(branch => {
+            // Skip archived if needed, but usually deadlines are important regardless. 
+            // Let's skip archived/closed for clarity unless specifically requested.
+            if (branch.archived || branch.status === BranchStatus.CANCELLED) return;
 
-        // Task Dates
-        branch.tasks.forEach(task => {
-            if (task.dueDate && !task.completed) {
-                 list.push({
-                    id: task.id,
-                    type: 'task',
-                    dateStr: task.dueDate,
-                    dateObj: new Date(task.dueDate),
-                    title: task.title,
-                    branchId: branch.id,
-                    branchTitle: branch.title,
-                    assigneeId: task.assigneeId,
-                    isCompleted: task.completed
+            const commonProps = {
+                branchId: branch.id,
+                branchTitle: branch.title,
+                status: branch.status,
+                projectId: project.id,
+                projectName: project.name
+            };
+
+            // Branch Dates
+            if (branch.startDate) {
+                list.push({
+                    id: `${branch.id}-start`,
+                    type: 'branch_start',
+                    dateStr: branch.startDate,
+                    dateObj: new Date(branch.startDate),
+                    title: 'Inizio Ramo',
+                    ...commonProps
                 });
             }
+            if (branch.dueDate) {
+                list.push({
+                    id: `${branch.id}-due`,
+                    type: 'branch_due',
+                    dateStr: branch.dueDate,
+                    dateObj: new Date(branch.dueDate),
+                    title: 'Scadenza Ramo',
+                    ...commonProps
+                });
+            }
+            // End date (only if closed, but we filtered closed above? Let's keep Active deadlines mostly)
+            // If a branch is Active but has an endDate set manually (projection), show it.
+            if (branch.endDate && branch.status !== BranchStatus.CLOSED) {
+                list.push({
+                    id: `${branch.id}-end`,
+                    type: 'branch_end',
+                    dateStr: branch.endDate,
+                    dateObj: new Date(branch.endDate),
+                    title: 'Chiusura Prevista',
+                    ...commonProps
+                });
+            }
+
+            // Task Dates
+            branch.tasks.forEach(task => {
+                if (task.dueDate && !task.completed) {
+                    list.push({
+                        id: task.id,
+                        type: 'task',
+                        dateStr: task.dueDate,
+                        dateObj: new Date(task.dueDate),
+                        title: task.title,
+                        assigneeId: task.assigneeId,
+                        isCompleted: task.completed,
+                        ...commonProps
+                    });
+                }
+            });
         });
     });
 
     return list.sort((a, b) => a.dateObj.getTime() - b.dateObj.getTime());
-  }, [state.branches]);
+  }, [state, projects, showAllProjects]);
 
   // Grouping
   const grouped = useMemo(() => {
@@ -106,11 +113,6 @@ const CalendarPanel: React.FC = () => {
           future: items.filter(i => i.dateObj > nextWeek),
       };
   }, [items]);
-
-  const formatDate = (dateStr: string) => {
-      const d = new Date(dateStr);
-      return d.toLocaleDateString('it-IT', { day: 'numeric', month: 'short', weekday: 'short' });
-  };
 
   const RenderItem: React.FC<{ item: TimelineItem }> = ({ item }) => {
       let icon = <AlertCircle className="w-5 h-5 text-gray-400" />;
@@ -135,13 +137,31 @@ const CalendarPanel: React.FC = () => {
               break;
       }
 
-      const assignee = item.assigneeId ? state.people.find(p => p.id === item.assigneeId) : null;
+      // Find person across all projects if viewing all
+      let assignee = null;
+      if (item.assigneeId) {
+          const project = projects.find(p => p.id === item.projectId);
+          if (project) assignee = project.people.find(p => p.id === item.assigneeId);
+      }
 
       const handleClick = () => {
-          if (item.type === 'task') {
-              setEditingTask({ branchId: item.branchId, taskId: item.id });
+          // If viewing all projects and clicking item from another project
+          if (showAllProjects && item.projectId !== state.id) {
+              switchProject(item.projectId);
+              // Small delay to allow state update before selecting item
+              setTimeout(() => {
+                   if (item.type === 'task') {
+                       setEditingTask({ branchId: item.branchId, taskId: item.id });
+                   } else {
+                       selectBranch(item.branchId);
+                   }
+              }, 100);
           } else {
-              selectBranch(item.branchId);
+              if (item.type === 'task') {
+                  setEditingTask({ branchId: item.branchId, taskId: item.id });
+              } else {
+                  selectBranch(item.branchId);
+              }
           }
       };
 
@@ -159,6 +179,11 @@ const CalendarPanel: React.FC = () => {
                   <div className="flex items-center gap-2 mb-0.5">
                       {icon}
                       <span className="text-sm font-semibold text-slate-800 dark:text-slate-100 truncate">{item.title}</span>
+                      {showAllProjects && (
+                          <span className="ml-auto text-[10px] bg-slate-200 dark:bg-slate-700 text-slate-600 dark:text-slate-300 px-1.5 py-0.5 rounded flex items-center gap-1 shrink-0">
+                              <Folder className="w-3 h-3" /> {item.projectName}
+                          </span>
+                      )}
                   </div>
                   <div className="flex items-center gap-1 text-xs text-slate-500 dark:text-slate-400">
                       <span className="truncate">{item.branchTitle}</span>
@@ -178,6 +203,7 @@ const CalendarPanel: React.FC = () => {
             <h2 className="text-2xl font-bold text-slate-800 dark:text-white flex items-center gap-2">
                 <Calendar className="w-8 h-8 text-indigo-600" />
                 Scadenze & Timeline
+                {showAllProjects && <span className="text-xs font-normal text-slate-400 bg-slate-100 dark:bg-slate-800 px-2 py-1 rounded-full ml-2">Tutti i progetti</span>}
             </h2>
             <p className="text-slate-500 dark:text-slate-400 mt-1">Una panoramica cronologica di task e rami.</p>
         </div>

@@ -1,7 +1,7 @@
 import React, { useMemo } from 'react';
 import { useProject } from '../../context/ProjectContext';
 import { Branch } from '../../types';
-import { CheckSquare, Square, ClipboardList, HelpCircle, ArrowRight, Calendar, Mail, MessageCircle, FileText } from 'lucide-react';
+import { CheckSquare, Square, ClipboardList, HelpCircle, ArrowRight, Calendar, Mail, MessageCircle, FileText, Folder, Pin } from 'lucide-react';
 import Avatar from '../ui/Avatar';
 
 interface UserTaskGroup {
@@ -11,11 +11,14 @@ interface UserTaskGroup {
   tasks: Array<{
     id: string;
     title: string;
-    description?: string; // Added description
+    description?: string;
     completed: boolean;
     dueDate?: string;
     branchId: string;
     branchTitle: string;
+    projectId: string; // Added for context
+    projectName: string;
+    pinned?: boolean;
   }>;
   stats: {
     total: number;
@@ -25,20 +28,26 @@ interface UserTaskGroup {
 }
 
 const UserTasksPanel: React.FC = () => {
-  const { state, updateTask, selectBranch, showArchived, setEditingTask, setRemindingUserId, setReadingTask } = useProject();
+  const { state, projects, showAllProjects, updateTask, selectBranch, showArchived, setEditingTask, setRemindingUserId, setReadingTask, switchProject } = useProject();
 
   const taskGroups = useMemo(() => {
     const groups: Record<string, UserTaskGroup> = {};
+    const sourceProjects = showAllProjects ? projects : [state];
 
-    // Initialize groups for existing people
-    state.people.forEach(person => {
-      groups[person.id] = {
-        userId: person.id,
-        userName: person.name,
-        person: person,
-        tasks: [],
-        stats: { total: 0, completed: 0, percentage: 0 }
-      };
+    // Initialize groups for people across ALL source projects
+    // We use ID as unique key. If duplicate IDs exist across projects (rare if UUID), they merge.
+    sourceProjects.forEach(proj => {
+        proj.people.forEach(person => {
+            if (!groups[person.id]) {
+                groups[person.id] = {
+                    userId: person.id,
+                    userName: person.name,
+                    person: person, // Take the first definition found
+                    tasks: [],
+                    stats: { total: 0, completed: 0, percentage: 0 }
+                };
+            }
+        });
     });
 
     // Initialize Unassigned group
@@ -50,22 +59,27 @@ const UserTasksPanel: React.FC = () => {
     };
 
     // Iterate branches and tasks
-    (Object.values(state.branches) as Branch[]).forEach(branch => {
-      if (branch.archived && !showArchived) return;
+    sourceProjects.forEach(proj => {
+        (Object.values(proj.branches) as Branch[]).forEach(branch => {
+          if (branch.archived && !showArchived) return;
 
-      branch.tasks.forEach(task => {
-        const assigneeId = task.assigneeId && groups[task.assigneeId] ? task.assigneeId : 'unassigned';
-        
-        groups[assigneeId].tasks.push({
-          id: task.id,
-          title: task.title,
-          description: task.description, // Map description
-          completed: task.completed,
-          dueDate: task.dueDate,
-          branchId: branch.id,
-          branchTitle: branch.title
+          branch.tasks.forEach(task => {
+            const assigneeId = task.assigneeId && groups[task.assigneeId] ? task.assigneeId : 'unassigned';
+            
+            groups[assigneeId].tasks.push({
+              id: task.id,
+              title: task.title,
+              description: task.description,
+              completed: task.completed,
+              dueDate: task.dueDate,
+              branchId: branch.id,
+              branchTitle: branch.title,
+              projectId: proj.id,
+              projectName: proj.name,
+              pinned: task.pinned
+            });
+          });
         });
-      });
     });
 
     // Calculate stats and sort tasks by date/completion
@@ -89,7 +103,7 @@ const UserTasksPanel: React.FC = () => {
     }
     
     return result;
-  }, [state.branches, state.people, showArchived]);
+  }, [state, projects, showAllProjects, showArchived]);
 
   return (
     <div className="w-full max-w-6xl mx-auto h-full flex flex-col p-4 md:p-8 overflow-y-auto pb-24">
@@ -97,6 +111,7 @@ const UserTasksPanel: React.FC = () => {
         <h2 className="text-2xl font-bold text-slate-800 dark:text-white flex items-center gap-2">
             <ClipboardList className="w-8 h-8 text-indigo-600" />
             Task per Utente
+            {showAllProjects && <span className="text-xs font-normal text-slate-400 bg-slate-100 dark:bg-slate-800 px-2 py-1 rounded-full ml-2">Tutti i progetti</span>}
         </h2>
         <p className="text-slate-500 dark:text-slate-400 mt-1">
             Visualizza il carico di lavoro e lo stato di avanzamento per ogni membro del team.
@@ -106,10 +121,6 @@ const UserTasksPanel: React.FC = () => {
       <div className="grid grid-cols-1 md:grid-cols-2 xl:grid-cols-3 gap-6">
         {taskGroups.map(group => {
             const isUnassigned = group.userId === 'unassigned';
-            
-            // Skip showing users with 0 tasks if you want a cleaner view, 
-            // but usually seeing empty states is good for assignment.
-            // Let's keep them but maybe dim them if empty?
             const isEmpty = group.stats.total === 0;
 
             return (
@@ -146,7 +157,13 @@ const UserTasksPanel: React.FC = () => {
                                 <span className="text-xl font-bold text-indigo-600 dark:text-indigo-400">{group.stats.percentage}%</span>
                                 {!isUnassigned && (
                                     <button 
-                                        onClick={() => setRemindingUserId(group.userId)}
+                                        onClick={() => {
+                                            // Handle cross-project reminder?
+                                            // Reminding assumes active project. If showing all, we can only remind if we switch context or refactor message composer.
+                                            // For now, simpler to just set ID, MessageComposer uses active project data. 
+                                            // Ideally we disable if not current project, OR we switch project.
+                                            setRemindingUserId(group.userId)
+                                        }}
                                         className="text-xs bg-indigo-50 dark:bg-indigo-900/30 text-indigo-600 dark:text-indigo-400 px-2 py-1 rounded-md hover:bg-indigo-100 dark:hover:bg-indigo-900/50 transition-colors flex items-center gap-1"
                                         title="Invia Sollecito"
                                     >
@@ -173,60 +190,100 @@ const UserTasksPanel: React.FC = () => {
                             </div>
                         ) : (
                             <ul className="divide-y divide-slate-100 dark:divide-slate-700/50">
-                                {group.tasks.map(task => (
-                                    <li key={task.id} className="p-3 hover:bg-slate-50 dark:hover:bg-slate-700/30 transition-colors group">
-                                        <div className="flex items-start gap-3">
-                                            <button 
-                                                onClick={() => updateTask(task.branchId, task.id, { completed: !task.completed })}
-                                                className={`mt-0.5 flex-shrink-0 ${task.completed ? 'text-green-500' : 'text-slate-300 dark:text-slate-500 hover:text-indigo-500'}`}
-                                            >
-                                                {task.completed ? <CheckSquare className="w-5 h-5" /> : <Square className="w-5 h-5" />}
-                                            </button>
-                                            
-                                            <div className="flex-1 min-w-0">
-                                                <div className="flex items-center gap-2">
-                                                    <p 
-                                                        className={`text-sm font-medium mb-0.5 cursor-pointer hover:underline ${task.completed ? 'line-through text-slate-400' : 'text-slate-700 dark:text-slate-200'}`}
-                                                        onClick={() => setEditingTask({ branchId: task.branchId, taskId: task.id })}
-                                                        title="Modifica Task"
-                                                    >
-                                                        {task.title}
-                                                    </p>
-                                                    {task.description && task.description.trim() !== '' && (
-                                                        <button
-                                                            onClick={(e) => {
-                                                                e.stopPropagation();
-                                                                setReadingTask({ branchId: task.branchId, taskId: task.id });
-                                                            }}
-                                                            className="text-slate-400 hover:text-indigo-500 p-0.5"
-                                                            title="Leggi Descrizione"
-                                                        >
-                                                            <FileText className="w-3.5 h-3.5" />
-                                                        </button>
-                                                    )}
-                                                </div>
+                                {group.tasks.map(task => {
+                                    const isForeign = task.projectId !== state.id;
+                                    
+                                    return (
+                                        <li key={task.id} className="p-3 hover:bg-slate-50 dark:hover:bg-slate-700/30 transition-colors group">
+                                            <div className="flex items-start gap-3">
+                                                <button 
+                                                    onClick={() => {
+                                                        if (isForeign) {
+                                                            switchProject(task.projectId);
+                                                            // Could auto-trigger update after switch, but tricky with React updates.
+                                                            // Better to let user switch context first.
+                                                        } else {
+                                                            updateTask(task.branchId, task.id, { completed: !task.completed });
+                                                        }
+                                                    }}
+                                                    className={`mt-0.5 flex-shrink-0 ${task.completed ? 'text-green-500' : 'text-slate-300 dark:text-slate-500 hover:text-indigo-500'}`}
+                                                    title={isForeign ? "Vai al progetto per modificare" : "Completa"}
+                                                >
+                                                    {task.completed ? <CheckSquare className="w-5 h-5" /> : <Square className="w-5 h-5" />}
+                                                </button>
                                                 
-                                                <div className="flex flex-wrap items-center gap-2 text-xs text-slate-500 dark:text-slate-400">
-                                                    <span 
-                                                        className="flex items-center gap-1 hover:text-indigo-500 cursor-pointer transition-colors max-w-[150px] truncate"
-                                                        onClick={() => selectBranch(task.branchId)}
-                                                        title="Vai al ramo"
-                                                    >
-                                                        <ArrowRight className="w-3 h-3" />
-                                                        {task.branchTitle}
-                                                    </span>
+                                                <div className="flex-1 min-w-0">
+                                                    <div className="flex items-center gap-2">
+                                                        <p 
+                                                            className={`text-sm font-medium mb-0.5 cursor-pointer hover:underline ${task.completed ? 'line-through text-slate-400' : 'text-slate-700 dark:text-slate-200'}`}
+                                                            onClick={() => {
+                                                                if (isForeign) {
+                                                                    switchProject(task.projectId);
+                                                                    setTimeout(() => setEditingTask({ branchId: task.branchId, taskId: task.id }), 100);
+                                                                } else {
+                                                                    setEditingTask({ branchId: task.branchId, taskId: task.id });
+                                                                }
+                                                            }}
+                                                            title="Modifica Task"
+                                                        >
+                                                            {task.title}
+                                                        </p>
+                                                        {task.description && task.description.trim() !== '' && (
+                                                            <button
+                                                                onClick={(e) => {
+                                                                    e.stopPropagation();
+                                                                    if (isForeign) switchProject(task.projectId);
+                                                                    setTimeout(() => setReadingTask({ branchId: task.branchId, taskId: task.id }), isForeign ? 100 : 0);
+                                                                }}
+                                                                className="text-slate-400 hover:text-indigo-500 p-0.5"
+                                                                title="Leggi Descrizione"
+                                                            >
+                                                                <FileText className="w-3.5 h-3.5" />
+                                                            </button>
+                                                        )}
+                                                        {isForeign && (
+                                                            <span className="text-[9px] bg-slate-100 dark:bg-slate-700 text-slate-500 px-1 py-0.5 rounded border border-slate-200 dark:border-slate-600 flex items-center gap-0.5">
+                                                                <Folder className="w-2.5 h-2.5" /> {task.projectName}
+                                                            </span>
+                                                        )}
+                                                    </div>
                                                     
-                                                    {task.dueDate && (
-                                                        <span className={`flex items-center gap-1 ${task.completed ? '' : 'text-amber-600 dark:text-amber-500'}`}>
-                                                            <Calendar className="w-3 h-3" />
-                                                            {new Date(task.dueDate).toLocaleDateString(undefined, { day: '2-digit', month: '2-digit'})}
+                                                    <div className="flex flex-wrap items-center gap-2 text-xs text-slate-500 dark:text-slate-400">
+                                                        <span 
+                                                            className="flex items-center gap-1 hover:text-indigo-500 cursor-pointer transition-colors max-w-[150px] truncate"
+                                                            onClick={() => {
+                                                                if(isForeign) switchProject(task.projectId);
+                                                                setTimeout(() => selectBranch(task.branchId), isForeign ? 100 : 0);
+                                                            }}
+                                                            title="Vai al ramo"
+                                                        >
+                                                            <ArrowRight className="w-3 h-3" />
+                                                            {task.branchTitle}
                                                         </span>
-                                                    )}
+                                                        
+                                                        {task.dueDate && (
+                                                            <span className={`flex items-center gap-1 ${task.completed ? '' : 'text-amber-600 dark:text-amber-500'}`}>
+                                                                <Calendar className="w-3 h-3" />
+                                                                {new Date(task.dueDate).toLocaleDateString(undefined, { day: '2-digit', month: '2-digit'})}
+                                                            </span>
+                                                        )}
+                                                    </div>
                                                 </div>
+
+                                                {/* Pin Button */}
+                                                {!isForeign && (
+                                                    <button
+                                                        onClick={() => updateTask(task.branchId, task.id, { pinned: !task.pinned })}
+                                                        className={`p-1 rounded hover:bg-slate-100 dark:hover:bg-slate-700 opacity-0 group-hover:opacity-100 transition-all ${task.pinned ? 'opacity-100 text-amber-500' : 'text-slate-300'}`}
+                                                        title={task.pinned ? "Rimuovi da Focus" : "Aggiungi a Focus"}
+                                                    >
+                                                        <Pin className={`w-3.5 h-3.5 ${task.pinned ? 'fill-current' : ''}`} />
+                                                    </button>
+                                                )}
                                             </div>
-                                        </div>
-                                    </li>
-                                ))}
+                                        </li>
+                                    );
+                                })}
                             </ul>
                         )}
                     </div>

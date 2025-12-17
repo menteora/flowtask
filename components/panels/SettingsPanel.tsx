@@ -59,7 +59,8 @@ create table public.flowtask_tasks (
   due_date text,
   completed boolean default false,
   completed_at text, -- Added completion timestamp
-  position integer default 0
+  position integer default 0,
+  pinned boolean default false -- Added pinned field for Focus View
 );
 
 -- ENABLE ROW LEVEL SECURITY
