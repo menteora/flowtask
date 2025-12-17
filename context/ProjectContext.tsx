@@ -105,6 +105,9 @@ export const ProjectProvider: React.FC<{ children: React.ReactNode }> = ({ child
   const [isInitializing, setIsInitializing] = useState(true);
   const [autoSaveStatus, setAutoSaveStatus] = useState<'idle' | 'saving' | 'saved' | 'error'>('idle');
   
+  // Flag to ensure we don't auto-save stale local data over fresh cloud data on boot
+  const [remoteDataLoaded, setRemoteDataLoaded] = useState(false);
+  
   const autoSaveTimerRef = useRef<ReturnType<typeof setTimeout> | null>(null);
 
   // Initialization
@@ -132,7 +135,16 @@ export const ProjectProvider: React.FC<{ children: React.ReactNode }> = ({ child
     const savedProjects = localStorage.getItem('flowtask_projects');
     if (savedProjects) {
         try {
-            setProjects(JSON.parse(savedProjects));
+            const parsed = JSON.parse(savedProjects);
+            // Sanitize tasks to ensure 'pinned' property exists (migration for older local data)
+            const sanitized = parsed.map((p: any) => ({
+                ...p,
+                branches: Object.fromEntries(Object.entries(p.branches).map(([k, b]: any) => [k, {
+                    ...b,
+                    tasks: (b.tasks || []).map((t: any) => ({ ...t, pinned: t.pinned || false }))
+                }]))
+            }));
+            setProjects(sanitized);
         } catch (e) { console.error("Error loading local projects", e); }
     }
     
@@ -161,6 +173,17 @@ export const ProjectProvider: React.FC<{ children: React.ReactNode }> = ({ child
         return () => subscription.unsubscribe();
     }
   }, [supabaseConfig]);
+
+  // Fetch Remote Data on Session Load
+  // This is critical to prevent stale local storage from overwriting cloud data
+  useEffect(() => {
+      if (session && !isOfflineMode && activeProjectId && activeProjectId !== 'default-project') {
+          // Trigger a download immediately when session is established
+          downloadProjectFromSupabase(activeProjectId, false, false)
+             .then(() => setRemoteDataLoaded(true))
+             .catch(err => console.error("Initial fetch failed", err));
+      }
+  }, [session, isOfflineMode, activeProjectId]); // Dependency on activeProjectId ensures we fetch if user switches project too
 
   // Persistence (Auto-save local)
   useEffect(() => {
@@ -314,6 +337,13 @@ export const ProjectProvider: React.FC<{ children: React.ReactNode }> = ({ child
   // Auto-Save Effect
   useEffect(() => {
       if (!session || isOfflineMode || isInitializing) return;
+
+      // CRITICAL FIX: Do not auto-save if we haven't confirmed we have the latest data from remote.
+      // This prevents stale LocalStorage data from overwriting fresher Cloud data on page reload.
+      if (session && !remoteDataLoaded) {
+          console.log("Skipping auto-save: Waiting for remote data sync...");
+          return;
+      }
       
       // Clear existing timer
       if (autoSaveTimerRef.current) {
@@ -328,7 +358,7 @@ export const ProjectProvider: React.FC<{ children: React.ReactNode }> = ({ child
       return () => {
           if (autoSaveTimerRef.current) clearTimeout(autoSaveTimerRef.current);
       };
-  }, [projects, session, isOfflineMode, isInitializing, uploadProjectToSupabase]);
+  }, [projects, session, isOfflineMode, isInitializing, uploadProjectToSupabase, remoteDataLoaded]);
 
 
   const downloadProjectFromSupabase = useCallback(async (id: string, activate = true, force = false) => {
@@ -399,9 +429,10 @@ export const ProjectProvider: React.FC<{ children: React.ReactNode }> = ({ child
           };
 
           loadProject(newState, activate, true); // true to remove default project if it exists
+          setRemoteDataLoaded(true); // Mark as synced
       } catch (e: any) {
           console.error("Download Error:", e);
-          showNotification("Errore nel download del progetto: " + e.message, 'error');
+          if (force) showNotification("Errore nel download del progetto: " + e.message, 'error');
       }
   }, [supabaseClient, session]);
 
@@ -433,8 +464,7 @@ export const ProjectProvider: React.FC<{ children: React.ReactNode }> = ({ child
   }, [supabaseClient]);
 
   const moveLocalBranchToRemoteProject = useCallback(async (branchId: string, targetProjectId: string, targetParentId: string) => {
-      // Stub implementation for complex feature - requires transactional logic
-      // For now, this is a placeholder as requested by the initial prompt context
+      // Stub implementation for complex feature
       console.warn("Cross-project move not fully implemented in this version.");
   }, []);
 
