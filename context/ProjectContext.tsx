@@ -104,6 +104,8 @@ export const ProjectProvider: React.FC<{ children: React.ReactNode }> = ({ child
   const [loadingAuth, setLoadingAuth] = useState(true);
   const [isInitializing, setIsInitializing] = useState(true);
   const [autoSaveStatus, setAutoSaveStatus] = useState<'idle' | 'saving' | 'saved' | 'error'>('idle');
+  
+  const autoSaveTimerRef = useRef<ReturnType<typeof setTimeout> | null>(null);
 
   // Initialization
   useEffect(() => {
@@ -218,12 +220,225 @@ export const ProjectProvider: React.FC<{ children: React.ReactNode }> = ({ child
       setProjects(prev => prev.map(p => p.id === activeProjectId ? { ...p, name } : p));
   }, [activeProjectId]);
 
+  // --- CLOUD SYNC IMPLEMENTATION ---
+
+  const uploadProjectToSupabase = useCallback(async () => {
+      if (!supabaseClient || !session || isOfflineMode) return;
+      
+      const projectToSave = projects.find(p => p.id === activeProjectId);
+      if (!projectToSave || projectToSave.id === 'default-project') return;
+
+      setAutoSaveStatus('saving');
+      try {
+          // 1. Upsert Project
+          const { error: pErr } = await supabaseClient
+              .from('flowtask_projects')
+              .upsert({
+                  id: projectToSave.id,
+                  name: projectToSave.name,
+                  root_branch_id: projectToSave.rootBranchId,
+                  owner_id: session.user.id,
+                  created_at: new Date().toISOString()
+              });
+          if (pErr) throw pErr;
+
+          // 2. Prepare & Upsert People
+          const peoplePayload = projectToSave.people.map(p => ({
+              id: p.id,
+              project_id: projectToSave.id,
+              name: p.name,
+              email: p.email,
+              phone: p.phone,
+              initials: p.initials,
+              color: p.color
+          }));
+          if (peoplePayload.length > 0) {
+              const { error: ppErr } = await supabaseClient.from('flowtask_people').upsert(peoplePayload);
+              if (ppErr) throw ppErr;
+          }
+
+          // 3. Prepare & Upsert Branches
+          const branchesPayload = Object.values(projectToSave.branches).map(b => ({
+              id: b.id,
+              project_id: projectToSave.id,
+              title: b.title,
+              description: b.description,
+              status: b.status,
+              start_date: b.startDate,
+              end_date: b.endDate,
+              due_date: b.dueDate,
+              archived: b.archived,
+              collapsed: b.collapsed,
+              is_label: b.isLabel,
+              parent_ids: b.parentIds,
+              children_ids: b.childrenIds,
+              position: 0
+          }));
+          if (branchesPayload.length > 0) {
+              const { error: bErr } = await supabaseClient.from('flowtask_branches').upsert(branchesPayload);
+              if (bErr) throw bErr;
+          }
+
+          // 4. Prepare & Upsert Tasks
+          const tasksPayload: any[] = [];
+          Object.values(projectToSave.branches).forEach(b => {
+              b.tasks.forEach((t, idx) => {
+                  tasksPayload.push({
+                      id: t.id,
+                      branch_id: b.id,
+                      title: t.title,
+                      description: t.description,
+                      assignee_id: t.assigneeId,
+                      due_date: t.dueDate,
+                      completed: t.completed,
+                      position: idx,
+                      pinned: t.pinned || false // Explicitly save pinned state
+                  });
+              });
+          });
+          
+          if (tasksPayload.length > 0) {
+              const { error: tErr } = await supabaseClient.from('flowtask_tasks').upsert(tasksPayload);
+              if (tErr) throw tErr;
+          }
+
+          setAutoSaveStatus('saved');
+          setTimeout(() => setAutoSaveStatus('idle'), 2000);
+      } catch (e: any) {
+          console.error("Sync Error:", e);
+          setAutoSaveStatus('error');
+          // Only show toast on manual fail, silent fail for auto-save usually better unless critical
+      }
+  }, [supabaseClient, session, isOfflineMode, projects, activeProjectId]);
+
+  // Auto-Save Effect
+  useEffect(() => {
+      if (!session || isOfflineMode || isInitializing) return;
+      
+      // Clear existing timer
+      if (autoSaveTimerRef.current) {
+          clearTimeout(autoSaveTimerRef.current);
+      }
+
+      // Set new timer (Debounce 2s)
+      autoSaveTimerRef.current = setTimeout(() => {
+          uploadProjectToSupabase();
+      }, 2000);
+
+      return () => {
+          if (autoSaveTimerRef.current) clearTimeout(autoSaveTimerRef.current);
+      };
+  }, [projects, session, isOfflineMode, isInitializing, uploadProjectToSupabase]);
+
+
   const downloadProjectFromSupabase = useCallback(async (id: string, activate = true, force = false) => {
-      // Placeholder: In a real app, fetch from Supabase tables
-      console.log("Download requested for", id);
-      if (!supabaseClient) throw new Error("No client");
-      // ... implementation ...
+      if (!supabaseClient || !session) return;
+      
+      try {
+          // Fetch Data
+          const { data: projectData, error: pErr } = await supabaseClient.from('flowtask_projects').select('*').eq('id', id).single();
+          if (pErr) throw pErr;
+
+          const { data: peopleData, error: ppErr } = await supabaseClient.from('flowtask_people').select('*').eq('project_id', id);
+          if (ppErr) throw ppErr;
+
+          const { data: branchesData, error: bErr } = await supabaseClient.from('flowtask_branches').select('*').eq('project_id', id);
+          if (bErr) throw bErr;
+
+          const { data: tasksData, error: tErr } = await supabaseClient.from('flowtask_tasks').select('*').in('branch_id', branchesData?.map(b => b.id) || []);
+          if (tErr) throw tErr;
+
+          // Reconstruct State
+          const people: Person[] = (peopleData || []).map((p: any) => ({
+              id: p.id,
+              name: p.name,
+              email: p.email,
+              phone: p.phone,
+              initials: p.initials,
+              color: p.color
+          }));
+
+          const branches: Record<string, Branch> = {};
+          (branchesData || []).forEach((b: any) => {
+              const branchTasks = (tasksData || [])
+                  .filter((t: any) => t.branch_id === b.id)
+                  .sort((a: any, b: any) => (a.position || 0) - (b.position || 0))
+                  .map((t: any) => ({
+                      id: t.id,
+                      title: t.title,
+                      description: t.description,
+                      completed: t.completed,
+                      assigneeId: t.assignee_id,
+                      dueDate: t.due_date,
+                      pinned: t.pinned || false
+                  }));
+
+              branches[b.id] = {
+                  id: b.id,
+                  title: b.title,
+                  description: b.description,
+                  status: b.status as BranchStatus,
+                  tasks: branchTasks,
+                  childrenIds: b.children_ids || [],
+                  parentIds: b.parent_ids || [],
+                  startDate: b.start_date,
+                  endDate: b.end_date,
+                  dueDate: b.due_date,
+                  archived: b.archived,
+                  collapsed: b.collapsed,
+                  isLabel: b.is_label
+              };
+          });
+
+          const newState: ProjectState = {
+              id: projectData.id,
+              name: projectData.name,
+              rootBranchId: projectData.root_branch_id,
+              branches,
+              people
+          };
+
+          loadProject(newState, activate, true); // true to remove default project if it exists
+      } catch (e: any) {
+          console.error("Download Error:", e);
+          showNotification("Errore nel download del progetto: " + e.message, 'error');
+      }
+  }, [supabaseClient, session]);
+
+  const listProjectsFromSupabase = useCallback(async () => {
+      if (!supabaseClient) return [];
+      const { data, error } = await supabaseClient.from('flowtask_projects').select('id, name, created_at').order('created_at', { ascending: false });
+      if (error) throw error;
+      return data || [];
   }, [supabaseClient]);
+
+  const getProjectBranchesFromSupabase = useCallback(async (projectId: string) => {
+      if (!supabaseClient) return [];
+      const { data, error } = await supabaseClient.from('flowtask_branches').select('*').eq('project_id', projectId);
+      if (error) throw error;
+      return data.map((b: any) => ({
+          id: b.id,
+          title: b.title,
+          status: b.status,
+          childrenIds: b.children_ids || [],
+          parentIds: b.parent_ids || [],
+          tasks: [] // Lightweight for selection
+      }));
+  }, [supabaseClient]);
+
+  const deleteProjectFromSupabase = useCallback(async (id: string) => {
+      if (!supabaseClient) return;
+      const { error } = await supabaseClient.from('flowtask_projects').delete().eq('id', id);
+      if (error) throw error;
+  }, [supabaseClient]);
+
+  const moveLocalBranchToRemoteProject = useCallback(async (branchId: string, targetProjectId: string, targetParentId: string) => {
+      // Stub implementation for complex feature - requires transactional logic
+      // For now, this is a placeholder as requested by the initial prompt context
+      console.warn("Cross-project move not fully implemented in this version.");
+  }, []);
+
+  // ---
 
   const loadProject = useCallback((newState: ProjectState, activate = true, removeDefault = false) => {
     setProjects(prev => {
@@ -304,7 +519,14 @@ export const ProjectProvider: React.FC<{ children: React.ReactNode }> = ({ child
       }));
   }, [activeProjectId]);
 
-  const deleteBranch = useCallback((branchId: string) => {
+  const deleteBranch = useCallback(async (branchId: string) => {
+      // Remote Delete (Fire & Forget)
+      if (session && !isOfflineMode && supabaseClient) {
+          supabaseClient.from('flowtask_branches').delete().eq('id', branchId).then(res => {
+              if(res.error) console.error("Error deleting branch remote", res.error);
+          });
+      }
+
       setProjects(prev => prev.map(p => {
           if (p.id !== activeProjectId) return p;
           const newBranches = { ...p.branches };
@@ -326,7 +548,7 @@ export const ProjectProvider: React.FC<{ children: React.ReactNode }> = ({ child
           return { ...p, branches: newBranches };
       }));
       if (selectedBranchId === branchId) setSelectedBranchId(null);
-  }, [activeProjectId, selectedBranchId]);
+  }, [activeProjectId, selectedBranchId, session, isOfflineMode, supabaseClient]);
 
   const moveBranch = useCallback((branchId: string, direction: 'left' | 'right' | 'up' | 'down') => {
       setProjects(prev => prev.map(p => {
@@ -438,7 +660,14 @@ export const ProjectProvider: React.FC<{ children: React.ReactNode }> = ({ child
       }));
   }, [activeProjectId]);
 
-  const deleteTask = useCallback((branchId: string, taskId: string) => {
+  const deleteTask = useCallback(async (branchId: string, taskId: string) => {
+      // Remote Delete
+      if (session && !isOfflineMode && supabaseClient) {
+          supabaseClient.from('flowtask_tasks').delete().eq('id', taskId).then(res => {
+              if(res.error) console.error("Error deleting task remote", res.error);
+          });
+      }
+
       setProjects(prev => prev.map(p => {
           if (p.id !== activeProjectId) return p;
           const branch = p.branches[branchId];
@@ -448,7 +677,7 @@ export const ProjectProvider: React.FC<{ children: React.ReactNode }> = ({ child
               branches: { ...p.branches, [branchId]: { ...branch, tasks: branch.tasks.filter(t => t.id !== taskId) } }
           };
       }));
-  }, [activeProjectId]);
+  }, [activeProjectId, session, isOfflineMode, supabaseClient]);
 
   const moveTask = useCallback((branchId: string, taskId: string, direction: 'up' | 'down') => {
       setProjects(prev => prev.map(p => {
@@ -535,20 +764,20 @@ export const ProjectProvider: React.FC<{ children: React.ReactNode }> = ({ child
       }));
   }, [activeProjectId]);
 
-  const removePerson = useCallback((id: string) => {
+  const removePerson = useCallback(async (id: string) => {
+      // Remote Delete
+      if (session && !isOfflineMode && supabaseClient) {
+          supabaseClient.from('flowtask_people').delete().eq('id', id).then(res => {
+              if(res.error) console.error("Error deleting person remote", res.error);
+          });
+      }
+
       setProjects(prev => prev.map(p => {
           if (p.id !== activeProjectId) return p;
           return { ...p, people: p.people.filter(person => person.id !== id) };
       }));
-  }, [activeProjectId]);
+  }, [activeProjectId, session, isOfflineMode, supabaseClient]);
 
-  // Auth / Cloud Stub Functions
-  const uploadProjectToSupabase = async () => { /* Impl */ };
-  const listProjectsFromSupabase = async () => { return []; /* Impl */ };
-  const getProjectBranchesFromSupabase = async (pid: string) => { return []; /* Impl */ };
-  const deleteProjectFromSupabase = async (id: string) => { /* Impl */ };
-  const moveLocalBranchToRemoteProject = async () => { /* Impl */ };
-  
   const logout = async () => {
       if (supabaseClient) await supabaseClient.auth.signOut();
       setSession(null);
