@@ -300,7 +300,7 @@ const App: React.FC = () => {
       {/* Header */}
       <div className="flex w-full h-14 md:h-16 bg-white dark:bg-slate-900 border-b border-slate-200 dark:border-slate-800 items-center justify-between px-4 md:px-6 z-20 shadow-sm flex-shrink-0">
         
-        <div className="flex items-center gap-4">
+        <div className="flex items-center gap-4 relative">
           
           {/* Desktop Logo */}
           <div className="hidden md:flex items-center">
@@ -333,7 +333,7 @@ const App: React.FC = () => {
 
           {/* Auto Save Status Indicator */}
           {session && !isOfflineMode && (
-              <div className="hidden sm:flex items-center gap-1.5 px-2 py-1 bg-slate-50 dark:bg-slate-800 rounded text-xs transition-colors ml-2 md:ml-0">
+              <div className="hidden sm:flex items-center gap-1.5 px-2 py-1 bg-slate-50 dark:bg-slate-800 rounded text-xs transition-colors ml-2 md:ml-0 md:absolute md:left-full md:top-1/2 md:-translate-y-1/2 md:ml-6 w-max">
                   {autoSaveStatus === 'saving' && (
                       <>
                         <Loader2 className="w-3 h-3 animate-spin text-indigo-500" />
