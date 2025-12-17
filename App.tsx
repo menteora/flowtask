@@ -29,7 +29,16 @@ const App: React.FC = () => {
     showAllProjects, toggleShowAllProjects
   } = useProject();
   
-  const [currentView, setCurrentView] = useState<View>('workflow');
+  const [currentView, setCurrentView] = useState<View>(() => {
+      const saved = localStorage.getItem('flowtask_current_view');
+      const validViews: View[] = ['workflow', 'team', 'calendar', 'assignments', 'settings', 'timeline', 'focus'];
+      return (validViews.includes(saved as View) ? saved as View : 'workflow');
+  });
+
+  useEffect(() => {
+      localStorage.setItem('flowtask_current_view', currentView);
+  }, [currentView]);
+
   const [isProjectMenuOpen, setIsProjectMenuOpen] = useState(false);
   const fileInputRef = useRef<HTMLInputElement>(null);
   const [editingNameId, setEditingNameId] = useState<string | null>(null);
@@ -361,11 +370,11 @@ const App: React.FC = () => {
 
         <div className="flex items-center gap-1 md:gap-2">
             
-            {/* Show All Projects Toggle (Visible only in Calendar/Tasks/Timeline/Focus) */}
+            {/* Show All Projects Toggle (Now visible on mobile for eligible views) */}
             {(currentView === 'calendar' || currentView === 'assignments' || currentView === 'timeline' || currentView === 'focus') && (
                 <button 
                   onClick={toggleShowAllProjects}
-                  className={`hidden md:block p-2 rounded-full transition-colors border ${showAllProjects ? 'bg-amber-100 dark:bg-amber-900/40 text-amber-600 border-amber-200' : 'hover:bg-slate-100 dark:hover:bg-slate-800 text-slate-500 dark:text-slate-400 border-transparent'}`}
+                  className={`p-2 rounded-full transition-colors border ${showAllProjects ? 'bg-amber-100 dark:bg-amber-900/40 text-amber-600 border-amber-200' : 'hover:bg-slate-100 dark:hover:bg-slate-800 text-slate-500 dark:text-slate-400 border-transparent'}`}
                   title={showAllProjects ? "Mostra solo progetto corrente" : "Mostra tutti i progetti aperti"}
                 >
                   <Globe className="w-4 h-4" />
@@ -374,7 +383,7 @@ const App: React.FC = () => {
 
             <button 
               onClick={toggleShowArchived}
-              className={`hidden md:block p-2 rounded-full transition-colors border ${showArchived ? 'bg-indigo-100 dark:bg-indigo-900/40 text-indigo-600 border-indigo-200' : 'hover:bg-slate-100 dark:hover:bg-slate-800 text-slate-500 dark:text-slate-400 border-transparent'}`}
+              className={`p-2 rounded-full transition-colors border ${showArchived ? 'bg-indigo-100 dark:bg-indigo-900/40 text-indigo-600 border-indigo-200' : 'hover:bg-slate-100 dark:hover:bg-slate-800 text-slate-500 dark:text-slate-400 border-transparent'}`}
               title={showArchived ? "Nascondi archiviati" : "Mostra archiviati"}
             >
               <Archive className="w-4 h-4" />
