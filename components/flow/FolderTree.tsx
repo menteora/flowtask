@@ -4,6 +4,27 @@ import { STATUS_CONFIG } from '../../constants';
 import { ChevronRight, ChevronDown, Plus, FileText, CheckSquare, Square, Archive, GitBranch, ChevronUp, Tag } from 'lucide-react';
 import Avatar from '../ui/Avatar';
 
+// Helper functions for persistence
+const STORAGE_KEY = 'flowtask_tree_view_state';
+
+const getStoredState = (branchId: string): boolean | undefined => {
+    try {
+        const data = localStorage.getItem(STORAGE_KEY);
+        if (!data) return undefined;
+        const parsed = JSON.parse(data);
+        return parsed[branchId];
+    } catch { return undefined; }
+};
+
+const setStoredState = (branchId: string, isOpen: boolean) => {
+    try {
+        const data = localStorage.getItem(STORAGE_KEY);
+        const parsed = data ? JSON.parse(data) : {};
+        parsed[branchId] = isOpen;
+        localStorage.setItem(STORAGE_KEY, JSON.stringify(parsed));
+    } catch (e) { console.error("Error saving tree state", e); }
+};
+
 interface FolderNodeProps {
   branchId: string;
   depth?: number;
@@ -14,7 +35,12 @@ interface FolderNodeProps {
 const FolderNode: React.FC<FolderNodeProps> = ({ branchId, depth = 0, index, siblingsCount }) => {
   const { state, selectBranch, selectedBranchId, addBranch, updateTask, moveTask, moveBranch, showArchived, setEditingTask, setReadingTask } = useProject();
   const branch = state.branches[branchId];
-  const [isOpen, setIsOpen] = useState(true);
+  
+  // Initialize state from localStorage, default to true (expanded)
+  const [isOpen, setIsOpen] = useState(() => {
+      const stored = getStoredState(branchId);
+      return stored !== undefined ? stored : true;
+  });
 
   if (!branch) return null;
   
@@ -41,7 +67,9 @@ const FolderNode: React.FC<FolderNodeProps> = ({ branchId, depth = 0, index, sib
 
   const handleToggle = (e: React.MouseEvent) => {
     e.stopPropagation();
-    setIsOpen(!isOpen);
+    const newState = !isOpen;
+    setIsOpen(newState);
+    setStoredState(branchId, newState);
   };
 
   const handleSelect = () => {
@@ -98,6 +126,7 @@ const FolderNode: React.FC<FolderNodeProps> = ({ branchId, depth = 0, index, sib
                 e.stopPropagation();
                 addBranch(branchId);
                 setIsOpen(true);
+                setStoredState(branchId, true);
             }}
             className="p-1.5 text-slate-400 hover:text-indigo-600 hover:bg-indigo-50 dark:hover:bg-slate-700 rounded-full"
         >
