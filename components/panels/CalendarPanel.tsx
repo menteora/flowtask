@@ -33,7 +33,6 @@ const CalendarPanel: React.FC = () => {
     sourceProjects.forEach(project => {
         (Object.values(project.branches) as Branch[]).forEach(branch => {
             // Skip archived if needed, but usually deadlines are important regardless. 
-            // Let's skip archived/closed for clarity unless specifically requested.
             if (branch.archived || branch.status === BranchStatus.CANCELLED) return;
 
             const commonProps = {
@@ -45,16 +44,8 @@ const CalendarPanel: React.FC = () => {
             };
 
             // Branch Dates
-            if (branch.startDate) {
-                list.push({
-                    id: `${branch.id}-start`,
-                    type: 'branch_start',
-                    dateStr: branch.startDate,
-                    dateObj: new Date(branch.startDate),
-                    title: 'Inizio Ramo',
-                    ...commonProps
-                });
-            }
+            // NOTE: Removed branch.startDate (branch_start) to reduce clutter as requested.
+
             if (branch.dueDate) {
                 list.push({
                     id: `${branch.id}-due`,
