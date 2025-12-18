@@ -1,3 +1,4 @@
+
 import React, { createContext, useContext, useState, useEffect, useCallback, useRef } from 'react';
 import { createClient, SupabaseClient, Session } from '@supabase/supabase-js';
 import { ProjectState, Branch, Task, Person, BranchStatus } from '../types';
@@ -281,7 +282,8 @@ export const ProjectProvider: React.FC<{ children: React.ReactNode }> = ({ child
           }
 
           // 3. Prepare & Upsert Branches
-          const branchesPayload = Object.values(projectToSave.branches).map(b => ({
+          // Explicitly typing 'b' as Branch to fix property access errors on unknown type
+          const branchesPayload = Object.values(projectToSave.branches).map((b: Branch) => ({
               id: b.id,
               project_id: projectToSave.id,
               title: b.title,
@@ -304,8 +306,9 @@ export const ProjectProvider: React.FC<{ children: React.ReactNode }> = ({ child
 
           // 4. Prepare & Upsert Tasks
           const tasksPayload: any[] = [];
-          Object.values(projectToSave.branches).forEach(b => {
-              b.tasks.forEach((t, idx) => {
+          // Explicitly typing 'b' as Branch and 't' as Task to fix property access errors on unknown type
+          Object.values(projectToSave.branches).forEach((b: Branch) => {
+              b.tasks.forEach((t: Task, idx: number) => {
                   tasksPayload.push({
                       id: t.id,
                       branch_id: b.id,
