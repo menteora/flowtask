@@ -1,7 +1,6 @@
-
 import React, { useEffect, useState, useRef } from 'react';
 import { useProject } from '../../context/ProjectContext';
-import { X, Calendar, User, Trash2, CheckSquare, Square, Save, ArrowRight, Bold, Italic, List, Link as LinkIcon, Mail, Check, Eye, Edit2 } from 'lucide-react';
+import { X, Calendar, User, Trash2, CheckSquare, Square, Save, ArrowRight, Bold, Italic, List, Link as LinkIcon, Mail, Check, Eye, Edit2, Pin } from 'lucide-react';
 import Avatar from '../ui/Avatar';
 import { Branch } from '../../types';
 
@@ -13,6 +12,7 @@ const TaskEditorModal: React.FC = () => {
   const [assigneeId, setAssigneeId] = useState('');
   const [dueDate, setDueDate] = useState('');
   const [completed, setCompleted] = useState(false);
+  const [pinned, setPinned] = useState(false);
   
   // Description/Preview Mode
   const [isPreviewMode, setIsPreviewMode] = useState(false);
@@ -38,6 +38,7 @@ const TaskEditorModal: React.FC = () => {
             setAssigneeId(task.assigneeId || '');
             setDueDate(task.dueDate || '');
             setCompleted(task.completed);
+            setPinned(task.pinned || false);
             setTargetBranchId(''); // Reset selector
             setIsPreviewMode(false); // Reset preview mode
             setPopupMode(null);
@@ -70,7 +71,8 @@ const TaskEditorModal: React.FC = () => {
           description: description,
           assigneeId: assigneeId || undefined,
           dueDate: dueDate || undefined,
-          completed
+          completed,
+          pinned
       });
       handleClose();
   };
@@ -177,7 +179,16 @@ const TaskEditorModal: React.FC = () => {
         onClick={e => e.stopPropagation()}
       >
         <div className="flex items-center justify-between p-4 border-b border-gray-100 dark:border-slate-800">
-            <h3 className="font-bold text-slate-800 dark:text-white">Modifica Task</h3>
+            <div className="flex items-center gap-2">
+                <h3 className="font-bold text-slate-800 dark:text-white">Modifica Task</h3>
+                <button
+                    onClick={() => setPinned(!pinned)}
+                    className={`p-1.5 rounded-full transition-colors ${pinned ? 'text-amber-500 bg-amber-50 dark:bg-amber-900/20' : 'text-slate-400 hover:text-amber-500 hover:bg-slate-100 dark:hover:bg-slate-800'}`}
+                    title={pinned ? "Rimuovi da Focus" : "Aggiungi a Focus"}
+                >
+                    <Pin className={`w-4 h-4 ${pinned ? 'fill-current' : ''}`} />
+                </button>
+            </div>
             <button onClick={handleClose} className="p-1 rounded-full hover:bg-slate-100 dark:hover:bg-slate-800 text-slate-400">
                 <X className="w-5 h-5" />
             </button>
@@ -345,7 +356,7 @@ const TaskEditorModal: React.FC = () => {
                 <button 
                     onClick={handleSave}
                     disabled={!title.trim()}
-                    className="px-6 py-2 bg-indigo-600 hover:bg-indigo-700 text-white rounded-lg text-sm font-medium transition-colors flex items-center gap-2 disabled:opacity-50 disabled:cursor-not-allowed shadow-sm"
+                    className="px-6 py-2 bg-indigo-600 hover:bg-indigo-700 text-white rounded-lg text-sm font-medium transition-colors flex items-center justify-center gap-2 disabled:opacity-50 disabled:cursor-not-allowed shadow-sm"
                 >
                     <Save className="w-4 h-4" /> Salva
                 </button>
