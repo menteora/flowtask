@@ -1,4 +1,5 @@
-import React, { useState, useEffect } from 'react';
+
+import React, { useState, useEffect, useMemo } from 'react';
 import { Branch, BranchStatus } from '../../types';
 import { STATUS_CONFIG } from '../../constants';
 import { useProject } from '../../context/ProjectContext';
@@ -25,6 +26,15 @@ const BranchNode: React.FC<BranchNodeProps> = ({ branchId }) => {
         setIsDetailsOpen(!inactive);
       }
   }, [branch?.status]);
+
+  // Sort tasks: Open first, Completed last
+  const sortedTasks = useMemo(() => {
+    if (!branch) return [];
+    return [...branch.tasks].sort((a, b) => {
+        if (a.completed === b.completed) return 0;
+        return a.completed ? 1 : -1;
+    });
+  }, [branch?.tasks]);
 
   if (!branch) return null;
 
@@ -56,7 +66,7 @@ const BranchNode: React.FC<BranchNodeProps> = ({ branchId }) => {
   const isImported = branch.title.includes('(Importato)');
 
   // Determine tasks to show
-  const visibleTasks = isTasksExpanded ? branch.tasks : branch.tasks.slice(0, 3);
+  const visibleTasks = isTasksExpanded ? sortedTasks : sortedTasks.slice(0, 3);
   const hiddenTasksCount = branch.tasks.length - 3;
 
   // --- LABEL VIEW ---
