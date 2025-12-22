@@ -1,5 +1,5 @@
 
-import React from 'react';
+import React, { useMemo } from 'react';
 import { useProject } from '../../context/ProjectContext';
 import { STATUS_CONFIG } from '../../constants';
 import { ChevronRight, ChevronDown, Plus, FileText, CheckSquare, Square, Archive, GitBranch, ChevronUp, Tag } from 'lucide-react';
@@ -29,9 +29,17 @@ const FolderNode: React.FC<FolderNodeProps> = ({ branchId, depth = 0, index, sib
 
   if (!shouldRender) return null;
 
+  // Sort tasks: Open first, Completed last
+  const sortedTasks = useMemo(() => {
+    return [...branch.tasks].sort((a, b) => {
+        if (a.completed === b.completed) return 0;
+        return a.completed ? 1 : -1;
+    });
+  }, [branch.tasks]);
+
   const visibleChildrenIds = branch.childrenIds;
   const hasChildren = visibleChildrenIds.length > 0;
-  const hasTasks = branch.tasks.length > 0;
+  const hasTasks = sortedTasks.length > 0;
   const hasContent = hasChildren || hasTasks;
   
   const isSelected = selectedBranchId === branchId;
@@ -132,8 +140,8 @@ const FolderNode: React.FC<FolderNodeProps> = ({ branchId, depth = 0, index, sib
       {/* Children (Tasks & Sub-Branches) */}
       {isOpen && hasContent && (
         <div className="flex flex-col">
-          {/* Tasks */}
-          {branch.tasks.map((task, index) => (
+          {/* Tasks (Sorted) */}
+          {sortedTasks.map((task, index) => (
              <div 
                 key={task.id}
                 className="flex items-center gap-3 py-2 border-b border-gray-50 dark:border-slate-800/50 bg-gray-50/50 dark:bg-slate-900/50 pr-2 group"
@@ -175,7 +183,7 @@ const FolderNode: React.FC<FolderNodeProps> = ({ branchId, depth = 0, index, sib
                 </div>
 
                 <div className="flex flex-col gap-1 border-l border-gray-200 dark:border-slate-700 pl-2">
-                    {index > 0 ? (
+                    {index > 0 && !task.completed ? (
                         <button 
                             onClick={(e) => { e.stopPropagation(); moveTask(branchId, task.id, 'up'); }}
                             className="p-0.5 text-slate-400 hover:text-indigo-500"
@@ -184,7 +192,7 @@ const FolderNode: React.FC<FolderNodeProps> = ({ branchId, depth = 0, index, sib
                         </button>
                     ) : <div className="w-3.5 h-3.5 p-0.5"></div>}
                     
-                    {index < branch.tasks.length - 1 ? (
+                    {index < sortedTasks.length - 1 && !sortedTasks[index+1].completed ? (
                         <button 
                             onClick={(e) => { e.stopPropagation(); moveTask(branchId, task.id, 'down'); }}
                             className="p-0.5 text-slate-400 hover:text-indigo-500"

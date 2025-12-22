@@ -44,6 +44,7 @@ interface ProjectContextType {
   deleteTask: (branchId: string, taskId: string) => void;
   moveTask: (branchId: string, taskId: string, direction: 'up' | 'down') => void;
   moveTaskToBranch: (taskId: string, sourceBranchId: string, targetBranchId: string) => void;
+  bulkMoveTasks: (taskIds: string[], sourceBranchId: string, targetBranchId: string) => void;
   bulkUpdateTasks: (branchId: string, text: string) => void;
 
   addPerson: (name: string, email?: string, phone?: string) => void;
@@ -107,14 +108,10 @@ export const ProjectProvider: React.FC<{ children: React.ReactNode }> = ({ child
   const [isInitializing, setIsInitializing] = useState(true);
   const [autoSaveStatus, setAutoSaveStatus] = useState<'idle' | 'saving' | 'saved' | 'error'>('idle');
   
-  // Flag to ensure we don't auto-save stale local data over fresh cloud data on boot
   const [remoteDataLoaded, setRemoteDataLoaded] = useState(false);
-  
   const autoSaveTimerRef = useRef<ReturnType<typeof setTimeout> | null>(null);
 
-  // Initialization
   useEffect(() => {
-    // Load config from local storage or URL params
     const params = new URLSearchParams(window.location.search);
     const configParam = params.get('config');
     let config = { url: '', key: '' };
@@ -122,7 +119,7 @@ export const ProjectProvider: React.FC<{ children: React.ReactNode }> = ({ child
     if (configParam) {
         try {
             config = JSON.parse(atob(configParam));
-            window.history.replaceState({}, '', window.location.pathname); // Clean URL
+            window.history.replaceState({}, '', window.location.pathname); 
         } catch (e) { console.error("Invalid config param"); }
     } else {
         const storedConfig = localStorage.getItem('supabase_config');
@@ -133,12 +130,10 @@ export const ProjectProvider: React.FC<{ children: React.ReactNode }> = ({ child
         setSupabaseConfigState(config);
     }
     
-    // Load local projects
     const savedProjects = localStorage.getItem('flowtask_projects');
     if (savedProjects) {
         try {
             const parsed = JSON.parse(savedProjects);
-            // Sanitize tasks to ensure 'pinned' property exists (migration for older local data)
             const sanitized = parsed.map((p: any) => ({
                 ...p,
                 branches: Object.fromEntries(Object.entries(p.branches).map(([k, b]: any) => [k, {
@@ -154,10 +149,9 @@ export const ProjectProvider: React.FC<{ children: React.ReactNode }> = ({ child
     if (savedActiveId) setActiveProjectId(savedActiveId);
 
     setIsInitializing(false);
-    setLoadingAuth(false); // Assume done for local part
+    setLoadingAuth(false); 
   }, []);
 
-  // Initialize Supabase Client
   useEffect(() => {
     if (supabaseConfig.url && supabaseConfig.key) {
         const client = createClient(supabaseConfig.url, supabaseConfig.key);
@@ -176,7 +170,6 @@ export const ProjectProvider: React.FC<{ children: React.ReactNode }> = ({ child
     }
   }, [supabaseConfig]);
 
-  // Fetch Remote Data on Session Load
   useEffect(() => {
       if (session && !isOfflineMode && activeProjectId && activeProjectId !== 'default-project') {
           downloadProjectFromSupabase(activeProjectId, false, false)
@@ -185,7 +178,6 @@ export const ProjectProvider: React.FC<{ children: React.ReactNode }> = ({ child
       }
   }, [session, isOfflineMode, activeProjectId]);
 
-  // Persistence (Auto-save local)
   useEffect(() => {
       localStorage.setItem('flowtask_projects', JSON.stringify(projects));
       localStorage.setItem('active_project_id', activeProjectId);
@@ -193,7 +185,6 @@ export const ProjectProvider: React.FC<{ children: React.ReactNode }> = ({ child
 
   const activeProject = projects.find(p => p.id === activeProjectId) || projects[0];
 
-  // Helpers
   const showNotification = (message: string, type: 'success' | 'error') => {
       setNotification({ message, type });
       setTimeout(() => setNotification(null), 3000);
@@ -208,8 +199,6 @@ export const ProjectProvider: React.FC<{ children: React.ReactNode }> = ({ child
       setMessageTemplates(prev => ({ ...prev, ...templates }));
   };
 
-  // --- Logic Functions ---
-
   const switchProject = useCallback((id: string) => {
       setActiveProjectId(id);
       setSelectedBranchId(null);
@@ -221,7 +210,7 @@ export const ProjectProvider: React.FC<{ children: React.ReactNode }> = ({ child
           id: crypto.randomUUID(),
           name: 'Nuovo Progetto ' + (projects.length + 1),
           branches: {
-              'root': { ...INITIAL_STATE.branches['root'], id: 'root' } // Ensure root exists
+              'root': { ...INITIAL_STATE.branches['root'], id: 'root' } 
           }
       };
       setProjects(prev => [...prev, newProject]);
@@ -243,8 +232,6 @@ export const ProjectProvider: React.FC<{ children: React.ReactNode }> = ({ child
       setProjects(prev => prev.map(p => p.id === activeProjectId ? { ...p, name } : p));
   }, [activeProjectId]);
 
-  // --- CLOUD SYNC IMPLEMENTATION ---
-
   const uploadProjectToSupabase = useCallback(async () => {
       if (!supabaseClient || !session || isOfflineMode) return;
       
@@ -253,7 +240,6 @@ export const ProjectProvider: React.FC<{ children: React.ReactNode }> = ({ child
 
       setAutoSaveStatus('saving');
       try {
-          // 1. Upsert Project
           const { error: pErr } = await supabaseClient
               .from('flowtask_projects')
               .upsert({
@@ -265,7 +251,6 @@ export const ProjectProvider: React.FC<{ children: React.ReactNode }> = ({ child
               });
           if (pErr) throw pErr;
 
-          // 2. Prepare & Upsert People
           const peoplePayload = projectToSave.people.map(p => ({
               id: p.id,
               project_id: projectToSave.id,
@@ -280,7 +265,6 @@ export const ProjectProvider: React.FC<{ children: React.ReactNode }> = ({ child
               if (ppErr) throw ppErr;
           }
 
-          // 3. Prepare & Upsert Branches
           const branchesPayload = Object.values(projectToSave.branches).map((b: Branch) => ({
               id: b.id,
               project_id: projectToSave.id,
@@ -302,7 +286,6 @@ export const ProjectProvider: React.FC<{ children: React.ReactNode }> = ({ child
               if (bErr) throw bErr;
           }
 
-          // 4. Prepare & Upsert Tasks
           const tasksPayload: any[] = [];
           Object.values(projectToSave.branches).forEach((b: Branch) => {
               b.tasks.forEach((t: Task, idx: number) => {
@@ -315,7 +298,7 @@ export const ProjectProvider: React.FC<{ children: React.ReactNode }> = ({ child
                       due_date: t.dueDate,
                       completed: t.completed,
                       position: idx,
-                      pinned: t.pinned || false
+                      pinned: t.pinned || false 
                   });
               });
           });
@@ -333,7 +316,6 @@ export const ProjectProvider: React.FC<{ children: React.ReactNode }> = ({ child
       }
   }, [supabaseClient, session, isOfflineMode, projects, activeProjectId]);
 
-  // Auto-Save Effect
   useEffect(() => {
       if (!session || isOfflineMode || isInitializing) return;
       if (session && !remoteDataLoaded) return;
@@ -417,8 +399,8 @@ export const ProjectProvider: React.FC<{ children: React.ReactNode }> = ({ child
               people
           };
 
-          loadProject(newState, activate, true);
-          setRemoteDataLoaded(true);
+          loadProject(newState, activate, true); 
+          setRemoteDataLoaded(true); 
       } catch (e: any) {
           console.error("Download Error:", e);
           if (force) showNotification("Errore nel download del progetto: " + e.message, 'error');
@@ -442,7 +424,7 @@ export const ProjectProvider: React.FC<{ children: React.ReactNode }> = ({ child
           status: b.status,
           childrenIds: b.children_ids || [],
           parentIds: b.parent_ids || [],
-          tasks: []
+          tasks: [] 
       }));
   }, [supabaseClient]);
 
@@ -455,8 +437,6 @@ export const ProjectProvider: React.FC<{ children: React.ReactNode }> = ({ child
   const moveLocalBranchToRemoteProject = useCallback(async (branchId: string, targetProjectId: string, targetParentId: string) => {
       console.warn("Cross-project move not fully implemented in this version.");
   }, []);
-
-  // ---
 
   const loadProject = useCallback((newState: ProjectState, activate = true, removeDefault = false) => {
     setProjects(prev => {
@@ -496,7 +476,6 @@ export const ProjectProvider: React.FC<{ children: React.ReactNode }> = ({ child
     });
   }, [projects, session, isOfflineMode, activeProjectId, downloadProjectFromSupabase]);
 
-  // Branch Logic
   const addBranch = useCallback((parentId: string) => {
       setProjects(prev => prev.map(p => {
           if (p.id !== activeProjectId) return p;
@@ -649,7 +628,6 @@ export const ProjectProvider: React.FC<{ children: React.ReactNode }> = ({ child
       }));
   }, [activeProjectId]);
 
-  // Task Logic
   const addTask = useCallback((branchId: string, title: string) => {
       if (!title.trim()) return;
       setProjects(prev => prev.map(p => {
@@ -747,6 +725,27 @@ export const ProjectProvider: React.FC<{ children: React.ReactNode }> = ({ child
       }));
   }, [activeProjectId]);
 
+  const bulkMoveTasks = useCallback((taskIds: string[], sourceBranchId: string, targetBranchId: string) => {
+      setProjects(prev => prev.map(p => {
+          if (p.id !== activeProjectId) return p;
+          const source = p.branches[sourceBranchId];
+          const target = p.branches[targetBranchId];
+          if (!source || !target) return p;
+
+          const tasksToMove = source.tasks.filter(t => taskIds.includes(t.id));
+          const remainingTasks = source.tasks.filter(t => !taskIds.includes(t.id));
+
+          return {
+              ...p,
+              branches: {
+                  ...p.branches,
+                  [sourceBranchId]: { ...source, tasks: remainingTasks },
+                  [targetBranchId]: { ...target, tasks: [...target.tasks, ...tasksToMove] }
+              }
+          };
+      }));
+  }, [activeProjectId]);
+
   const bulkUpdateTasks = useCallback((branchId: string, text: string) => {
       const lines = text.split('\n').map(l => l.trim()).filter(l => l);
       setProjects(prev => prev.map(p => {
@@ -766,7 +765,6 @@ export const ProjectProvider: React.FC<{ children: React.ReactNode }> = ({ child
       }));
   }, [activeProjectId]);
 
-  // People Logic
   const addPerson = useCallback((name: string, email?: string, phone?: string) => {
       setProjects(prev => prev.map(p => {
           if (p.id !== activeProjectId) return p;
@@ -851,6 +849,7 @@ export const ProjectProvider: React.FC<{ children: React.ReactNode }> = ({ child
       deleteTask,
       moveTask,
       moveTaskToBranch,
+      bulkMoveTasks,
       bulkUpdateTasks,
       
       addPerson,
