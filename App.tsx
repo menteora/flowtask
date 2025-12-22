@@ -1,7 +1,8 @@
+
 import React, { useState, useRef, useEffect } from 'react';
 import { useTheme } from './context/ThemeContext';
 import { useProject } from './context/ProjectContext';
-import { Moon, Sun, GitBranch, Layers, Users, Download, Upload, Archive, Camera, Image as ImageIcon, Smartphone, Plus, X, Edit2, Calendar, ClipboardList, Settings, Cloud, Loader2, Check, AlertCircle, ChevronDown, Folder, MoreVertical, GanttChart, Globe, Eye, Target } from 'lucide-react';
+import { Moon, Sun, GitBranch, Layers, Users, Download, Upload, Archive, Camera, Image as ImageIcon, Smartphone, Plus, X, Edit2, Calendar, ClipboardList, Settings, Cloud, Loader2, Check, AlertCircle, ChevronDown, Folder, MoreVertical, GanttChart, Globe, Eye, Target, ChevronsDown, ChevronsUp } from 'lucide-react';
 import FlowCanvas from './components/flow/FlowCanvas';
 import FolderTree from './components/flow/FolderTree';
 import BranchDetails from './components/panels/BranchDetails';
@@ -26,7 +27,7 @@ const App: React.FC = () => {
     selectedBranchId, state, loadProject, showArchived, toggleShowArchived,
     projects, activeProjectId, switchProject, createProject, closeProject, renameProject,
     session, loadingAuth, isInitializing, isOfflineMode, autoSaveStatus, notification,
-    showAllProjects, toggleShowAllProjects
+    showAllProjects, toggleShowAllProjects, setAllBranchesCollapsed
   } = useProject();
   
   const [currentView, setCurrentView] = useState<View>(() => {
@@ -43,11 +44,6 @@ const App: React.FC = () => {
   const fileInputRef = useRef<HTMLInputElement>(null);
   const [editingNameId, setEditingNameId] = useState<string | null>(null);
 
-  // AUTH & LOADING LOGIC
-  // Determine if we should show the global spinner
-  // We show spinner if:
-  // 1. The app is initializing local data (isInitializing)
-  // 2. OR The app is checking for a session AND we are not in offline mode (loadingAuth)
   const showSpinner = isInitializing || (!isOfflineMode && loadingAuth);
 
   if (showSpinner) {
@@ -63,15 +59,12 @@ const App: React.FC = () => {
       );
   }
 
-  // If NOT offline mode AND (no session), show login.
-  // At this point showSpinner is false, so we know loadingAuth is false.
   if (!isOfflineMode && !session) {
       return <LoginScreen />;
   }
 
   const handleExport = () => {
     const timestamp = new Date().toISOString().replace(/[:.]/g, '-').slice(0, 16);
-    // Export the active project state
     const dataStr = "data:text/json;charset=utf-8," + encodeURIComponent(JSON.stringify(state, null, 2));
     const downloadAnchorNode = document.createElement('a');
     downloadAnchorNode.setAttribute("href", dataStr);
@@ -167,7 +160,6 @@ const App: React.FC = () => {
   return (
     <div className="flex flex-col h-[100dvh] w-screen overflow-hidden bg-slate-50 dark:bg-slate-950 text-slate-900 dark:text-slate-100 font-sans relative">
       
-      {/* GLOBAL NOTIFICATION TOAST */}
       {notification && (
         <div className={`fixed top-4 left-1/2 -translate-x-1/2 z-[200] w-[90%] max-w-md px-4 py-3 rounded-lg shadow-xl flex items-center gap-3 transition-all transform animate-in fade-in slide-in-from-top-4 ${
             notification.type === 'success' ? 'bg-emerald-600 text-white' : 'bg-red-600 text-white'
@@ -190,7 +182,6 @@ const App: React.FC = () => {
       <TaskEditorModal />
       <MessageComposer />
 
-      {/* Mobile Project Menu Overlay (Bottom Sheet style) */}
       {isProjectMenuOpen && (
         <div 
             className="fixed inset-0 z-[100] bg-black/60 backdrop-blur-sm flex flex-col justify-end sm:justify-center sm:items-center"
@@ -301,8 +292,6 @@ const App: React.FC = () => {
       <div className="flex w-full h-14 md:h-16 bg-white dark:bg-slate-900 border-b border-slate-200 dark:border-slate-800 items-center justify-between px-4 md:px-6 z-20 shadow-sm flex-shrink-0">
         
         <div className="flex items-center gap-4 relative">
-          
-          {/* Desktop Logo */}
           <div className="hidden md:flex items-center">
             <div className="bg-indigo-600 p-1.5 rounded-lg mr-2 md:mr-3">
               <GitBranch className="w-5 h-5 text-white" />
@@ -312,7 +301,6 @@ const App: React.FC = () => {
             </h1>
           </div>
 
-          {/* Mobile Project Selector (Replaces Logo) */}
           <button 
             onClick={() => setIsProjectMenuOpen(true)}
             className="md:hidden flex items-center gap-2 -ml-1 active:bg-slate-100 dark:active:bg-slate-800 p-1.5 rounded-xl transition-colors"
@@ -331,7 +319,6 @@ const App: React.FC = () => {
              </div>
           </button>
 
-          {/* Auto Save Status Indicator */}
           {session && !isOfflineMode && (
               <div className="hidden sm:flex items-center gap-1.5 px-2 py-1 bg-slate-50 dark:bg-slate-800 rounded text-xs transition-colors ml-2 md:ml-0 md:absolute md:left-full md:top-1/2 md:-translate-y-1/2 md:ml-6 w-max">
                   {autoSaveStatus === 'saving' && (
@@ -369,8 +356,6 @@ const App: React.FC = () => {
         </div>
 
         <div className="flex items-center gap-1 md:gap-2">
-            
-            {/* Show All Projects Toggle (Now visible on mobile for eligible views) */}
             {(currentView === 'calendar' || currentView === 'assignments' || currentView === 'timeline' || currentView === 'focus') && (
                 <button 
                   onClick={toggleShowAllProjects}
@@ -434,7 +419,6 @@ const App: React.FC = () => {
         </div>
       </div>
 
-      {/* Tab Bar for Projects (HIDDEN ON MOBILE, replaced by header selector) */}
       <div className="hidden md:flex items-center w-full bg-slate-100 dark:bg-slate-950 border-b border-slate-200 dark:border-slate-800 overflow-x-auto hide-scrollbar px-2 pt-2 gap-1 flex-shrink-0">
           {projects.map(proj => {
               const isActive = proj.id === activeProjectId;
@@ -475,7 +459,6 @@ const App: React.FC = () => {
                           </span>
                       )}
 
-                      {/* Edit Icon on hover (if active) */}
                       {isActive && !isEditing && (
                           <button 
                              onClick={(e) => {
@@ -488,7 +471,6 @@ const App: React.FC = () => {
                           </button>
                       )}
                       
-                      {/* Close Tab */}
                       <button 
                         onClick={(e) => {
                             e.stopPropagation();
@@ -512,7 +494,6 @@ const App: React.FC = () => {
           </button>
       </div>
 
-      {/* Main Content Area */}
       <div className="flex-1 flex flex-col relative h-full overflow-hidden">
         {currentView === 'workflow' ? (
             <>
@@ -522,6 +503,25 @@ const App: React.FC = () => {
 
                 <div className="block md:hidden w-full h-full">
                     <FolderTree />
+                </div>
+
+                <div className="absolute bottom-6 right-6 md:bottom-10 md:right-10 flex flex-col gap-2 z-30 pointer-events-none">
+                    <div className="flex flex-col gap-2 pointer-events-auto bg-white dark:bg-slate-900 p-2 rounded-2xl shadow-xl border border-slate-200 dark:border-slate-800 animate-in slide-in-from-right-4">
+                        <button 
+                            onClick={() => setAllBranchesCollapsed(false)}
+                            className="p-3 bg-indigo-50 dark:bg-indigo-900/20 text-indigo-600 dark:text-indigo-400 rounded-xl hover:bg-indigo-100 dark:hover:bg-indigo-900/40 transition-colors"
+                            title="Espandi tutto"
+                        >
+                            <ChevronsDown className="w-5 h-5" />
+                        </button>
+                        <button 
+                            onClick={() => setAllBranchesCollapsed(true)}
+                            className="p-3 bg-slate-50 dark:bg-slate-800 text-slate-600 dark:text-slate-400 rounded-xl hover:bg-slate-200 dark:hover:bg-slate-700 transition-colors"
+                            title="Comprimi tutto"
+                        >
+                            <ChevronsUp className="w-5 h-5" />
+                        </button>
+                    </div>
                 </div>
 
                 {selectedBranchId && <BranchDetails />}
@@ -546,7 +546,6 @@ const App: React.FC = () => {
         )}
       </div>
 
-      {/* Mobile Bottom Navigation Bar */}
       <div className="md:hidden flex-shrink-0 bg-white dark:bg-slate-900 border-t border-slate-200 dark:border-slate-800 flex justify-around items-center p-2 z-30 pb-safe">
         <button 
             onClick={() => setCurrentView('workflow')}
@@ -584,7 +583,6 @@ const App: React.FC = () => {
             <span className="text-[10px] mt-1 font-medium">Time</span>
         </button>
       </div>
-
     </div>
   );
 };

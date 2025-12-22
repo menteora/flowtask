@@ -37,6 +37,7 @@ interface ProjectContextType {
   linkBranch: (childId: string, parentId: string) => void;
   unlinkBranch: (childId: string, parentId: string) => void;
   toggleBranchArchive: (branchId: string) => void;
+  setAllBranchesCollapsed: (collapsed: boolean) => void;
 
   addTask: (branchId: string, title: string) => void;
   updateTask: (branchId: string, taskId: string, updates: Partial<Task>) => void;
@@ -176,15 +177,13 @@ export const ProjectProvider: React.FC<{ children: React.ReactNode }> = ({ child
   }, [supabaseConfig]);
 
   // Fetch Remote Data on Session Load
-  // This is critical to prevent stale local storage from overwriting cloud data
   useEffect(() => {
       if (session && !isOfflineMode && activeProjectId && activeProjectId !== 'default-project') {
-          // Trigger a download immediately when session is established
           downloadProjectFromSupabase(activeProjectId, false, false)
              .then(() => setRemoteDataLoaded(true))
              .catch(err => console.error("Initial fetch failed", err));
       }
-  }, [session, isOfflineMode, activeProjectId]); // Dependency on activeProjectId ensures we fetch if user switches project too
+  }, [session, isOfflineMode, activeProjectId]);
 
   // Persistence (Auto-save local)
   useEffect(() => {
@@ -282,7 +281,6 @@ export const ProjectProvider: React.FC<{ children: React.ReactNode }> = ({ child
           }
 
           // 3. Prepare & Upsert Branches
-          // Explicitly typing 'b' as Branch to fix property access errors on unknown type
           const branchesPayload = Object.values(projectToSave.branches).map((b: Branch) => ({
               id: b.id,
               project_id: projectToSave.id,
@@ -306,7 +304,6 @@ export const ProjectProvider: React.FC<{ children: React.ReactNode }> = ({ child
 
           // 4. Prepare & Upsert Tasks
           const tasksPayload: any[] = [];
-          // Explicitly typing 'b' as Branch and 't' as Task to fix property access errors on unknown type
           Object.values(projectToSave.branches).forEach((b: Branch) => {
               b.tasks.forEach((t: Task, idx: number) => {
                   tasksPayload.push({
@@ -318,7 +315,7 @@ export const ProjectProvider: React.FC<{ children: React.ReactNode }> = ({ child
                       due_date: t.dueDate,
                       completed: t.completed,
                       position: idx,
-                      pinned: t.pinned || false // Explicitly save pinned state
+                      pinned: t.pinned || false
                   });
               });
           });
@@ -333,27 +330,18 @@ export const ProjectProvider: React.FC<{ children: React.ReactNode }> = ({ child
       } catch (e: any) {
           console.error("Sync Error:", e);
           setAutoSaveStatus('error');
-          // Only show toast on manual fail, silent fail for auto-save usually better unless critical
       }
   }, [supabaseClient, session, isOfflineMode, projects, activeProjectId]);
 
   // Auto-Save Effect
   useEffect(() => {
       if (!session || isOfflineMode || isInitializing) return;
-
-      // CRITICAL FIX: Do not auto-save if we haven't confirmed we have the latest data from remote.
-      // This prevents stale LocalStorage data from overwriting fresher Cloud data on page reload.
-      if (session && !remoteDataLoaded) {
-          console.log("Skipping auto-save: Waiting for remote data sync...");
-          return;
-      }
+      if (session && !remoteDataLoaded) return;
       
-      // Clear existing timer
       if (autoSaveTimerRef.current) {
           clearTimeout(autoSaveTimerRef.current);
       }
 
-      // Set new timer (Debounce 2s)
       autoSaveTimerRef.current = setTimeout(() => {
           uploadProjectToSupabase();
       }, 2000);
@@ -368,7 +356,6 @@ export const ProjectProvider: React.FC<{ children: React.ReactNode }> = ({ child
       if (!supabaseClient || !session) return;
       
       try {
-          // Fetch Data
           const { data: projectData, error: pErr } = await supabaseClient.from('flowtask_projects').select('*').eq('id', id).single();
           if (pErr) throw pErr;
 
@@ -381,7 +368,6 @@ export const ProjectProvider: React.FC<{ children: React.ReactNode }> = ({ child
           const { data: tasksData, error: tErr } = await supabaseClient.from('flowtask_tasks').select('*').in('branch_id', branchesData?.map(b => b.id) || []);
           if (tErr) throw tErr;
 
-          // Reconstruct State
           const people: Person[] = (peopleData || []).map((p: any) => ({
               id: p.id,
               name: p.name,
@@ -431,8 +417,8 @@ export const ProjectProvider: React.FC<{ children: React.ReactNode }> = ({ child
               people
           };
 
-          loadProject(newState, activate, true); // true to remove default project if it exists
-          setRemoteDataLoaded(true); // Mark as synced
+          loadProject(newState, activate, true);
+          setRemoteDataLoaded(true);
       } catch (e: any) {
           console.error("Download Error:", e);
           if (force) showNotification("Errore nel download del progetto: " + e.message, 'error');
@@ -456,7 +442,7 @@ export const ProjectProvider: React.FC<{ children: React.ReactNode }> = ({ child
           status: b.status,
           childrenIds: b.children_ids || [],
           parentIds: b.parent_ids || [],
-          tasks: [] // Lightweight for selection
+          tasks: []
       }));
   }, [supabaseClient]);
 
@@ -467,7 +453,6 @@ export const ProjectProvider: React.FC<{ children: React.ReactNode }> = ({ child
   }, [supabaseClient]);
 
   const moveLocalBranchToRemoteProject = useCallback(async (branchId: string, targetProjectId: string, targetParentId: string) => {
-      // Stub implementation for complex feature
       console.warn("Cross-project move not fully implemented in this version.");
   }, []);
 
@@ -553,7 +538,6 @@ export const ProjectProvider: React.FC<{ children: React.ReactNode }> = ({ child
   }, [activeProjectId]);
 
   const deleteBranch = useCallback(async (branchId: string) => {
-      // Remote Delete (Fire & Forget)
       if (session && !isOfflineMode && supabaseClient) {
           supabaseClient.from('flowtask_branches').delete().eq('id', branchId).then(res => {
               if(res.error) console.error("Error deleting branch remote", res.error);
@@ -566,7 +550,6 @@ export const ProjectProvider: React.FC<{ children: React.ReactNode }> = ({ child
           const branch = newBranches[branchId];
           if (!branch) return p;
 
-          // Remove from parents
           branch.parentIds.forEach(pid => {
               if (newBranches[pid]) {
                   newBranches[pid] = {
@@ -576,7 +559,6 @@ export const ProjectProvider: React.FC<{ children: React.ReactNode }> = ({ child
               }
           });
 
-          // Remove self
           delete newBranches[branchId];
           return { ...p, branches: newBranches };
       }));
@@ -656,6 +638,17 @@ export const ProjectProvider: React.FC<{ children: React.ReactNode }> = ({ child
       }));
   }, [activeProjectId]);
 
+  const setAllBranchesCollapsed = useCallback((collapsed: boolean) => {
+      setProjects(prev => prev.map(p => {
+          if (p.id !== activeProjectId) return p;
+          const newBranches = { ...p.branches };
+          Object.keys(newBranches).forEach(id => {
+              newBranches[id] = { ...newBranches[id], collapsed };
+          });
+          return { ...p, branches: newBranches };
+      }));
+  }, [activeProjectId]);
+
   // Task Logic
   const addTask = useCallback((branchId: string, title: string) => {
       if (!title.trim()) return;
@@ -694,7 +687,6 @@ export const ProjectProvider: React.FC<{ children: React.ReactNode }> = ({ child
   }, [activeProjectId]);
 
   const deleteTask = useCallback(async (branchId: string, taskId: string) => {
-      // Remote Delete
       if (session && !isOfflineMode && supabaseClient) {
           supabaseClient.from('flowtask_tasks').delete().eq('id', taskId).then(res => {
               if(res.error) console.error("Error deleting task remote", res.error);
@@ -784,7 +776,7 @@ export const ProjectProvider: React.FC<{ children: React.ReactNode }> = ({ child
               email,
               phone,
               initials: name.substring(0, 2).toUpperCase(),
-              color: 'bg-indigo-500' // Simple default
+              color: 'bg-indigo-500' 
           };
           return { ...p, people: [...p.people, newPerson] };
       }));
@@ -798,7 +790,6 @@ export const ProjectProvider: React.FC<{ children: React.ReactNode }> = ({ child
   }, [activeProjectId]);
 
   const removePerson = useCallback(async (id: string) => {
-      // Remote Delete
       if (session && !isOfflineMode && supabaseClient) {
           supabaseClient.from('flowtask_people').delete().eq('id', id).then(res => {
               if(res.error) console.error("Error deleting person remote", res.error);
@@ -853,6 +844,7 @@ export const ProjectProvider: React.FC<{ children: React.ReactNode }> = ({ child
       linkBranch,
       unlinkBranch,
       toggleBranchArchive,
+      setAllBranchesCollapsed,
       
       addTask,
       updateTask,
