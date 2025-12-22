@@ -1,29 +1,9 @@
-import React, { useState } from 'react';
+
+import React from 'react';
 import { useProject } from '../../context/ProjectContext';
 import { STATUS_CONFIG } from '../../constants';
 import { ChevronRight, ChevronDown, Plus, FileText, CheckSquare, Square, Archive, GitBranch, ChevronUp, Tag } from 'lucide-react';
 import Avatar from '../ui/Avatar';
-
-// Helper functions for persistence
-const STORAGE_KEY = 'flowtask_tree_view_state';
-
-const getStoredState = (branchId: string): boolean | undefined => {
-    try {
-        const data = localStorage.getItem(STORAGE_KEY);
-        if (!data) return undefined;
-        const parsed = JSON.parse(data);
-        return parsed[branchId];
-    } catch { return undefined; }
-};
-
-const setStoredState = (branchId: string, isOpen: boolean) => {
-    try {
-        const data = localStorage.getItem(STORAGE_KEY);
-        const parsed = data ? JSON.parse(data) : {};
-        parsed[branchId] = isOpen;
-        localStorage.setItem(STORAGE_KEY, JSON.stringify(parsed));
-    } catch (e) { console.error("Error saving tree state", e); }
-};
 
 interface FolderNodeProps {
   branchId: string;
@@ -33,18 +13,12 @@ interface FolderNodeProps {
 }
 
 const FolderNode: React.FC<FolderNodeProps> = ({ branchId, depth = 0, index, siblingsCount }) => {
-  const { state, selectBranch, selectedBranchId, addBranch, updateTask, moveTask, moveBranch, showArchived, setEditingTask, setReadingTask } = useProject();
+  const { state, selectBranch, selectedBranchId, addBranch, updateTask, updateBranch, moveTask, moveBranch, showArchived, setEditingTask, setReadingTask } = useProject();
   const branch = state.branches[branchId];
   
-  // Initialize state from localStorage, default to true (expanded)
-  const [isOpen, setIsOpen] = useState(() => {
-      const stored = getStoredState(branchId);
-      return stored !== undefined ? stored : true;
-  });
-
   if (!branch) return null;
   
-  // Visibility Logic: Show if not archived OR showArchived=true OR has active children
+  // Logic: Show if not archived OR showArchived=true OR has active children
   const isSelfVisible = !branch.archived || showArchived;
   const hasActiveChildren = branch.childrenIds.some(cid => {
       const child = state.branches[cid];
@@ -55,9 +29,7 @@ const FolderNode: React.FC<FolderNodeProps> = ({ branchId, depth = 0, index, sib
 
   if (!shouldRender) return null;
 
-  // For children, we pass through everything and let the recursive call handle hiding
   const visibleChildrenIds = branch.childrenIds;
-
   const hasChildren = visibleChildrenIds.length > 0;
   const hasTasks = branch.tasks.length > 0;
   const hasContent = hasChildren || hasTasks;
@@ -65,11 +37,12 @@ const FolderNode: React.FC<FolderNodeProps> = ({ branchId, depth = 0, index, sib
   const isSelected = selectedBranchId === branchId;
   const statusConfig = STATUS_CONFIG[branch.status];
 
+  // In FolderTree, "Open" means NOT collapsed
+  const isOpen = !branch.collapsed;
+
   const handleToggle = (e: React.MouseEvent) => {
     e.stopPropagation();
-    const newState = !isOpen;
-    setIsOpen(newState);
-    setStoredState(branchId, newState);
+    updateBranch(branchId, { collapsed: !branch.collapsed });
   };
 
   const handleSelect = () => {
@@ -124,9 +97,8 @@ const FolderNode: React.FC<FolderNodeProps> = ({ branchId, depth = 0, index, sib
         <button 
             onClick={(e) => {
                 e.stopPropagation();
+                updateBranch(branchId, { collapsed: false });
                 addBranch(branchId);
-                setIsOpen(true);
-                setStoredState(branchId, true);
             }}
             className="p-1.5 text-slate-400 hover:text-indigo-600 hover:bg-indigo-50 dark:hover:bg-slate-700 rounded-full"
         >
@@ -138,7 +110,7 @@ const FolderNode: React.FC<FolderNodeProps> = ({ branchId, depth = 0, index, sib
             <div className="flex flex-col gap-1 border-l border-gray-200 dark:border-slate-700 pl-2 ml-1">
                 {index > 0 ? (
                     <button 
-                        onClick={(e) => { e.stopPropagation(); moveBranch(branchId, 'left'); }} // 'left' maps to UP in tree view
+                        onClick={(e) => { e.stopPropagation(); moveBranch(branchId, 'left'); }} 
                         className="p-0.5 text-slate-400 hover:text-indigo-500"
                     >
                         <ChevronUp className="w-3.5 h-3.5" />
@@ -147,7 +119,7 @@ const FolderNode: React.FC<FolderNodeProps> = ({ branchId, depth = 0, index, sib
                 
                 {index < siblingsCount - 1 ? (
                     <button 
-                        onClick={(e) => { e.stopPropagation(); moveBranch(branchId, 'right'); }} // 'right' maps to DOWN in tree view
+                        onClick={(e) => { e.stopPropagation(); moveBranch(branchId, 'right'); }} 
                         className="p-0.5 text-slate-400 hover:text-indigo-500"
                     >
                         <ChevronDown className="w-3.5 h-3.5" />
@@ -177,7 +149,6 @@ const FolderNode: React.FC<FolderNodeProps> = ({ branchId, depth = 0, index, sib
                     {task.completed ? <CheckSquare className="w-4 h-4" /> : <Square className="w-4 h-4" />}
                 </button>
                 
-                {/* Task Title Area */}
                 <div 
                     className="flex-1 min-w-0 flex items-center justify-between cursor-pointer"
                     onClick={() => setEditingTask({ branchId, taskId: task.id })}
@@ -203,7 +174,6 @@ const FolderNode: React.FC<FolderNodeProps> = ({ branchId, depth = 0, index, sib
                     )}
                 </div>
 
-                {/* Mobile Task Reordering Controls */}
                 <div className="flex flex-col gap-1 border-l border-gray-200 dark:border-slate-700 pl-2">
                     {index > 0 ? (
                         <button 
