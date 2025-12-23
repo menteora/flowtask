@@ -3,7 +3,7 @@ import React, { useState, useEffect, useRef, useMemo } from 'react';
 import { useProject } from '../../context/ProjectContext';
 import { BranchStatus, Branch } from '../../types';
 import { STATUS_CONFIG } from '../../constants';
-import { X, Save, Trash2, CheckSquare, Square, ArrowUpLeft, Calendar, Plus, Link as LinkIcon, Unlink, PlayCircle, StopCircle, Clock, AlertTriangle, Archive, RefreshCw, Bold, Italic, List, Eye, Edit2, FileText, ChevronUp, ChevronDown, DownloadCloud, Loader2, GitMerge, ArrowRight, UploadCloud, Tag, Mail, Check, AlignLeft, Pin, Move } from 'lucide-react';
+import { X, Save, Trash2, CheckSquare, Square, ArrowUpLeft, Calendar, Plus, Link as LinkIcon, Unlink, PlayCircle, StopCircle, Clock, AlertTriangle, Archive, RefreshCw, Bold, Italic, List, Eye, Edit2, FileText, ChevronUp, ChevronDown, DownloadCloud, Loader2, GitMerge, ArrowRight, UploadCloud, Tag, Mail, Check, AlignLeft, Pin, Move, CalendarDays } from 'lucide-react';
 import Avatar from '../ui/Avatar';
 
 const BranchDetails: React.FC = () => {
@@ -228,6 +228,10 @@ const BranchDetails: React.FC = () => {
           insertFormat('*', '*');
       } else if (action === 'list') {
           insertFormat('\n- ', '');
+      } else if (action === 'today-date') {
+          const today = new Date();
+          const formattedDate = `${String(today.getDate()).padStart(2, '0')}/${String(today.getMonth() + 1).padStart(2, '0')}/${today.getFullYear()}`;
+          insertFormat(formattedDate, '');
       }
   };
 
@@ -359,6 +363,9 @@ const BranchDetails: React.FC = () => {
                         </button>
                         <button onClick={() => handleToolbarAction('list')} className="p-1.5 rounded hover:bg-slate-200 dark:hover:bg-slate-700 text-slate-600 dark:text-slate-300" title="Lista">
                             <List className="w-3.5 h-3.5" />
+                        </button>
+                        <button onClick={() => handleToolbarAction('today-date')} className="p-1.5 rounded hover:bg-slate-200 dark:hover:bg-slate-700 text-slate-600 dark:text-slate-300" title="Inserisci Data Odierna">
+                            <CalendarDays className="w-3.5 h-3.5" />
                         </button>
                     </div>
 
@@ -682,7 +689,7 @@ const BranchDetails: React.FC = () => {
                             type="date"
                             value={branch.dueDate || ''}
                             onChange={(e) => updateBranch(branch.id, { dueDate: e.target.value })}
-                            className="w-full text-xs bg-white dark:bg-slate-800 border border-gray-200 dark:border-slate-600 rounded p-1.5 pr-14 text-slate-700 dark:text-slate-200 focus:ring-1 focus:ring-indigo-500 outline-none [&::-webkit-calendar-picker-indicator]:hidden"
+                            className="w-full text-xs bg-white dark:bg-slate-800 border border-gray-200 dark:border-slate-600 rounded p-1.5 pr-14 text-slate-700 dark:text-slate-200 focus:ring-2 focus:ring-indigo-500 outline-none [&::-webkit-calendar-picker-indicator]:hidden"
                         />
                          <div className="absolute right-1 top-1/2 -translate-y-1/2 flex items-center gap-1">
                             {branch.dueDate && (
