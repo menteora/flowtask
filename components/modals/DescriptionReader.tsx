@@ -1,6 +1,7 @@
+
 import React, { useEffect, useState, useRef } from 'react';
 import { useProject } from '../../context/ProjectContext';
-import { X, FileText, Calendar, Edit2, Save, Bold, Italic, List, Link as LinkIcon, Mail, Check } from 'lucide-react';
+import { X, FileText, Calendar, Edit2, Save, Bold, Italic, List, Link as LinkIcon, Mail, Check, CalendarDays } from 'lucide-react';
 import { STATUS_CONFIG } from '../../constants';
 
 const DescriptionReader: React.FC = () => {
@@ -50,7 +51,7 @@ const DescriptionReader: React.FC = () => {
       setIsEditing(false);
   };
 
-  // --- EDITOR LOGIC (Duplicated from BranchDetails to keep components self-contained as requested) ---
+  // --- EDITOR LOGIC ---
   const insertFormat = (prefix: string, suffix: string, selectionOverride?: string) => {
     if (!textareaRef.current) return;
     const start = textareaRef.current.selectionStart;
@@ -94,6 +95,10 @@ const DescriptionReader: React.FC = () => {
           insertFormat('*', '*');
       } else if (action === 'list') {
           insertFormat('\n- ', '');
+      } else if (action === 'today-date') {
+          const today = new Date();
+          const formattedDate = `${String(today.getDate()).padStart(2, '0')}/${String(today.getMonth() + 1).padStart(2, '0')}/${today.getFullYear()}`;
+          insertFormat(formattedDate, '');
       }
   };
 
@@ -207,6 +212,9 @@ const DescriptionReader: React.FC = () => {
                         </button>
                         <button onClick={() => handleToolbarAction('list')} className="p-1.5 rounded hover:bg-slate-200 dark:hover:bg-slate-700 text-slate-600 dark:text-slate-300" title="Lista">
                             <List className="w-3.5 h-3.5" />
+                        </button>
+                        <button onClick={() => handleToolbarAction('today-date')} className="p-1.5 rounded hover:bg-slate-200 dark:hover:bg-slate-700 text-slate-600 dark:text-slate-300" title="Inserisci Data Odierna">
+                            <CalendarDays className="w-3.5 h-3.5" />
                         </button>
                     </div>
 
