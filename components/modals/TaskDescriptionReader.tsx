@@ -1,7 +1,7 @@
 
 import React, { useEffect, useState, useRef } from 'react';
 import { useProject } from '../../context/ProjectContext';
-import { X, FileText, Calendar, Edit2, Save, Bold, Italic, List, Link as LinkIcon, Mail, Check, User, CheckSquare, Square, CalendarDays } from 'lucide-react';
+import { X, FileText, Calendar, Edit2, Save, Bold, Italic, List, Link as LinkIcon, Mail, Check, User, CheckSquare, Square, CalendarDays, CheckCircle2 } from 'lucide-react';
 import Avatar from '../ui/Avatar';
 
 const TaskDescriptionReader: React.FC = () => {
@@ -172,7 +172,13 @@ const TaskDescriptionReader: React.FC = () => {
                         {task.dueDate && (
                             <span className="flex items-center gap-1 bg-slate-100 dark:bg-slate-800 px-2 py-0.5 rounded-full">
                                 <Calendar className="w-3 h-3" />
-                                {new Date(task.dueDate).toLocaleDateString()}
+                                <span>Scadenza: {new Date(task.dueDate).toLocaleDateString()}</span>
+                            </span>
+                        )}
+                        {task.completed && task.completedAt && (
+                            <span className="flex items-center gap-1 bg-green-100 dark:bg-green-900/30 text-green-700 dark:text-green-400 px-2 py-0.5 rounded-full font-bold">
+                                <CheckCircle2 className="w-3 h-3" />
+                                <span>Completato: {new Date(task.completedAt).toLocaleString()}</span>
                             </span>
                         )}
                         <span className="opacity-60">{branch?.title}</span>

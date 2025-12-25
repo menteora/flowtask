@@ -4,7 +4,7 @@ import { useProject } from '../../context/ProjectContext';
 import { BranchStatus, Branch } from '../../types';
 import { STATUS_CONFIG } from '../../constants';
 // Added AlertTriangle to the imports below
-import { X, Save, Trash2, CheckSquare, Square, ArrowUpLeft, Calendar, Plus, Link as LinkIcon, Unlink, PlayCircle, StopCircle, Clock, AlertCircle, Archive, RefreshCw, Bold, Italic, List, Eye, Edit2, FileText, ChevronUp, ChevronDown, DownloadCloud, Loader2, GitMerge, ArrowRight, UploadCloud, Tag, Mail, Check, AlignLeft, Pin, Move, CalendarDays, AlertTriangle } from 'lucide-react';
+import { X, Save, Trash2, CheckSquare, Square, ArrowUpLeft, Calendar, Plus, Link as LinkIcon, Unlink, PlayCircle, StopCircle, Clock, AlertCircle, Archive, RefreshCw, Bold, Italic, List, Eye, Edit2, FileText, ChevronUp, ChevronDown, DownloadCloud, Loader2, GitMerge, ArrowRight, UploadCloud, Tag, Mail, Check, AlignLeft, Pin, Move, CalendarDays, AlertTriangle, CheckCircle2 } from 'lucide-react';
 import Avatar from '../ui/Avatar';
 
 const BranchDetails: React.FC = () => {
@@ -326,7 +326,7 @@ const BranchDetails: React.FC = () => {
                 onClick={() => updateBranch(branch.id, { isLabel: !branch.isLabel })}
                 className={`px-3 py-1.5 rounded-md text-xs font-medium border transition-colors ${branch.isLabel ? 'bg-amber-100 text-amber-800 border-amber-300 dark:bg-amber-900/40 dark:text-amber-200 dark:border-amber-800' : 'bg-slate-100 text-slate-700 border-slate-300 dark:bg-slate-700 dark:text-slate-200 dark:border-slate-600'}`}
             >
-                {branch.isLabel ? 'Converti in Ramo' : 'Converti in Etichetta'}
+                {branch.isLabel ? 'Converti in Etichetta' : 'Converti in Ramo'}
             </button>
         </div>
 
@@ -583,19 +583,27 @@ const BranchDetails: React.FC = () => {
                                                     )}
                                                 </div>
 
-                                                {/* Task Due Date Picker (Using the Invisible Overlay pattern) */}
-                                                <div className="flex items-center gap-1 bg-gray-50 dark:bg-slate-700 rounded px-1.5 py-0.5 relative group/date">
-                                                    <span className="text-[10px] text-gray-600 dark:text-gray-300 min-w-[3rem]">
-                                                        {task.dueDate ? new Date(task.dueDate).toLocaleDateString(undefined, {day: '2-digit', month: '2-digit'}) : 'No date'}
-                                                    </span>
-                                                    <Calendar className={`w-3 h-3 ${task.dueDate ? 'text-indigo-500' : 'text-gray-400'}`} />
-                                                    <input 
-                                                        type="date" 
-                                                        value={task.dueDate || ''}
-                                                        onChange={(e) => updateTask(branch.id, task.id, { dueDate: e.target.value })}
-                                                        className="absolute inset-0 w-full h-full opacity-0 cursor-pointer z-10"
-                                                        title="Imposta scadenza task"
-                                                    />
+                                                {/* Task Dates Display */}
+                                                <div className="flex flex-col gap-0.5">
+                                                    <div className="flex items-center gap-1 bg-gray-50 dark:bg-slate-700 rounded px-1.5 py-0.5 relative group/date">
+                                                        <span className="text-[10px] text-gray-600 dark:text-gray-300 min-w-[3rem]">
+                                                            {task.dueDate ? new Date(task.dueDate).toLocaleDateString(undefined, {day: '2-digit', month: '2-digit'}) : 'No date'}
+                                                        </span>
+                                                        <Calendar className={`w-3 h-3 ${task.dueDate ? 'text-indigo-500' : 'text-gray-400'}`} />
+                                                        <input 
+                                                            type="date" 
+                                                            value={task.dueDate || ''}
+                                                            onChange={(e) => updateTask(branch.id, task.id, { dueDate: e.target.value })}
+                                                            className="absolute inset-0 w-full h-full opacity-0 cursor-pointer z-10"
+                                                            title="Imposta scadenza task"
+                                                        />
+                                                    </div>
+                                                    {task.completed && task.completedAt && (
+                                                        <div className="flex items-center gap-1 text-green-600 dark:text-green-400 bg-green-50 dark:bg-green-900/20 px-1.5 py-0.5 rounded" title={`Chiuso il ${new Date(task.completedAt).toLocaleString()}`}>
+                                                            <CheckCircle2 className="w-2.5 h-2.5" />
+                                                            <span className="text-[9px] font-bold">Chiuso: {new Date(task.completedAt).toLocaleDateString(undefined, {day: '2-digit', month: '2-digit'})}</span>
+                                                        </div>
+                                                    )}
                                                 </div>
                                             </div>
                                         </div>
@@ -952,7 +960,7 @@ const BranchDetails: React.FC = () => {
       {/* Delete Confirmation Modal Overlay */}
       {showDeleteConfirm && (
         <div className="absolute inset-0 z-[60] flex items-center justify-center p-6 bg-white/80 dark:bg-slate-900/80 backdrop-blur-sm transition-opacity">
-            <div className="bg-white dark:bg-slate-800 p-6 rounded-xl shadow-2xl border border-gray-200 dark:border-slate-700 w-full max-w-sm transform scale-100 transition-transform">
+            <div className="bg-white dark:bg-slate-800 p-6 rounded-xl shadow-2xl border border-gray-200 dark:border-slate-700 w-full max-sm transform scale-100 transition-transform">
                 <div className="flex flex-col items-center text-center space-y-4">
                     <div className="w-12 h-12 rounded-full bg-red-100 dark:bg-red-900/30 flex items-center justify-center text-red-500">
                         <AlertTriangle className="w-6 h-6" />
