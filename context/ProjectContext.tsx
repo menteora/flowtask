@@ -11,6 +11,7 @@ interface ProjectContextType {
   selectedBranchId: string | null;
   showArchived: boolean;
   showAllProjects: boolean;
+  showOnlyOpen: boolean;
   session: Session | null;
   isOfflineMode: boolean;
   loadingAuth: boolean;
@@ -29,6 +30,7 @@ interface ProjectContextType {
   selectBranch: (id: string | null) => void;
   toggleShowArchived: () => void;
   toggleShowAllProjects: () => void;
+  toggleShowOnlyOpen: () => void;
 
   addBranch: (parentId: string) => void;
   updateBranch: (branchId: string, updates: Partial<Branch>) => void;
@@ -85,6 +87,9 @@ export const ProjectProvider: React.FC<{ children: React.ReactNode }> = ({ child
   const [selectedBranchId, setSelectedBranchId] = useState<string | null>(null);
   const [showArchived, setShowArchived] = useState(false);
   const [showAllProjects, setShowAllProjects] = useState(false);
+  const [showOnlyOpen, setShowOnlyOpen] = useState(() => {
+    return localStorage.getItem('flowtask_show_only_open') === 'true';
+  });
   
   // UI State
   const [readingDescriptionId, setReadingDescriptionId] = useState<string | null>(null);
@@ -110,6 +115,10 @@ export const ProjectProvider: React.FC<{ children: React.ReactNode }> = ({ child
   
   const [remoteDataLoaded, setRemoteDataLoaded] = useState(false);
   const autoSaveTimerRef = useRef<ReturnType<typeof setTimeout> | null>(null);
+
+  useEffect(() => {
+    localStorage.setItem('flowtask_show_only_open', showOnlyOpen.toString());
+  }, [showOnlyOpen]);
 
   useEffect(() => {
     const params = new URLSearchParams(window.location.search);
@@ -476,6 +485,10 @@ export const ProjectProvider: React.FC<{ children: React.ReactNode }> = ({ child
     });
   }, [projects, session, isOfflineMode, activeProjectId, downloadProjectFromSupabase]);
 
+  const toggleShowOnlyOpen = useCallback(() => {
+    setShowOnlyOpen(prev => !prev);
+  }, []);
+
   const addBranch = useCallback((parentId: string) => {
       setProjects(prev => prev.map(p => {
           if (p.id !== activeProjectId) return p;
@@ -816,6 +829,7 @@ export const ProjectProvider: React.FC<{ children: React.ReactNode }> = ({ child
       selectedBranchId,
       showArchived,
       showAllProjects,
+      showOnlyOpen,
       session,
       isOfflineMode,
       loadingAuth,
@@ -834,6 +848,7 @@ export const ProjectProvider: React.FC<{ children: React.ReactNode }> = ({ child
       selectBranch: setSelectedBranchId,
       toggleShowArchived,
       toggleShowAllProjects,
+      toggleShowOnlyOpen,
       
       addBranch,
       updateBranch,

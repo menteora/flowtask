@@ -3,11 +3,12 @@ import React, { useState, useEffect, useRef, useMemo } from 'react';
 import { useProject } from '../../context/ProjectContext';
 import { BranchStatus, Branch } from '../../types';
 import { STATUS_CONFIG } from '../../constants';
-import { X, Save, Trash2, CheckSquare, Square, ArrowUpLeft, Calendar, Plus, Link as LinkIcon, Unlink, PlayCircle, StopCircle, Clock, AlertTriangle, Archive, RefreshCw, Bold, Italic, List, Eye, Edit2, FileText, ChevronUp, ChevronDown, DownloadCloud, Loader2, GitMerge, ArrowRight, UploadCloud, Tag, Mail, Check, AlignLeft, Pin, Move, CalendarDays } from 'lucide-react';
+// Added AlertTriangle to the imports below
+import { X, Save, Trash2, CheckSquare, Square, ArrowUpLeft, Calendar, Plus, Link as LinkIcon, Unlink, PlayCircle, StopCircle, Clock, AlertCircle, Archive, RefreshCw, Bold, Italic, List, Eye, Edit2, FileText, ChevronUp, ChevronDown, DownloadCloud, Loader2, GitMerge, ArrowRight, UploadCloud, Tag, Mail, Check, AlignLeft, Pin, Move, CalendarDays, AlertTriangle } from 'lucide-react';
 import Avatar from '../ui/Avatar';
 
 const BranchDetails: React.FC = () => {
-  const { state, selectedBranchId, selectBranch, updateBranch, deleteBranch, linkBranch, unlinkBranch, addTask, updateTask, deleteTask, moveTask, bulkUpdateTasks, bulkMoveTasks, toggleBranchArchive, listProjectsFromSupabase, getProjectBranchesFromSupabase, moveLocalBranchToRemoteProject, session, showNotification, setEditingTask, setReadingTask } = useProject();
+  const { state, selectedBranchId, selectBranch, updateBranch, deleteBranch, linkBranch, unlinkBranch, addTask, updateTask, deleteTask, moveTask, bulkUpdateTasks, bulkMoveTasks, toggleBranchArchive, listProjectsFromSupabase, getProjectBranchesFromSupabase, moveLocalBranchToRemoteProject, session, showNotification, setEditingTask, setReadingTask, showOnlyOpen } = useProject();
   const [isBulkMode, setIsBulkMode] = useState(false);
   const [bulkText, setBulkText] = useState('');
   const [newTaskTitle, setNewTaskTitle] = useState('');
@@ -70,14 +71,18 @@ const BranchDetails: React.FC = () => {
       }
   }, [popupMode]);
 
-  // Sort tasks: Open first, Completed last
+  // Sort tasks: Open first, Completed last, apply showOnlyOpen filter
   const sortedTasks = useMemo(() => {
     if (!branch) return [];
-    return [...branch.tasks].sort((a, b) => {
+    let list = [...branch.tasks];
+    if (showOnlyOpen) {
+        list = list.filter(t => !t.completed);
+    }
+    return list.sort((a, b) => {
         if (a.completed === b.completed) return 0;
         return a.completed ? 1 : -1;
     });
-  }, [branch?.tasks]);
+  }, [branch?.tasks, showOnlyOpen]);
 
   // Load remote projects when move mode is toggled
   useEffect(() => {

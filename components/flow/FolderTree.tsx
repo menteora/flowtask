@@ -13,7 +13,7 @@ interface FolderNodeProps {
 }
 
 const FolderNode: React.FC<FolderNodeProps> = ({ branchId, depth = 0, index, siblingsCount }) => {
-  const { state, selectBranch, selectedBranchId, addBranch, updateTask, updateBranch, moveTask, moveBranch, showArchived, setEditingTask, setReadingTask } = useProject();
+  const { state, selectBranch, selectedBranchId, addBranch, updateTask, updateBranch, moveTask, moveBranch, showArchived, showOnlyOpen, setEditingTask, setReadingTask } = useProject();
   const branch = state.branches[branchId];
   
   if (!branch) return null;
@@ -29,13 +29,17 @@ const FolderNode: React.FC<FolderNodeProps> = ({ branchId, depth = 0, index, sib
 
   if (!shouldRender) return null;
 
-  // Sort tasks: Open first, Completed last
+  // Sort tasks: Open first, Completed last, apply showOnlyOpen filter
   const sortedTasks = useMemo(() => {
-    return [...branch.tasks].sort((a, b) => {
+    let list = [...branch.tasks];
+    if (showOnlyOpen) {
+        list = list.filter(t => !t.completed);
+    }
+    return list.sort((a, b) => {
         if (a.completed === b.completed) return 0;
         return a.completed ? 1 : -1;
     });
-  }, [branch.tasks]);
+  }, [branch.tasks, showOnlyOpen]);
 
   const visibleChildrenIds = branch.childrenIds;
   const hasChildren = visibleChildrenIds.length > 0;

@@ -11,7 +11,7 @@ interface BranchNodeProps {
 }
 
 const BranchNode: React.FC<BranchNodeProps> = ({ branchId }) => {
-  const { state, addBranch, selectBranch, selectedBranchId, moveBranch, setReadingDescriptionId, updateBranch, setReadingTask } = useProject();
+  const { state, addBranch, selectBranch, selectedBranchId, moveBranch, setReadingDescriptionId, updateBranch, setReadingTask, showOnlyOpen } = useProject();
   const [isTasksExpanded, setIsTasksExpanded] = useState(false);
   const branch = state.branches[branchId];
   
@@ -27,14 +27,18 @@ const BranchNode: React.FC<BranchNodeProps> = ({ branchId }) => {
       }
   }, [branch?.status]);
 
-  // Sort tasks: Open first, Completed last
+  // Sort tasks: Open first, Completed last, filter by showOnlyOpen
   const sortedTasks = useMemo(() => {
     if (!branch) return [];
-    return [...branch.tasks].sort((a, b) => {
+    let list = [...branch.tasks];
+    if (showOnlyOpen) {
+        list = list.filter(t => !t.completed);
+    }
+    return list.sort((a, b) => {
         if (a.completed === b.completed) return 0;
         return a.completed ? 1 : -1;
     });
-  }, [branch?.tasks]);
+  }, [branch?.tasks, showOnlyOpen]);
 
   if (!branch) return null;
 
@@ -67,7 +71,7 @@ const BranchNode: React.FC<BranchNodeProps> = ({ branchId }) => {
 
   // Determine tasks to show
   const visibleTasks = isTasksExpanded ? sortedTasks : sortedTasks.slice(0, 3);
-  const hiddenTasksCount = branch.tasks.length - 3;
+  const hiddenTasksCount = sortedTasks.length > 3 ? sortedTasks.length - 3 : 0;
 
   // --- LABEL VIEW ---
   if (branch.isLabel) {
@@ -334,7 +338,7 @@ const BranchNode: React.FC<BranchNodeProps> = ({ branchId }) => {
                         </li>
                     )}
                     
-                    {isTasksExpanded && branch.tasks.length > 3 && (
+                    {isTasksExpanded && sortedTasks.length > 3 && (
                         <li 
                             className="text-[10px] text-slate-400 hover:text-slate-500 pl-3 cursor-pointer underline decoration-dotted"
                             onClick={(e) => {
@@ -346,8 +350,10 @@ const BranchNode: React.FC<BranchNodeProps> = ({ branchId }) => {
                         </li>
                     )}
 
-                    {branch.tasks.length === 0 && (
-                        <li className="text-[10px] text-slate-400 italic pl-1">Nessun task</li>
+                    {sortedTasks.length === 0 && (
+                        <li className="text-[10px] text-slate-400 italic pl-1">
+                            {showOnlyOpen ? 'Nessun task aperto' : 'Nessun task'}
+                        </li>
                     )}
                 </ul>
 
