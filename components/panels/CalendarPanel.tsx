@@ -1,8 +1,8 @@
 
-import React, { useMemo, useState } from 'react';
+import React, { useMemo } from 'react';
 import { useProject } from '../../context/ProjectContext';
 import { BranchStatus, Branch, Task } from '../../types';
-import { Calendar, Clock, AlertCircle, CheckCircle2, FileText, PlayCircle, StopCircle, ArrowRight, Folder, TrendingUp, CheckCircle, Globe, Info } from 'lucide-react';
+import { Calendar, Clock, AlertCircle, CheckCircle2, FileText, PlayCircle, StopCircle, ArrowRight, Folder, TrendingUp, Globe } from 'lucide-react';
 import Avatar from '../ui/Avatar';
 
 interface TimelineItem {
@@ -23,34 +23,38 @@ interface TimelineItem {
 
 const CalendarPanel: React.FC = () => {
   const { state, projects, showAllProjects, selectBranch, setEditingTask, switchProject } = useProject();
-  
-  // Stats display mode: 'current' or 'global' (if showAllProjects is true)
-  const [statsMode, setStatsMode] = useState<'current' | 'global'>('current');
 
-  const sourceProjects = showAllProjects ? projects : [state];
-  
-  // Ensure we switch stats mode back to current if showAllProjects is turned off
-  const effectiveStatsMode = showAllProjects ? statsMode : 'current';
+  // Utility to get local YYYY-MM-DD string
+  const getLocalDateString = (date: Date) => {
+    const year = date.getFullYear();
+    const month = String(date.getMonth() + 1).padStart(2, '0');
+    const day = String(date.getDate()).padStart(2, '0');
+    return `${year}-${month}-${day}`;
+  };
 
   // 1. Calculate Completion Statistics
   const stats = useMemo(() => {
     const dailyCount: Record<string, number> = {};
     const projectContribution: Record<string, { name: string, count: number }> = {};
-    const todayStr = new Date().toISOString().split('T')[0];
+    const today = new Date();
+    const todayStr = getLocalDateString(today);
     
-    // Determine which projects to analyze for the stats box
-    const projectsForStats = effectiveStatsMode === 'global' ? projects : [state];
+    // Analyzes projects based on Global Globe toggle in header
+    const sourceForStats = showAllProjects ? projects : [state];
     
-    projectsForStats.forEach(project => {
+    sourceForStats.forEach(project => {
         let projTodayCount = 0;
         Object.values(project.branches).forEach((branch: any) => {
             branch.tasks.forEach((task: Task) => {
-                if (task.completed && task.completedAt) {
-                    const dateKey = task.completedAt.split('T')[0];
-                    dailyCount[dateKey] = (dailyCount[dateKey] || 0) + 1;
-                    
-                    if (dateKey === todayStr) {
-                        projTodayCount++;
+                // FALLBACK: If completed but missing completedAt, we treat it as an older event to populate charts
+                if (task.completed) {
+                    const completedDate = task.completedAt ? new Date(task.completedAt) : null;
+                    if (completedDate) {
+                        const dateKey = getLocalDateString(completedDate);
+                        dailyCount[dateKey] = (dailyCount[dateKey] || 0) + 1;
+                        if (dateKey === todayStr) {
+                            projTodayCount++;
+                        }
                     }
                 }
             });
@@ -62,7 +66,7 @@ const CalendarPanel: React.FC = () => {
     const last7Days = Array.from({ length: 7 }).map((_, i) => {
         const d = new Date();
         d.setDate(d.getDate() - (6 - i));
-        const key = d.toISOString().split('T')[0];
+        const key = getLocalDateString(d);
         return {
             label: d.toLocaleDateString('it-IT', { weekday: 'short' }),
             date: key,
@@ -75,11 +79,12 @@ const CalendarPanel: React.FC = () => {
     const completedToday = dailyCount[todayStr] || 0;
 
     return { last7Days, average, completedToday, totalIn7Days, projectContribution };
-  }, [state, projects, effectiveStatsMode]);
+  }, [state, projects, showAllProjects]);
 
-  // 2. Prepare Calendar Items (Timeline)
+  // 2. Prepare Calendar Items
   const items = useMemo(() => {
     const list: TimelineItem[] = [];
+    const sourceProjects = showAllProjects ? projects : [state];
 
     sourceProjects.forEach(project => {
         (Object.values(project.branches) as Branch[]).forEach(branch => {
@@ -132,9 +137,9 @@ const CalendarPanel: React.FC = () => {
     });
 
     return list.sort((a, b) => a.dateObj.getTime() - b.dateObj.getTime());
-  }, [sourceProjects]);
+  }, [state, projects, showAllProjects]);
 
-  // Grouping
+  // Grouping items for UI sections
   const grouped = useMemo(() => {
       const today = new Date();
       today.setHours(0,0,0,0);
@@ -158,10 +163,6 @@ const CalendarPanel: React.FC = () => {
               icon = <FileText className="w-5 h-5 text-indigo-500" />;
               colorClass = "bg-white border-gray-200 dark:bg-slate-800 dark:border-slate-700 hover:border-indigo-300 dark:hover:border-indigo-700";
               break;
-          case 'branch_start':
-              icon = <PlayCircle className="w-5 h-5 text-green-500" />;
-              colorClass = "bg-green-50 border-green-100 dark:bg-green-900/10 dark:border-green-900/30";
-              break;
           case 'branch_due':
               icon = <Clock className="w-5 h-5 text-amber-500" />;
               colorClass = "bg-amber-50 border-amber-100 dark:bg-amber-900/10 dark:border-amber-900/30";
@@ -179,7 +180,7 @@ const CalendarPanel: React.FC = () => {
       }
 
       const handleClick = () => {
-          if (showAllProjects && item.projectId !== state.id) {
+          if (item.projectId !== state.id) {
               switchProject(item.projectId);
               setTimeout(() => {
                    if (item.type === 'task') {
@@ -236,7 +237,7 @@ const CalendarPanel: React.FC = () => {
                 <h2 className="text-2xl font-bold text-slate-800 dark:text-white flex items-center gap-2">
                     <Calendar className="w-8 h-8 text-indigo-600" />
                     Scadenze & Performance
-                    {showAllProjects && <span className="text-xs font-normal text-slate-400 bg-slate-100 dark:bg-slate-800 px-2 py-1 rounded-full ml-2">Vista Estesa</span>}
+                    {showAllProjects && <span className="text-xs font-normal text-slate-400 bg-slate-100 dark:bg-slate-800 px-2 py-1 rounded-full ml-2 flex items-center gap-1"><Globe className="w-3 h-3"/> Vista Globale</span>}
                 </h2>
                 <p className="text-slate-500 dark:text-slate-400 mt-1">Timeline delle scadenze e analisi completamenti.</p>
             </div>
@@ -244,21 +245,10 @@ const CalendarPanel: React.FC = () => {
             {/* Stats Summary Card */}
             <div className="bg-white dark:bg-slate-900 border border-slate-200 dark:border-slate-800 p-4 rounded-2xl shadow-sm flex flex-col gap-3 min-w-[320px] relative overflow-hidden">
                 <div className="flex items-center justify-between z-10">
-                    <div className="flex bg-slate-100 dark:bg-slate-800 p-1 rounded-lg">
-                        <button 
-                            onClick={() => setStatsMode('current')}
-                            className={`px-3 py-1 text-[10px] font-bold rounded-md transition-all ${effectiveStatsMode === 'current' ? 'bg-white dark:bg-slate-700 text-indigo-600 shadow-sm' : 'text-slate-500 hover:text-slate-700 dark:hover:text-slate-300'}`}
-                        >
-                            Progetto
-                        </button>
-                        {showAllProjects && (
-                            <button 
-                                onClick={() => setStatsMode('global')}
-                                className={`px-3 py-1 text-[10px] font-bold rounded-md transition-all flex items-center gap-1 ${effectiveStatsMode === 'global' ? 'bg-white dark:bg-slate-700 text-indigo-600 shadow-sm' : 'text-slate-500 hover:text-slate-700 dark:hover:text-slate-300'}`}
-                            >
-                                <Globe className="w-2.5 h-2.5" /> Globale
-                            </button>
-                        )}
+                    <div className="flex flex-col">
+                        <span className="text-[10px] font-bold text-slate-400 uppercase tracking-widest flex items-center gap-1">
+                            {showAllProjects ? 'Modalità Globale' : 'Progetto Corrente'}
+                        </span>
                     </div>
                     <div className="flex flex-col items-end">
                         <span className="text-[10px] font-bold text-slate-400 uppercase tracking-widest flex items-center gap-1">
@@ -273,9 +263,8 @@ const CalendarPanel: React.FC = () => {
                         <span className="text-[10px] font-bold text-slate-400 uppercase tracking-widest">Task Oggi</span>
                         <div className="flex items-baseline gap-2">
                              <span className="text-3xl font-black text-indigo-600 dark:text-indigo-400">{stats.completedToday}</span>
-                             {effectiveStatsMode === 'global' && (
+                             {showAllProjects && (
                                  <div className="flex flex-wrap gap-x-2 text-[9px] text-slate-500 font-medium">
-                                     {/* Fix: Explicitly cast Object.values result to handle 'unknown' type error */}
                                      {(Object.values(stats.projectContribution) as any[]).filter(p => p.count > 0).map((p, idx) => (
                                          <span key={idx}>{p.name}: {p.count}</span>
                                      ))}
@@ -296,7 +285,6 @@ const CalendarPanel: React.FC = () => {
                                         style={{ height: `${Math.max(height, 2)}px` }}
                                     />
                                     <span className="text-[8px] text-slate-400 font-bold uppercase">{d.label[0]}</span>
-                                    {/* Tooltip */}
                                     <div className="absolute bottom-full left-1/2 -translate-x-1/2 mb-1 hidden group-hover/bar:block bg-slate-800 text-white text-[9px] px-1.5 py-0.5 rounded z-50 whitespace-nowrap">
                                         {d.count} task
                                     </div>

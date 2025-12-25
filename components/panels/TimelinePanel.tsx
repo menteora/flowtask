@@ -3,31 +3,40 @@ import React, { useMemo, useState, useRef } from 'react';
 import { useProject } from '../../context/ProjectContext';
 import { Branch, BranchStatus, Task } from '../../types';
 import { STATUS_CONFIG } from '../../constants';
-import { GanttChart, ChevronRight, Calendar as CalendarIcon, ZoomIn, ZoomOut, AlertCircle, Folder, CheckCircle } from 'lucide-react';
+import { GanttChart, ChevronRight, ZoomIn, ZoomOut, Folder } from 'lucide-react';
 
-const CELL_WIDTH = 50; // Width of one day in pixels
-const HEADER_HEIGHT = 80; // Increased to fit completion stats
+const CELL_WIDTH = 50; 
+const HEADER_HEIGHT = 80; 
 const SIDEBAR_WIDTH = 220;
 
 const TimelinePanel: React.FC = () => {
   const { state, projects, selectBranch, showArchived, showAllProjects, switchProject } = useProject();
-  const [zoomLevel, setZoomLevel] = useState(1); // 1 = Normal, 0.5 = Zoom Out
+  const [zoomLevel, setZoomLevel] = useState(1); 
 
   const sidebarRef = useRef<HTMLDivElement>(null);
   const timelineRef = useRef<HTMLDivElement>(null);
 
+  const getLocalDateString = (date: Date) => {
+    const year = date.getFullYear();
+    const month = String(date.getMonth() + 1).padStart(2, '0');
+    const day = String(date.getDate()).padStart(2, '0');
+    return `${year}-${month}-${day}`;
+  };
+
   const sourceProjects = showAllProjects ? projects : [state];
 
-  // 1. Calculate Daily Completions for Timeline
+  // 1. Calculate Daily Completions for Timeline (using Local Time)
   const dailyCompletions = useMemo(() => {
       const counts: Record<string, number> = {};
       sourceProjects.forEach(proj => {
-          // Explicitly cast to Branch[] to avoid "unknown" type error during traversal
           (Object.values(proj.branches) as Branch[]).forEach(b => {
               b.tasks.forEach(t => {
-                  if (t.completed && t.completedAt) {
-                      const date = t.completedAt.split('T')[0];
-                      counts[date] = (counts[date] || 0) + 1;
+                  if (t.completed) {
+                      const completedDate = t.completedAt ? new Date(t.completedAt) : null;
+                      if (completedDate) {
+                          const dateKey = getLocalDateString(completedDate);
+                          counts[dateKey] = (counts[dateKey] || 0) + 1;
+                      }
                   }
               });
           });
@@ -53,6 +62,12 @@ const TimelinePanel: React.FC = () => {
         }));
 
         allActiveBranches = [...allActiveBranches, ...enhancedBranches];
+    });
+
+    allActiveBranches.sort((a, b) => {
+        const dateA = a.startDate ? new Date(a.startDate).getTime() : 0;
+        const dateB = b.startDate ? new Date(b.startDate).getTime() : 0;
+        return dateA - dateB || a.title.localeCompare(b.title);
     });
 
     let min = new Date();
@@ -111,7 +126,7 @@ const TimelinePanel: React.FC = () => {
       const current = new Date(minDate);
       
       for (let i = 0; i <= totalDays; i++) {
-          const dateKey = current.toISOString().split('T')[0];
+          const dateKey = getLocalDateString(current);
           const completions = dailyCompletions[dateKey] || 0;
           const isToday = new Date().toDateString() === current.toDateString();
           const isMonthStart = current.getDate() === 1;
@@ -122,7 +137,6 @@ const TimelinePanel: React.FC = () => {
                 className={`absolute bottom-0 border-r border-slate-200 dark:border-slate-700 h-full flex flex-col justify-end items-center text-slate-500 dark:text-slate-400 select-none pb-2 ${isToday ? 'bg-indigo-50/50 dark:bg-indigo-900/10' : ''}`}
                 style={{ left: i * (CELL_WIDTH * zoomLevel), width: (CELL_WIDTH * zoomLevel) }}
               >
-                  {/* Performance indicator row */}
                   <div className="absolute bottom-[44px] flex flex-col items-center group/stat">
                       {completions > 0 && (
                           <div 
@@ -287,7 +301,7 @@ const TimelinePanel: React.FC = () => {
                                         className="absolute top-4 w-2.5 h-2.5 bg-red-500 rotate-45 border border-white dark:border-slate-900 shadow-sm z-30 hover:scale-125 transition-transform group/marker cursor-help"
                                         style={{ left: dueX + (CELL_WIDTH * zoomLevel) - 5 }}
                                     >
-                                        <div className="hidden group-hover/marker:block absolute bottom-full left-1/2 -translate-x-1/2 mb-2 px-2 py-1 bg-slate-800 text-white text-[10px] rounded whitespace-nowrap z-50 shadow-lg pointer-events-none">
+                                        <div className="hidden group-hover/marker:block absolute bottom-full left-1/2 -translate-x-1/2 mb-2 px-2 py-1 bg-slate-800 text-white text-[9px] px-1.5 py-0.5 rounded whitespace-nowrap z-50 shadow-lg pointer-events-none">
                                             Scadenza: {new Date(branch.dueDate!).toLocaleDateString('it-IT')}
                                         </div>
                                     </div>

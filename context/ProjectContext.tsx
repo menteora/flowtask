@@ -147,7 +147,11 @@ export const ProjectProvider: React.FC<{ children: React.ReactNode }> = ({ child
                 ...p,
                 branches: Object.fromEntries(Object.entries(p.branches).map(([k, b]: any) => [k, {
                     ...b,
-                    tasks: (b.tasks || []).map((t: any) => ({ ...t, pinned: t.pinned || false }))
+                    tasks: (b.tasks || []).map((t: any) => ({ 
+                        ...t, 
+                        pinned: t.pinned || false,
+                        completedAt: t.completedAt || (t.completed ? new Date().toISOString() : undefined)
+                    }))
                 }]))
             }));
             setProjects(sanitized);
@@ -306,7 +310,7 @@ export const ProjectProvider: React.FC<{ children: React.ReactNode }> = ({ child
                       assignee_id: t.assigneeId,
                       due_date: t.dueDate,
                       completed: t.completed,
-                      completed_at: t.completedAt, // Added
+                      completed_at: t.completedAt,
                       position: idx,
                       pinned: t.pinned || false 
                   });
@@ -379,7 +383,7 @@ export const ProjectProvider: React.FC<{ children: React.ReactNode }> = ({ child
                       title: t.title,
                       description: t.description,
                       completed: t.completed,
-                      completedAt: t.completed_at, // Added
+                      completedAt: t.completed_at,
                       assigneeId: t.assignee_id,
                       dueDate: t.due_date,
                       pinned: t.pinned || false
@@ -668,9 +672,6 @@ export const ProjectProvider: React.FC<{ children: React.ReactNode }> = ({ child
 
   const updateTask = useCallback((branchId: string, taskId: string, updates: Partial<Task>) => {
       setProjects(prev => prev.map(p => {
-          // If we are updating a task in a project that is NOT currently active,
-          // we need to find it by project ID. However, the current API assumes active project.
-          // For multi-project safety, we let this function work only on the project context it's in.
           if (p.id !== activeProjectId) return p; 
           
           const branch = p.branches[branchId];
@@ -678,7 +679,6 @@ export const ProjectProvider: React.FC<{ children: React.ReactNode }> = ({ child
 
           const newTasks = branch.tasks.map(t => {
               if (t.id === taskId) {
-                  // Handle automated completion date
                   const becomingCompleted = updates.completed === true && t.completed === false;
                   const becomingOpen = updates.completed === false && t.completed === true;
                   
