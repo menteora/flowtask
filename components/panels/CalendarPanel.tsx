@@ -46,15 +46,14 @@ const CalendarPanel: React.FC = () => {
         let projTodayCount = 0;
         Object.values(project.branches).forEach((branch: any) => {
             branch.tasks.forEach((task: Task) => {
-                // FALLBACK: If completed but missing completedAt, we treat it as an older event to populate charts
-                if (task.completed) {
-                    const completedDate = task.completedAt ? new Date(task.completedAt) : null;
-                    if (completedDate) {
-                        const dateKey = getLocalDateString(completedDate);
-                        dailyCount[dateKey] = (dailyCount[dateKey] || 0) + 1;
-                        if (dateKey === todayStr) {
-                            projTodayCount++;
-                        }
+                // STRICT CHECK: Only consider tasks with an explicit completion timestamp
+                if (task.completed && task.completedAt) {
+                    const completedDate = new Date(task.completedAt);
+                    const dateKey = getLocalDateString(completedDate);
+                    dailyCount[dateKey] = (dailyCount[dateKey] || 0) + 1;
+                    
+                    if (dateKey === todayStr) {
+                        projTodayCount++;
                     }
                 }
             });
