@@ -2,7 +2,7 @@
 import React, { useState, useRef, useEffect } from 'react';
 import { useTheme } from './context/ThemeContext';
 import { useProject } from './context/ProjectContext';
-import { Moon, Sun, GitBranch, Layers, Users, Download, Upload, Archive, Camera, Image as ImageIcon, Smartphone, Plus, X, Edit2, Calendar, ClipboardList, Settings, Cloud, Loader2, Check, AlertCircle, ChevronDown, Folder, MoreVertical, GanttChart, Globe, Eye, Target, ChevronsDown, ChevronsUp } from 'lucide-react';
+import { Moon, Sun, GitBranch, Layers, Users, Download, Upload, Archive, Camera, Image as ImageIcon, Smartphone, Plus, X, Edit2, Calendar, ClipboardList, Settings, Cloud, Loader2, Check, AlertCircle, ChevronDown, Folder, MoreVertical, GanttChart, Globe, Eye, Target, ChevronsDown, ChevronsUp, CheckCircle2 } from 'lucide-react';
 import FlowCanvas from './components/flow/FlowCanvas';
 import FolderTree from './components/flow/FolderTree';
 import BranchDetails from './components/panels/BranchDetails';
@@ -27,7 +27,7 @@ const App: React.FC = () => {
     selectedBranchId, state, loadProject, showArchived, toggleShowArchived,
     projects, activeProjectId, switchProject, createProject, closeProject, renameProject,
     session, loadingAuth, isInitializing, isOfflineMode, autoSaveStatus, notification,
-    showAllProjects, toggleShowAllProjects, setAllBranchesCollapsed
+    showAllProjects, toggleShowAllProjects, showOnlyOpen, toggleShowOnlyOpen, setAllBranchesCollapsed
   } = useProject();
   
   const [currentView, setCurrentView] = useState<View>(() => {
@@ -356,14 +356,23 @@ const App: React.FC = () => {
         </div>
 
         <div className="flex items-center gap-1 md:gap-2">
-            {(currentView === 'calendar' || currentView === 'assignments' || currentView === 'timeline' || currentView === 'focus') && (
-                <button 
-                  onClick={toggleShowAllProjects}
-                  className={`p-2 rounded-full transition-colors border ${showAllProjects ? 'bg-amber-100 dark:bg-amber-900/40 text-amber-600 border-amber-200' : 'hover:bg-slate-100 dark:hover:bg-slate-800 text-slate-500 dark:text-slate-400 border-transparent'}`}
-                  title={showAllProjects ? "Mostra solo progetto corrente" : "Mostra tutti i progetti aperti"}
-                >
-                  <Globe className="w-4 h-4" />
-                </button>
+            {(currentView === 'calendar' || currentView === 'assignments' || currentView === 'timeline' || currentView === 'focus' || currentView === 'workflow') && (
+                <>
+                    <button 
+                      onClick={toggleShowOnlyOpen}
+                      className={`p-2 rounded-full transition-colors border ${showOnlyOpen ? 'bg-indigo-100 dark:bg-indigo-900/40 text-indigo-600 border-indigo-200' : 'hover:bg-slate-100 dark:hover:bg-slate-800 text-slate-500 dark:text-slate-400 border-transparent'}`}
+                      title={showOnlyOpen ? "Mostra tutto" : "Mostra solo task aperti"}
+                    >
+                      <CheckCircle2 className="w-4 h-4" />
+                    </button>
+                    <button 
+                      onClick={toggleShowAllProjects}
+                      className={`p-2 rounded-full transition-colors border ${showAllProjects ? 'bg-amber-100 dark:bg-amber-900/40 text-amber-600 border-amber-200' : 'hover:bg-slate-100 dark:hover:bg-slate-800 text-slate-500 dark:text-slate-400 border-transparent'}`}
+                      title={showAllProjects ? "Mostra solo progetto corrente" : "Mostra tutti i progetti aperti"}
+                    >
+                      <Globe className="w-4 h-4" />
+                    </button>
+                </>
             )}
 
             <button 

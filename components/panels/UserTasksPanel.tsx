@@ -1,3 +1,4 @@
+
 import React, { useMemo, useState } from 'react';
 import { useProject } from '../../context/ProjectContext';
 import { Branch, Person } from '../../types';
@@ -31,7 +32,7 @@ interface AggregatedUserGroup {
 }
 
 const UserTasksPanel: React.FC = () => {
-  const { state, projects, showAllProjects, updateTask, selectBranch, showArchived, setEditingTask, setRemindingUserId, setReadingTask, switchProject } = useProject();
+  const { state, projects, showAllProjects, updateTask, selectBranch, showArchived, showOnlyOpen, setEditingTask, setRemindingUserId, setReadingTask, switchProject } = useProject();
   
   // State for resolving contact conflicts (same name, different emails/phones)
   const [conflictGroup, setConflictGroup] = useState<AggregatedUserGroup | null>(null);
@@ -51,8 +52,6 @@ const UserTasksPanel: React.FC = () => {
             const compositeKey = normalizedKey; // We use name as the unique aggregator
             
             // Map the specific project-person-id to this group key
-            // We prepend project ID to ensure uniqueness in the map lookup if IDs overlap by chance (rare with UUID)
-            // But actually, looking up by just ID is risky if IDs are not UUIDs. Assuming UUIDs here.
             idToKeyMap[`${proj.id}-${person.id}`] = compositeKey;
 
             if (!groups[compositeKey]) {
@@ -89,6 +88,9 @@ const UserTasksPanel: React.FC = () => {
           if (branch.archived && !showArchived) return;
 
           branch.tasks.forEach(task => {
+            // Apply showOnlyOpen filter
+            if (showOnlyOpen && task.completed) return;
+
             let targetKey = 'unassigned';
             
             if (task.assigneeId) {
@@ -139,7 +141,7 @@ const UserTasksPanel: React.FC = () => {
     }
     
     return result;
-  }, [state, projects, showAllProjects, showArchived]);
+  }, [state, projects, showAllProjects, showArchived, showOnlyOpen]);
 
   // Logic to handle contact button click
   const handleContactClick = (group: AggregatedUserGroup) => {
@@ -154,32 +156,11 @@ const UserTasksPanel: React.FC = () => {
       // Check for unique contact endpoints to see if we have a conflict
       const uniqueContacts = new Set(contactableProfiles.map(p => `${p.email || ''}|${p.phone || ''}`));
       
-      // If we only have 1 unique set of contact info, just pick the first profile ID available in current context if possible
-      // However, message composer needs a valid ID. 
-      // If we are in "Show All Projects", we might pick an ID from a closed project. 
-      // The MessageComposer relies on finding the person in the *current active* state usually, 
-      // but we improved it to search. Wait, MessageComposer uses `state.people.find`.
-      // So if we pick an ID from a foreign project, MessageComposer might fail if we don't switch context or improve it.
-      
-      // Simplify: If multiple profiles exist (different projects) but same contact info, we prefer the one in the ACTIVE project.
       if (uniqueContacts.size === 1) {
           const currentProjectProfile = contactableProfiles.find(p => p.projectId === state.id);
           const targetId = currentProjectProfile ? currentProjectProfile.id : contactableProfiles[0].id;
           
-          // If the target is in a different project, we might need to switch or handle logic.
-          // For now, MessageComposer needs to know who to message.
-          // Let's assume we pass the ID. If MessageComposer only looks at current state, we might have an issue.
-          // FIX: We will ensure we pass an ID that works. But if we are in cross-project view, the user might need to be switched.
-          // Actually, let's just trigger the conflict modal if the user is NOT in the current project, to be safe?
-          // No, let's try to proceed.
-          
-          // Note: If ID is from foreign project, MessageComposer (as currently implemented) might not find it if it only looks at `state`.
-          // We will handle the conflict UI to let user choose explicitly, which also acts as a confirmation.
-          
           if (contactableProfiles.length > 1 && !currentProjectProfile) {
-               // Multiple profiles in foreign projects, same data.
-               // Just pick one. But MessageComposer logic relies on `useProject().state`.
-               // We should probably show the modal if the user is "fragmented" to let user pick context.
                setConflictGroup(group); 
           } else {
                setRemindingUserId(targetId);
@@ -215,7 +196,6 @@ const UserTasksPanel: React.FC = () => {
                               key={`${profile.projectId}-${profile.id}-${idx}`}
                               onClick={() => {
                                   if (profile.projectId !== state.id) {
-                                      // If selecting a foreign profile, we should probably switch project to ensure MessageComposer has data
                                       if(confirm(`Questo contatto appartiene al progetto "${profile.projectName}". Vuoi passare a quel progetto per inviare il messaggio?`)) {
                                           switchProject(profile.projectId);
                                           setTimeout(() => {
@@ -300,7 +280,6 @@ const UserTasksPanel: React.FC = () => {
                                     </h3>
                                     {!isUnassigned && (
                                         <div className="flex flex-col">
-                                            {/* Show distinct emails count if multiple, else show the email */}
                                             {group.profiles.length > 1 ? (
                                                 <p className="text-xs text-slate-500 dark:text-slate-400 truncate flex items-center gap-1">
                                                     <User className="w-3 h-3" />
