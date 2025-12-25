@@ -1,7 +1,7 @@
 
-import React, { useState, useEffect, useRef } from 'react';
+import React, { useState, useEffect, useRef, useMemo } from 'react';
 import { useProject } from '../../context/ProjectContext';
-import { Database, Save, Download, Key, ShieldCheck, Check, Copy, Terminal, Cloud, CloudRain, Loader2, AlertCircle, Upload, User, LogOut, LogIn, WifiOff, X, Share2, Link, Trash2, MessageSquare } from 'lucide-react';
+import { Database, Save, Download, Key, ShieldCheck, Check, Copy, Terminal, Cloud, CloudRain, Loader2, AlertCircle, Upload, User, LogOut, LogIn, WifiOff, X, Share2, Link, Trash2, MessageSquare, Eraser, Archive, AlertTriangle } from 'lucide-react';
 
 const SQL_SCHEMA = `
 -- CANCELLAZIONE VECCHIE TABELLE (Se esistono)
@@ -119,6 +119,7 @@ const SettingsPanel: React.FC = () => {
     listProjectsFromSupabase,
     downloadProjectFromSupabase,
     deleteProjectFromSupabase,
+    cleanupOldTasks,
     state,
     session,
     logout,
@@ -141,6 +142,26 @@ const SettingsPanel: React.FC = () => {
   const [remoteProjects, setRemoteProjects] = useState<any[]>([]);
   const [isDownloading, setIsDownloading] = useState(false);
   
+  // Cleanup Logic State
+  const [cleanupMonths, setCleanupMonths] = useState(6);
+  const [showCleanupConfirm, setShowCleanupConfirm] = useState(false);
+  const [isCleaning, setIsCleaning] = useState(false);
+
+  const cleanupStats = useMemo(() => {
+    const threshold = new Date();
+    threshold.setMonth(threshold.getMonth() - cleanupMonths);
+    let count = 0;
+    Object.values(state.branches).forEach(b => {
+        b.tasks.forEach(t => {
+            if (t.completed && t.completedAt) {
+                const cDate = new Date(t.completedAt);
+                if (cDate < threshold) count++;
+            }
+        });
+    });
+    return count;
+  }, [state.branches, cleanupMonths]);
+
   // Confirmation state for deletion
   const [projectToDelete, setProjectToDelete] = useState<{ id: string; name: string } | null>(null);
   const [isDeleting, setIsDeleting] = useState(false);
@@ -169,7 +190,6 @@ const SettingsPanel: React.FC = () => {
           return;
       }
       const config = { url, key };
-      // Base64 encode for simple obfuscation (avoiding plain text in URL history)
       const encoded = btoa(JSON.stringify(config));
       const link = `${window.location.origin}${window.location.pathname}?config=${encoded}`;
       
@@ -216,7 +236,7 @@ const SettingsPanel: React.FC = () => {
       }
     };
     reader.readAsText(file);
-    e.target.value = ''; // Reset input
+    e.target.value = ''; 
   };
 
   const handleCloudSave = async () => {
@@ -261,7 +281,6 @@ const SettingsPanel: React.FC = () => {
       try {
           await downloadProjectFromSupabase(id);
           showNotification("Progetto caricato con successo!", 'success');
-          // setRemoteProjects([]); // Don't close list, allow downloading others
       } catch (e: any) {
           showNotification("Errore nel download: " + e.message, 'error');
       } finally {
@@ -276,13 +295,40 @@ const SettingsPanel: React.FC = () => {
       try {
           await deleteProjectFromSupabase(projectToDelete.id);
           showNotification("Progetto eliminato dal cloud.", 'success');
-          // Refresh list
           setRemoteProjects(prev => prev.filter(p => p.id !== projectToDelete.id));
       } catch (e: any) {
           showNotification("Errore durante l'eliminazione: " + e.message, 'error');
       } finally {
           setIsDeleting(false);
           setProjectToDelete(null);
+      }
+  };
+
+  const handleRunCleanup = async () => {
+      setIsCleaning(true);
+      try {
+          const result = await cleanupOldTasks(cleanupMonths);
+          
+          if (result.count > 0) {
+              // Trigger backup download
+              const timestamp = new Date().toISOString().slice(0, 10);
+              const dataStr = "data:text/json;charset=utf-8," + encodeURIComponent(JSON.stringify(result.backup, null, 2));
+              const downloadAnchorNode = document.createElement('a');
+              downloadAnchorNode.setAttribute("href", dataStr);
+              downloadAnchorNode.setAttribute("download", `flowtask_cleanup_backup_${state.name}_${timestamp}.json`);
+              document.body.appendChild(downloadAnchorNode);
+              downloadAnchorNode.click();
+              downloadAnchorNode.remove();
+              
+              showNotification(`Pulizia completata. ${result.count} task rimossi e salvati nel file di backup.`, 'success');
+          } else {
+              showNotification("Nessun task trovato per i criteri selezionati.", 'error');
+          }
+      } catch (e: any) {
+          showNotification("Errore durante la pulizia: " + e.message, 'error');
+      } finally {
+          setIsCleaning(false);
+          setShowCleanupConfirm(false);
       }
   };
 
@@ -317,6 +363,43 @@ const SettingsPanel: React.FC = () => {
                         >
                             {isDeleting ? <Loader2 className="w-4 h-4 animate-spin" /> : null}
                             Elimina
+                        </button>
+                    </div>
+                </div>
+            </div>
+        </div>
+      )}
+
+      {/* Cleanup Confirmation Modal */}
+      {showCleanupConfirm && (
+        <div className="fixed inset-0 z-[70] flex items-center justify-center p-4 bg-black/50 backdrop-blur-sm">
+            <div className="bg-white dark:bg-slate-900 p-6 rounded-xl shadow-2xl border border-gray-200 dark:border-slate-700 w-full max-w-sm">
+                <div className="flex flex-col items-center text-center space-y-4">
+                    <div className="w-12 h-12 rounded-full bg-amber-100 dark:bg-amber-900/30 flex items-center justify-center text-amber-600">
+                        <Eraser className="w-6 h-6" />
+                    </div>
+                    <div>
+                        <h3 className="text-lg font-bold text-slate-800 dark:text-white">Conferma Pulizia</h3>
+                        <p className="text-sm text-slate-500 dark:text-slate-400 mt-1">
+                            Verranno rimossi <strong>{cleanupStats}</strong> task chiusi più di {cleanupMonths} mesi fa.
+                            Verrà scaricato un backup JSON prima della cancellazione.
+                        </p>
+                    </div>
+                    <div className="flex gap-3 w-full mt-2">
+                        <button 
+                            onClick={() => setShowCleanupConfirm(false)}
+                            disabled={isCleaning}
+                            className="flex-1 py-2 text-sm font-medium bg-gray-100 dark:bg-slate-700 text-slate-700 dark:text-slate-300 rounded-lg hover:bg-gray-200 dark:hover:bg-slate-600 transition-colors disabled:opacity-50"
+                        >
+                            Annulla
+                        </button>
+                        <button 
+                            onClick={handleRunCleanup}
+                            disabled={isCleaning}
+                            className="flex-1 py-2 text-sm font-bold bg-indigo-600 text-white rounded-lg hover:bg-indigo-700 transition-colors shadow-sm flex items-center justify-center gap-2 disabled:opacity-70"
+                        >
+                            {isCleaning ? <Loader2 className="w-4 h-4 animate-spin" /> : <Archive className="w-4 h-4" />}
+                            Backup & Pulisci
                         </button>
                     </div>
                 </div>
@@ -378,6 +461,53 @@ const SettingsPanel: React.FC = () => {
       </div>
 
       <div className="grid gap-6 md:gap-8 w-full min-w-0 max-w-full">
+
+          {/* Cleanup Section */}
+          <div className="bg-white dark:bg-slate-800 rounded-xl shadow-sm border border-slate-200 dark:border-slate-700 p-4 md:p-6 w-full min-w-0 max-w-full">
+              <h3 className="text-lg font-semibold text-slate-800 dark:text-white mb-2 flex items-center gap-2">
+                  <Eraser className="w-5 h-5 text-amber-500" />
+                  Manutenzione & Pulizia
+              </h3>
+              <p className="text-xs text-slate-500 dark:text-slate-400 mb-6">
+                  Rimuovi i task chiusi da tempo per alleggerire il progetto e il database remoto.
+              </p>
+              
+              <div className="flex flex-col md:flex-row md:items-center gap-6 p-4 bg-slate-50 dark:bg-slate-900/50 rounded-lg border border-slate-200 dark:border-slate-700">
+                  <div className="flex-1 space-y-4">
+                      <div className="flex justify-between items-center">
+                          <label className="text-sm font-bold text-slate-700 dark:text-slate-300">Anzianità Task (Mesi)</label>
+                          <span className="bg-indigo-100 dark:bg-indigo-900/40 text-indigo-600 dark:text-indigo-400 px-2 py-1 rounded text-xs font-black">{cleanupMonths} m+</span>
+                      </div>
+                      <input 
+                        type="range"
+                        min="1"
+                        max="24"
+                        value={cleanupMonths}
+                        onChange={(e) => setCleanupMonths(parseInt(e.target.value))}
+                        className="w-full h-2 bg-slate-200 dark:bg-slate-700 rounded-lg appearance-none cursor-pointer accent-indigo-600"
+                      />
+                      <div className="flex justify-between text-[10px] text-slate-400 font-bold uppercase tracking-widest">
+                          <span>1 mese</span>
+                          <span>2 anni</span>
+                      </div>
+                  </div>
+
+                  <div className="flex flex-col items-center justify-center p-4 bg-white dark:bg-slate-800 rounded-xl shadow-inner border border-slate-100 dark:border-slate-700 min-w-[140px]">
+                      <span className="text-[10px] font-black text-slate-400 uppercase tracking-tighter mb-1">Da eliminare</span>
+                      <span className="text-3xl font-black text-indigo-600 dark:text-indigo-400 leading-none">{cleanupStats}</span>
+                      <span className="text-[10px] font-bold text-slate-400 mt-1">task chiusi</span>
+                  </div>
+
+                  <button 
+                    onClick={() => setShowCleanupConfirm(true)}
+                    disabled={cleanupStats === 0}
+                    className="md:self-end px-6 py-3 bg-amber-600 hover:bg-amber-700 text-white rounded-xl shadow-lg shadow-amber-500/20 transition-all font-bold text-sm flex items-center justify-center gap-2 disabled:opacity-50 disabled:grayscale disabled:shadow-none"
+                  >
+                      <Eraser className="w-4 h-4" />
+                      Avvia Pulizia
+                  </button>
+              </div>
+          </div>
 
           {/* Message Settings Section */}
           <div className="bg-white dark:bg-slate-800 rounded-xl shadow-sm border border-slate-200 dark:border-slate-700 p-4 md:p-6 w-full min-w-0 max-w-full">

@@ -48,6 +48,7 @@ interface ProjectContextType {
   moveTaskToBranch: (taskId: string, sourceBranchId: string, targetBranchId: string) => void;
   bulkMoveTasks: (taskIds: string[], sourceBranchId: string, targetBranchId: string) => void;
   bulkUpdateTasks: (branchId: string, text: string) => void;
+  cleanupOldTasks: (months: number) => Promise<{ count: number; backup: any[] }>;
 
   addPerson: (name: string, email?: string, phone?: string) => void;
   updatePerson: (id: string, updates: Partial<Person>) => void;
@@ -799,6 +800,54 @@ export const ProjectProvider: React.FC<{ children: React.ReactNode }> = ({ child
       }));
   }, [activeProjectId]);
 
+  const cleanupOldTasks = useCallback(async (months: number): Promise<{ count: number; backup: any[] }> => {
+      const threshold = new Date();
+      threshold.setMonth(threshold.getMonth() - months);
+      
+      const backup: any[] = [];
+      const idsToDelete: string[] = [];
+
+      setProjects(prev => prev.map(p => {
+          if (p.id !== activeProjectId) return p;
+          
+          const newBranches = { ...p.branches };
+          Object.keys(newBranches).forEach(bid => {
+              const b = newBranches[bid];
+              const toRemove = b.tasks.filter(t => {
+                  if (t.completed && t.completedAt) {
+                      const cDate = new Date(t.completedAt);
+                      return cDate < threshold;
+                  }
+                  return false;
+              });
+
+              if (toRemove.length > 0) {
+                  toRemove.forEach(task => {
+                      backup.push({ ...task, branchTitle: b.title, branchId: bid });
+                      idsToDelete.push(task.id);
+                  });
+                  newBranches[bid] = {
+                      ...b,
+                      tasks: b.tasks.filter(t => !idsToDelete.includes(t.id))
+                  };
+              }
+          });
+
+          return { ...p, branches: newBranches };
+      }));
+
+      // Remote deletion
+      if (idsToDelete.length > 0 && supabaseClient && session && !isOfflineMode) {
+          const { error } = await supabaseClient
+              .from('flowtask_tasks')
+              .delete()
+              .in('id', idsToDelete);
+          if (error) console.error("Remote cleanup error", error);
+      }
+
+      return { count: idsToDelete.length, backup };
+  }, [activeProjectId, supabaseClient, session, isOfflineMode]);
+
   const addPerson = useCallback((name: string, email?: string, phone?: string) => {
       setProjects(prev => prev.map(p => {
           if (p.id !== activeProjectId) return p;
@@ -887,6 +936,7 @@ export const ProjectProvider: React.FC<{ children: React.ReactNode }> = ({ child
       moveTaskToBranch,
       bulkMoveTasks,
       bulkUpdateTasks,
+      cleanupOldTasks,
       
       addPerson,
       updatePerson,
