@@ -1,7 +1,7 @@
 
 import React, { useEffect, useState, useRef } from 'react';
 import { useProject } from '../../context/ProjectContext';
-import { X, Calendar, User, Trash2, CheckSquare, Square, Save, ArrowRight, Bold, Italic, List, Link as LinkIcon, Mail, Check, Eye, Edit2, Pin, CalendarDays } from 'lucide-react';
+import { X, Calendar, User, Trash2, CheckSquare, Square, Save, ArrowRight, Bold, Italic, List, Link as LinkIcon, Mail, Check, Eye, Edit2, Pin, CalendarDays, CheckCircle2 } from 'lucide-react';
 import Avatar from '../ui/Avatar';
 import { Branch } from '../../types';
 
@@ -13,12 +13,13 @@ const TaskEditorModal: React.FC = () => {
   const [assigneeId, setAssigneeId] = useState('');
   const [dueDate, setDueDate] = useState('');
   const [completed, setCompleted] = useState(false);
+  const [completedAt, setCompletedAt] = useState('');
   const [pinned, setPinned] = useState(false);
   
   // Description/Preview Mode
   const [isPreviewMode, setIsPreviewMode] = useState(false);
   
-  // Editor Popup State (Copied from BranchDetails logic)
+  // Editor Popup State
   const [popupMode, setPopupMode] = useState<'link' | 'email' | null>(null);
   const [popupInput, setPopupInput] = useState('');
   const popupInputRef = useRef<HTMLInputElement>(null);
@@ -40,9 +41,23 @@ const TaskEditorModal: React.FC = () => {
             setDueDate(task.dueDate || '');
             setCompleted(task.completed);
             setPinned(task.pinned || false);
-            setTargetBranchId(''); // Reset selector
-            setIsPreviewMode(false); // Reset preview mode
+            setTargetBranchId(''); 
+            setIsPreviewMode(false); 
             setPopupMode(null);
+
+            // Handle datetime conversion for HTML input (ISO -> YYYY-MM-DDTHH:mm)
+            if (task.completedAt) {
+                const date = new Date(task.completedAt);
+                const year = date.getFullYear();
+                const month = String(date.getMonth() + 1).padStart(2, '0');
+                const day = String(date.getDate()).padStart(2, '0');
+                const hours = String(date.getHours()).padStart(2, '0');
+                const mins = String(date.getMinutes()).padStart(2, '0');
+                setCompletedAt(`${year}-${month}-${day}T${hours}:${mins}`);
+            } else {
+                setCompletedAt('');
+            }
+
             setIsVisible(true);
         } else {
             setEditingTask(null);
@@ -67,12 +82,19 @@ const TaskEditorModal: React.FC = () => {
   const handleSave = () => {
       if (!editingTask || !title.trim()) return;
       
+      // Convert completedAt back to ISO if set
+      let finalCompletedAt = undefined;
+      if (completed) {
+          finalCompletedAt = completedAt ? new Date(completedAt).toISOString() : new Date().toISOString();
+      }
+
       updateTask(editingTask.branchId, editingTask.taskId, {
           title: title.trim(),
           description: description,
           assigneeId: assigneeId || undefined,
           dueDate: dueDate || undefined,
           completed,
+          completedAt: finalCompletedAt,
           pinned
       });
       handleClose();
@@ -93,7 +115,6 @@ const TaskEditorModal: React.FC = () => {
   };
 
   const handleKeyDown = (e: React.KeyboardEvent) => {
-      // Only close on Enter if focusing on single-line inputs, not description textarea
       if (e.key === 'Enter' && (e.target as HTMLElement).tagName !== 'TEXTAREA') handleSave();
       if (e.key === 'Escape') handleClose();
   };
@@ -112,7 +133,6 @@ const TaskEditorModal: React.FC = () => {
     const newText = before + prefix + selection + suffix + after;
     setDescription(newText);
 
-    // Restore focus and cursor
     setTimeout(() => {
         if (textareaRef.current) {
             textareaRef.current.focus();
@@ -201,22 +221,39 @@ const TaskEditorModal: React.FC = () => {
 
         <div className="p-4 space-y-4 overflow-y-auto">
             {/* Title & Check */}
-            <div className="flex gap-3">
-                <button 
-                    onClick={() => setCompleted(!completed)}
-                    className={`mt-1 flex-shrink-0 ${completed ? 'text-green-500' : 'text-slate-300 dark:text-slate-500 hover:text-indigo-500'}`}
-                >
-                    {completed ? <CheckSquare className="w-6 h-6" /> : <Square className="w-6 h-6" />}
-                </button>
-                <input
-                    autoFocus
-                    type="text"
-                    value={title}
-                    onChange={(e) => setTitle(e.target.value)}
-                    onKeyDown={handleKeyDown}
-                    placeholder="Nome del task..."
-                    className="flex-1 text-lg font-medium bg-transparent border-b border-transparent focus:border-indigo-500 outline-none text-slate-900 dark:text-white placeholder:text-slate-400"
-                />
+            <div className="flex flex-col gap-3">
+                <div className="flex gap-3">
+                    <button 
+                        onClick={() => setCompleted(!completed)}
+                        className={`mt-1 flex-shrink-0 ${completed ? 'text-green-500' : 'text-slate-300 dark:text-slate-500 hover:text-indigo-500'}`}
+                    >
+                        {completed ? <CheckSquare className="w-6 h-6" /> : <Square className="w-6 h-6" />}
+                    </button>
+                    <input
+                        autoFocus
+                        type="text"
+                        value={title}
+                        onChange={(e) => setTitle(e.target.value)}
+                        onKeyDown={handleKeyDown}
+                        placeholder="Nome del task..."
+                        className="flex-1 text-lg font-medium bg-transparent border-b border-transparent focus:border-indigo-500 outline-none text-slate-900 dark:text-white placeholder:text-slate-400"
+                    />
+                </div>
+                
+                {/* Manual Completion Date Override */}
+                {completed && (
+                    <div className="ml-9 animate-in slide-in-from-left-2 duration-200">
+                        <label className="block text-[10px] font-bold text-green-600 dark:text-green-400 uppercase tracking-widest mb-1 flex items-center gap-1">
+                            <CheckCircle2 className="w-3 h-3" /> Data Chiusura (Manuale)
+                        </label>
+                        <input 
+                            type="datetime-local"
+                            value={completedAt}
+                            onChange={(e) => setCompletedAt(e.target.value)}
+                            className="text-xs bg-green-50 dark:bg-green-900/20 border border-green-200 dark:border-green-800 rounded px-2 py-1 text-slate-700 dark:text-slate-200 outline-none focus:ring-1 focus:ring-green-500 w-fit"
+                        />
+                    </div>
+                )}
             </div>
 
             {/* Description Editor */}
@@ -311,7 +348,7 @@ const TaskEditorModal: React.FC = () => {
                         type="date"
                         value={dueDate}
                         onChange={(e) => setDueDate(e.target.value)}
-                        className="w-full text-sm bg-white dark:bg-slate-800 border border-slate-200 dark:border-slate-600 rounded-lg p-2.5 pr-10 text-slate-700 dark:text-slate-200 focus:ring-2 focus:ring-indigo-500 outline-none"
+                        className="w-full text-sm bg-white dark:bg-slate-900 border border-slate-200 dark:border-slate-600 rounded-lg p-2.5 pr-10 text-slate-700 dark:text-slate-200 focus:ring-2 focus:ring-indigo-500 outline-none"
                     />
                     <div className="absolute right-3 top-1/2 -translate-y-1/2 pointer-events-none text-slate-400">
                         <Calendar className="w-4 h-4" />
