@@ -3,10 +3,7 @@ on:
   push:
     branches:
       - local
-  pull_request:
-    branches:
-      - local
-
+      
 permissions:
   contents: write
 
