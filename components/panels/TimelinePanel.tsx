@@ -1,34 +1,47 @@
+
 import React, { useMemo, useState, useRef } from 'react';
 import { useProject } from '../../context/ProjectContext';
-import { Branch, BranchStatus } from '../../types';
+import { Branch, BranchStatus, Task } from '../../types';
 import { STATUS_CONFIG } from '../../constants';
-import { GanttChart, ChevronRight, Calendar as CalendarIcon, ZoomIn, ZoomOut, AlertCircle, Folder } from 'lucide-react';
+import { GanttChart, ChevronRight, Calendar as CalendarIcon, ZoomIn, ZoomOut, AlertCircle, Folder, CheckCircle } from 'lucide-react';
 
 const CELL_WIDTH = 50; // Width of one day in pixels
-const HEADER_HEIGHT = 60;
+const HEADER_HEIGHT = 80; // Increased to fit completion stats
 const SIDEBAR_WIDTH = 220;
 
 const TimelinePanel: React.FC = () => {
   const { state, projects, selectBranch, showArchived, showAllProjects, switchProject } = useProject();
   const [zoomLevel, setZoomLevel] = useState(1); // 1 = Normal, 0.5 = Zoom Out
 
-  // Refs for synchronized scrolling
   const sidebarRef = useRef<HTMLDivElement>(null);
   const timelineRef = useRef<HTMLDivElement>(null);
 
-  // 1. Prepare Data
+  const sourceProjects = showAllProjects ? projects : [state];
+
+  // 1. Calculate Daily Completions for Timeline
+  const dailyCompletions = useMemo(() => {
+      const counts: Record<string, number> = {};
+      sourceProjects.forEach(proj => {
+          // Explicitly cast to Branch[] to avoid "unknown" type error during traversal
+          (Object.values(proj.branches) as Branch[]).forEach(b => {
+              b.tasks.forEach(t => {
+                  if (t.completed && t.completedAt) {
+                      const date = t.completedAt.split('T')[0];
+                      counts[date] = (counts[date] || 0) + 1;
+                  }
+              });
+          });
+      });
+      return counts;
+  }, [sourceProjects]);
+
+  // 2. Prepare Branch Data
   const { branches, minDate, maxDate, totalDays } = useMemo(() => {
-    
-    // Select Source: Single Project or All Open Projects
-    const sourceProjects = showAllProjects ? projects : [state];
-    
     let allActiveBranches: (Branch & { projectName: string, projectId: string })[] = [];
 
     sourceProjects.forEach(proj => {
         const projBranches = (Object.values(proj.branches) as Branch[]).filter(b => {
-            // Exclude Root
             if (b.id === proj.rootBranchId) return false;
-            // Filter Archived
             if (b.archived && !showArchived) return false;
             return true;
         });
@@ -42,19 +55,8 @@ const TimelinePanel: React.FC = () => {
         allActiveBranches = [...allActiveBranches, ...enhancedBranches];
     });
 
-    // Sort by start date, then title
-    allActiveBranches.sort((a, b) => {
-        // Group by project first if showing all? No, timeline usually prioritizes time.
-        // Let's sort by Start Date primarily.
-        const dateA = a.startDate ? new Date(a.startDate).getTime() : 0;
-        const dateB = b.startDate ? new Date(b.startDate).getTime() : 0;
-        return dateA - dateB || a.title.localeCompare(b.title);
-    });
-
-    // Calculate Global Bounds
     let min = new Date();
     let max = new Date();
-    // Default range: Today - 7 days to Today + 30 days
     min.setDate(min.getDate() - 7);
     max.setDate(max.getDate() + 30);
 
@@ -63,7 +65,6 @@ const TimelinePanel: React.FC = () => {
             const start = new Date(b.startDate);
             if (start < min) min = start;
         }
-        // Check end date or due date
         const endStr = b.endDate || b.dueDate;
         if (endStr) {
             const end = new Date(endStr);
@@ -71,13 +72,11 @@ const TimelinePanel: React.FC = () => {
         }
     });
 
-    // Add some padding
-    min = new Date(min); // Clone
+    min = new Date(min);
     min.setDate(min.getDate() - 3);
     max = new Date(max);
     max.setDate(max.getDate() + 7);
 
-    // Normalize to midnight
     min.setHours(0,0,0,0);
     max.setHours(0,0,0,0);
 
@@ -90,16 +89,14 @@ const TimelinePanel: React.FC = () => {
         maxDate: max, 
         totalDays: days 
     };
-  }, [state, projects, showArchived, showAllProjects]);
+  }, [sourceProjects, showArchived]);
 
-  // Handle Scroll Sync
   const handleScroll = (e: React.UIEvent<HTMLDivElement>) => {
       if (sidebarRef.current) {
           sidebarRef.current.scrollTop = e.currentTarget.scrollTop;
       }
   };
 
-  // Helper to get X position for a date
   const getXForDate = (dateStr: string | undefined) => {
       if (!dateStr) return null;
       const date = new Date(dateStr);
@@ -109,28 +106,40 @@ const TimelinePanel: React.FC = () => {
       return days * (CELL_WIDTH * zoomLevel);
   };
 
-  // Helper to render date headers
   const renderTimeHeader = () => {
       const headers = [];
       const current = new Date(minDate);
       
       for (let i = 0; i <= totalDays; i++) {
+          const dateKey = current.toISOString().split('T')[0];
+          const completions = dailyCompletions[dateKey] || 0;
           const isToday = new Date().toDateString() === current.toDateString();
           const isMonthStart = current.getDate() === 1;
           
           headers.push(
               <div 
                 key={i} 
-                className={`absolute bottom-0 border-r border-slate-200 dark:border-slate-700 h-full flex flex-col justify-end pb-1 text-[10px] items-center text-slate-500 dark:text-slate-400 select-none ${isToday ? 'bg-indigo-50 dark:bg-indigo-900/20' : ''}`}
+                className={`absolute bottom-0 border-r border-slate-200 dark:border-slate-700 h-full flex flex-col justify-end items-center text-slate-500 dark:text-slate-400 select-none pb-2 ${isToday ? 'bg-indigo-50/50 dark:bg-indigo-900/10' : ''}`}
                 style={{ left: i * (CELL_WIDTH * zoomLevel), width: (CELL_WIDTH * zoomLevel) }}
               >
-                  <span className="font-bold">{current.getDate()}</span>
-                  <span className="text-[9px] uppercase">{current.toLocaleDateString('it-IT', { weekday: 'narrow' })}</span>
+                  {/* Performance indicator row */}
+                  <div className="absolute bottom-[44px] flex flex-col items-center group/stat">
+                      {completions > 0 && (
+                          <div 
+                            className="bg-indigo-600 text-white text-[9px] font-black w-4 h-4 rounded-full flex items-center justify-center shadow-sm transform hover:scale-125 transition-transform"
+                            title={`${completions} task completati`}
+                          >
+                              {completions}
+                          </div>
+                      )}
+                  </div>
+
+                  <span className="text-[10px] font-bold mt-auto leading-none">{current.getDate()}</span>
+                  <span className="text-[8px] uppercase font-medium leading-tight opacity-70">{current.toLocaleDateString('it-IT', { weekday: 'narrow' })}</span>
                   
-                  {/* Month Label overlay */}
                   {(isMonthStart || i === 0) && (
-                      <div className="absolute top-0 left-1 text-xs font-bold text-indigo-600 dark:text-indigo-400 whitespace-nowrap">
-                          {current.toLocaleDateString('it-IT', { month: 'long', year: 'numeric' })}
+                      <div className="absolute top-2 left-1 text-[10px] font-black text-indigo-600 dark:text-indigo-400 whitespace-nowrap bg-white/80 dark:bg-slate-900/80 px-1 rounded">
+                          {current.toLocaleDateString('it-IT', { month: 'short', year: '2-digit' }).toUpperCase()}
                       </div>
                   )}
               </div>
@@ -143,26 +152,13 @@ const TimelinePanel: React.FC = () => {
   const getBarDimensions = (branch: Branch) => {
       let startX = getXForDate(branch.startDate);
       let endX = getXForDate(branch.endDate || branch.dueDate);
-      
-      // If no start date, but has end date, assume start is recent or fix visual length
-      if (startX === null && endX !== null) {
-          startX = endX - (3 * CELL_WIDTH * zoomLevel); // 3 days default
-      }
-      // If start date but no end, assume 1 day or until today
-      if (startX !== null && endX === null) {
-          endX = startX + (CELL_WIDTH * zoomLevel);
-      }
-      // If neither, place at "Today" (handled loosely, maybe don't show bar, just row)
+      if (startX === null && endX !== null) startX = endX - (3 * CELL_WIDTH * zoomLevel);
+      if (startX !== null && endX === null) endX = startX + (CELL_WIDTH * zoomLevel);
       if (startX === null && endX === null) {
-          const todayX = getXForDate(new Date().toISOString());
-          if (todayX) {
-              startX = todayX;
-              endX = todayX + (CELL_WIDTH * zoomLevel);
-          } else {
-              return null; // Should not happen given min/max calculation
-          }
+          const tX = getXForDate(new Date().toISOString());
+          if (tX) { startX = tX; endX = tX + (CELL_WIDTH * zoomLevel); }
+          else return null;
       }
-
       return { x: startX!, width: Math.max((endX! - startX!), (CELL_WIDTH * zoomLevel)) };
   };
 
@@ -171,7 +167,6 @@ const TimelinePanel: React.FC = () => {
   const handleBranchClick = (branch: Branch & { projectId: string }) => {
       if (branch.projectId !== state.id) {
           switchProject(branch.projectId);
-          // Allow state to settle before selecting
           setTimeout(() => selectBranch(branch.id), 100);
       } else {
           selectBranch(branch.id);
@@ -180,38 +175,32 @@ const TimelinePanel: React.FC = () => {
 
   return (
     <div className="flex flex-col h-full bg-slate-50 dark:bg-slate-950 overflow-hidden relative">
-      
-      {/* Toolbar */}
       <div className="flex items-center justify-between px-4 py-3 border-b border-slate-200 dark:border-slate-800 bg-white dark:bg-slate-900 z-20 flex-shrink-0">
           <div className="flex items-center gap-2">
               <GanttChart className="w-5 h-5 text-indigo-600" />
               <h2 className="text-lg font-bold text-slate-800 dark:text-white flex items-center gap-2">
-                  Timeline
-                  {showAllProjects && <span className="text-xs font-normal text-slate-400 bg-slate-100 dark:bg-slate-800 px-2 py-1 rounded-full">Tutti i progetti</span>}
+                  Timeline & Velocity
               </h2>
           </div>
-          <div className="flex items-center gap-2">
-              <button 
-                onClick={() => setZoomLevel(Math.max(0.5, zoomLevel - 0.25))}
-                className="p-1.5 rounded hover:bg-slate-100 dark:hover:bg-slate-800 text-slate-500"
-                disabled={zoomLevel <= 0.5}
-              >
-                  <ZoomOut className="w-4 h-4" />
-              </button>
-              <span className="text-xs font-mono w-12 text-center text-slate-500">{(zoomLevel * 100).toFixed(0)}%</span>
-              <button 
-                onClick={() => setZoomLevel(Math.min(2, zoomLevel + 0.25))}
-                className="p-1.5 rounded hover:bg-slate-100 dark:hover:bg-slate-800 text-slate-500"
-                disabled={zoomLevel >= 2}
-              >
-                  <ZoomIn className="w-4 h-4" />
-              </button>
+          <div className="flex items-center gap-4">
+              <div className="flex items-center gap-1.5 text-[10px] font-bold text-slate-500 uppercase">
+                  <div className="w-2.5 h-2.5 rounded-full bg-indigo-600"></div>
+                  Task Chiusi
+              </div>
+              <div className="h-4 w-px bg-slate-200 dark:bg-slate-700"></div>
+              <div className="flex items-center gap-2">
+                  <button onClick={() => setZoomLevel(Math.max(0.5, zoomLevel - 0.25))} className="p-1.5 rounded hover:bg-slate-100 dark:hover:bg-slate-800 text-slate-500" disabled={zoomLevel <= 0.5}>
+                      <ZoomOut className="w-4 h-4" />
+                  </button>
+                  <span className="text-xs font-mono w-10 text-center text-slate-500">{(zoomLevel * 100).toFixed(0)}%</span>
+                  <button onClick={() => setZoomLevel(Math.min(2, zoomLevel + 0.25))} className="p-1.5 rounded hover:bg-slate-100 dark:hover:bg-slate-800 text-slate-500" disabled={zoomLevel >= 2}>
+                      <ZoomIn className="w-4 h-4" />
+                  </button>
+              </div>
           </div>
       </div>
 
       <div className="flex flex-1 overflow-hidden relative">
-          
-          {/* Sidebar (Branch List) */}
           <div 
             ref={sidebarRef}
             className="flex-shrink-0 bg-white dark:bg-slate-900 border-r border-slate-200 dark:border-slate-800 z-10 shadow-lg overflow-hidden"
@@ -229,23 +218,15 @@ const TimelinePanel: React.FC = () => {
                               <div className={`w-2 h-2 rounded-full flex-shrink-0 ${statusConfig.color.replace('bg-', 'bg-opacity-100 bg-').split(' ')[1] || 'bg-slate-400'}`}></div>
                               <div className="flex flex-col min-w-0 flex-1">
                                   <span className="text-sm font-medium text-slate-700 dark:text-slate-300 truncate">{branch.title}</span>
-                                  {showAllProjects && (
-                                      <span className="text-[9px] text-slate-400 truncate flex items-center gap-1">
-                                          <Folder className="w-2.5 h-2.5" /> {branch.projectName}
-                                      </span>
-                                  )}
+                                  {showAllProjects && <span className="text-[9px] text-slate-400 truncate flex items-center gap-1"><Folder className="w-2.5 h-2.5" /> {branch.projectName}</span>}
                               </div>
                               <ChevronRight className="w-3 h-3 text-slate-400 flex-shrink-0" />
                           </div>
                       );
                   })}
-                  {branches.length === 0 && (
-                      <div className="p-4 text-xs text-slate-400 text-center italic">Nessun ramo attivo.</div>
-                  )}
               </div>
           </div>
 
-          {/* Chart Area (With Vertical Scrollbar) */}
           <div 
             ref={timelineRef}
             onScroll={handleScroll}
@@ -255,7 +236,6 @@ const TimelinePanel: React.FC = () => {
                 className="relative min-w-full"
                 style={{ width: (totalDays + 1) * (CELL_WIDTH * zoomLevel), height: (branches.length * 48) + HEADER_HEIGHT }}
               >
-                  {/* Time Header (Sticky Top) */}
                   <div 
                     className="sticky top-0 left-0 right-0 bg-white dark:bg-slate-900 border-b border-slate-200 dark:border-slate-800 z-30 shadow-sm"
                     style={{ height: HEADER_HEIGHT }}
@@ -263,44 +243,28 @@ const TimelinePanel: React.FC = () => {
                       {renderTimeHeader()}
                   </div>
 
-                  {/* Grid Lines Background */}
                   <div className="absolute top-0 left-0 right-0 bottom-0 pointer-events-none flex" style={{ paddingTop: HEADER_HEIGHT }}>
                       {Array.from({ length: totalDays + 1 }).map((_, i) => (
-                          <div 
-                            key={i} 
-                            className="border-r border-slate-200/50 dark:border-slate-800/50 h-full"
-                            style={{ width: (CELL_WIDTH * zoomLevel) }}
-                          />
+                          <div key={i} className="border-r border-slate-200/30 dark:border-slate-800/30 h-full" style={{ width: (CELL_WIDTH * zoomLevel) }} />
                       ))}
                   </div>
 
-                  {/* Today Line */}
                   {todayX !== null && (
-                      <div 
-                        className="absolute top-0 bottom-0 border-l-2 border-red-400/50 z-10 pointer-events-none"
-                        style={{ left: todayX, marginTop: HEADER_HEIGHT }}
-                      >
-                          <div className="absolute -top-6 -left-1.5 w-3 h-3 bg-red-500 rounded-full"></div>
+                      <div className="absolute top-0 bottom-0 border-l-2 border-red-500/30 z-10 pointer-events-none" style={{ left: todayX, marginTop: HEADER_HEIGHT }}>
+                          <div className="absolute -top-1.5 -left-1.5 w-3 h-3 bg-red-500 rounded-full shadow-sm"></div>
                       </div>
                   )}
 
-                  {/* Bars Container */}
                   <div className="relative z-20">
                       {branches.map(branch => {
                           const dims = getBarDimensions(branch);
-                          // Calculate Due Date X Position
                           const dueX = getXForDate(branch.dueDate);
-                          const statusConfig = STATUS_CONFIG[branch.status];
-                          
-                          // Calculate Progress
                           const totalTasks = branch.tasks.length;
                           const completed = branch.tasks.filter(t => t.completed).length;
                           const pct = totalTasks > 0 ? (completed / totalTasks) * 100 : 0;
 
-                          // Dynamic Colors based on Status config (parsing tailwind classes roughly)
                           let barColor = 'bg-slate-400';
                           if (branch.status === BranchStatus.ACTIVE) barColor = 'bg-indigo-500';
-                          else if (branch.status === BranchStatus.PLANNED) barColor = 'bg-slate-400';
                           else if (branch.status === BranchStatus.CLOSED) barColor = 'bg-blue-500';
                           else if (branch.status === BranchStatus.STANDBY) barColor = 'bg-amber-500';
                           else if (branch.status === BranchStatus.CANCELLED) barColor = 'bg-red-500';
@@ -312,30 +276,16 @@ const TimelinePanel: React.FC = () => {
                                         className={`absolute top-2 h-8 rounded-md shadow-sm cursor-pointer transition-all hover:brightness-110 flex items-center overflow-hidden ${barColor} bg-opacity-80 dark:bg-opacity-60 border border-white/20`}
                                         style={{ left: dims.x, width: dims.width }}
                                         onClick={() => handleBranchClick(branch)}
-                                        title={`${branch.title} (${branch.startDate || '?'} - ${branch.endDate || branch.dueDate || '?'})`}
                                       >
-                                          {/* Progress Fill */}
-                                          <div 
-                                            className="h-full bg-black/20 absolute left-0 top-0 transition-all duration-500"
-                                            style={{ width: `${pct}%` }}
-                                          />
-                                          
-                                          {/* Label inside bar if wide enough */}
-                                          {dims.width > 60 && (
-                                              <span className="relative z-10 px-2 text-xs font-bold text-white truncate drop-shadow-md">
-                                                  {branch.title}
-                                              </span>
-                                          )}
+                                          <div className="h-full bg-black/20 absolute left-0 top-0 transition-all duration-500" style={{ width: `${pct}%` }} />
+                                          {dims.width > 60 && <span className="relative z-10 px-2 text-xs font-bold text-white truncate drop-shadow-md">{branch.title}</span>}
                                       </div>
-                                  ) : (
-                                      <div className="absolute top-2 left-2 text-xs text-slate-400 italic">Data mancante</div>
-                                  )}
+                                  ) : null}
 
-                                  {/* Deadline Marker */}
                                   {dueX !== null && (
                                     <div 
                                         className="absolute top-4 w-2.5 h-2.5 bg-red-500 rotate-45 border border-white dark:border-slate-900 shadow-sm z-30 hover:scale-125 transition-transform group/marker cursor-help"
-                                        style={{ left: dueX + (CELL_WIDTH * zoomLevel) - 5 }} // Position at end of day cell
+                                        style={{ left: dueX + (CELL_WIDTH * zoomLevel) - 5 }}
                                     >
                                         <div className="hidden group-hover/marker:block absolute bottom-full left-1/2 -translate-x-1/2 mb-2 px-2 py-1 bg-slate-800 text-white text-[10px] rounded whitespace-nowrap z-50 shadow-lg pointer-events-none">
                                             Scadenza: {new Date(branch.dueDate!).toLocaleDateString('it-IT')}
