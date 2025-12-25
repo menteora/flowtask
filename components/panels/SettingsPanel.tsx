@@ -1,6 +1,6 @@
-
 import React, { useState, useEffect, useRef, useMemo } from 'react';
 import { useProject } from '../../context/ProjectContext';
+import { Branch } from '../../types';
 import { Database, Save, Download, Key, ShieldCheck, Check, Copy, Terminal, Cloud, CloudRain, Loader2, AlertCircle, Upload, User, LogOut, LogIn, WifiOff, X, Share2, Link, Trash2, MessageSquare, Eraser, Archive, AlertTriangle } from 'lucide-react';
 
 const SQL_SCHEMA = `
@@ -151,7 +151,8 @@ const SettingsPanel: React.FC = () => {
     const threshold = new Date();
     threshold.setMonth(threshold.getMonth() - cleanupMonths);
     let count = 0;
-    Object.values(state.branches).forEach(b => {
+    // Fix: Explicitly cast Object.values to Branch[] to avoid type error on tasks property access
+    (Object.values(state.branches) as Branch[]).forEach(b => {
         b.tasks.forEach(t => {
             if (t.completed && t.completedAt) {
                 const cDate = new Date(t.completedAt);
@@ -373,7 +374,7 @@ const SettingsPanel: React.FC = () => {
       {/* Cleanup Confirmation Modal */}
       {showCleanupConfirm && (
         <div className="fixed inset-0 z-[70] flex items-center justify-center p-4 bg-black/50 backdrop-blur-sm">
-            <div className="bg-white dark:bg-slate-900 p-6 rounded-xl shadow-2xl border border-gray-200 dark:border-slate-700 w-full max-w-sm">
+            <div className="bg-white dark:bg-slate-900 p-6 rounded-xl shadow-2xl border border-gray-200 dark:border-slate-700 w-full max-sm transform scale-100 transition-transform">
                 <div className="flex flex-col items-center text-center space-y-4">
                     <div className="w-12 h-12 rounded-full bg-amber-100 dark:bg-amber-900/30 flex items-center justify-center text-amber-600">
                         <Eraser className="w-6 h-6" />

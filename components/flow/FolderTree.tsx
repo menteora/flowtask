@@ -2,7 +2,7 @@
 import React, { useMemo } from 'react';
 import { useProject } from '../../context/ProjectContext';
 import { STATUS_CONFIG } from '../../constants';
-import { ChevronRight, ChevronDown, Plus, FileText, CheckSquare, Square, Archive, GitBranch, ChevronUp, Tag, Calendar, CheckCircle2 } from 'lucide-react';
+import { ChevronRight, ChevronDown, Plus, FileText, CheckSquare, Square, Archive, GitBranch, ChevronUp, Tag, Calendar, CheckCircle2, ChevronsDown, ChevronsUp, Layers } from 'lucide-react';
 import Avatar from '../ui/Avatar';
 
 interface FolderNodeProps {
@@ -239,10 +239,48 @@ const FolderNode: React.FC<FolderNodeProps> = ({ branchId, depth = 0, index, sib
 };
 
 const FolderTree: React.FC = () => {
-    const { state } = useProject();
+    const { state, setAllBranchesCollapsed } = useProject();
+    
+    const branchesCount = Object.keys(state.branches).length - 1; // excluding root for clarity
+
     return (
-        <div className="w-full h-full overflow-y-auto bg-slate-50 dark:bg-slate-950 pb-24">
-            <FolderNode branchId={state.rootBranchId} />
+        <div className="w-full h-full flex flex-col bg-white dark:bg-slate-950">
+            {/* Contextual Toolbar for Mobile */}
+            <div className="sticky top-0 z-20 flex items-center justify-between px-4 py-3 bg-white/80 dark:bg-slate-950/80 backdrop-blur-md border-b border-slate-200 dark:border-slate-800 shadow-sm flex-shrink-0">
+                <div className="flex items-center gap-2 min-w-0">
+                    <div className="bg-indigo-600/10 p-1.5 rounded-lg">
+                        <Layers className="w-4 h-4 text-indigo-600" />
+                    </div>
+                    <div className="flex flex-col leading-none">
+                        <span className="text-xs font-black text-slate-800 dark:text-white uppercase tracking-tighter">Gerarchia</span>
+                        <span className="text-[10px] text-slate-400 font-bold">{branchesCount} rami attivi</span>
+                    </div>
+                </div>
+
+                <div className="flex items-center gap-1">
+                    <button 
+                        onClick={() => setAllBranchesCollapsed(false)}
+                        className="p-2 text-indigo-600 dark:text-indigo-400 hover:bg-indigo-50 dark:hover:bg-indigo-900/30 rounded-lg flex items-center gap-1.5 transition-colors"
+                        title="Espandi tutto"
+                    >
+                        <ChevronsDown className="w-4 h-4" />
+                        <span className="text-[10px] font-bold uppercase hidden xs:inline">Espandi</span>
+                    </button>
+                    <div className="w-px h-4 bg-slate-200 dark:bg-slate-800 mx-1"></div>
+                    <button 
+                        onClick={() => setAllBranchesCollapsed(true)}
+                        className="p-2 text-slate-500 hover:bg-slate-100 dark:hover:bg-slate-800 rounded-lg flex items-center gap-1.5 transition-colors"
+                        title="Comprimi tutto"
+                    >
+                        <ChevronsUp className="w-4 h-4" />
+                        <span className="text-[10px] font-bold uppercase hidden xs:inline">Comprimi</span>
+                    </button>
+                </div>
+            </div>
+
+            <div id="export-tree-content" className="flex-1 overflow-y-auto pb-24">
+                <FolderNode branchId={state.rootBranchId} />
+            </div>
         </div>
     );
 };

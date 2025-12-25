@@ -514,7 +514,8 @@ const App: React.FC = () => {
                     <FolderTree />
                 </div>
 
-                <div className="absolute bottom-6 right-6 md:bottom-10 md:right-10 flex flex-col gap-2 z-30 pointer-events-none">
+                {/* Floating Action Buttons (Desktop ONLY) */}
+                <div className="hidden md:flex absolute bottom-6 right-6 md:bottom-10 md:right-10 flex-col gap-2 z-30 pointer-events-none">
                     <div className="flex flex-col gap-2 pointer-events-auto bg-white dark:bg-slate-900 p-2 rounded-2xl shadow-xl border border-slate-200 dark:border-slate-800 animate-in slide-in-from-right-4">
                         <button 
                             onClick={() => setAllBranchesCollapsed(false)}
