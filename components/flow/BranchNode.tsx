@@ -3,7 +3,7 @@ import React, { useState, useEffect, useMemo } from 'react';
 import { Branch, BranchStatus } from '../../types';
 import { STATUS_CONFIG } from '../../constants';
 import { useProject } from '../../context/ProjectContext';
-import { MoreHorizontal, Plus, Calendar, Archive, ChevronLeft, ChevronRight, FileText, ChevronDown, ChevronUp, GitMerge, Globe, Tag, Eye, EyeOff } from 'lucide-react';
+import { MoreHorizontal, Plus, Calendar, Archive, ChevronLeft, ChevronRight, FileText, ChevronDown, ChevronUp, GitMerge, Globe, Tag, Eye, EyeOff, CheckCircle2 } from 'lucide-react';
 import Avatar from '../ui/Avatar';
 
 interface BranchNodeProps {
@@ -310,15 +310,21 @@ const BranchNode: React.FC<BranchNodeProps> = ({ branchId }) => {
                                     )}
                                 </div>
 
-                                <div className="flex items-center gap-2 flex-shrink-0">
+                                <div className="flex flex-col items-end gap-0.5 flex-shrink-0 text-[9px] text-slate-400">
                                     {task.dueDate && (
-                                        <div className="flex items-center gap-0.5 text-[10px] text-slate-400" title={`Scadenza: ${task.dueDate}`}>
-                                            <Calendar className="w-3 h-3" />
+                                        <div className="flex items-center gap-0.5" title={`Scadenza: ${task.dueDate}`}>
+                                            <Calendar className="w-2.5 h-2.5" />
                                             <span>{new Date(task.dueDate).getDate()}/{new Date(task.dueDate).getMonth() + 1}</span>
                                         </div>
                                     )}
+                                    {task.completed && task.completedAt && (
+                                        <div className="flex items-center gap-0.5 text-green-500 font-medium" title={`Completato il: ${new Date(task.completedAt).toLocaleString()}`}>
+                                            <CheckCircle2 className="w-2.5 h-2.5" />
+                                            <span>{new Date(task.completedAt).getDate()}/{new Date(task.completedAt).getMonth() + 1}</span>
+                                        </div>
+                                    )}
                                     {assignee && (
-                                        <Avatar person={assignee} size="sm" className="w-4 h-4 text-[8px]" />
+                                        <Avatar person={assignee} size="sm" className="w-4 h-4 text-[8px] mt-0.5" />
                                     )}
                                 </div>
                             </li>

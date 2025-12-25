@@ -2,7 +2,7 @@
 import React, { useMemo, useState } from 'react';
 import { useProject } from '../../context/ProjectContext';
 import { Branch, Person } from '../../types';
-import { CheckSquare, Square, ClipboardList, HelpCircle, ArrowRight, Calendar, Mail, MessageCircle, FileText, Folder, Pin, X, User } from 'lucide-react';
+import { CheckSquare, Square, ClipboardList, HelpCircle, ArrowRight, Calendar, Mail, MessageCircle, FileText, Folder, Pin, X, User, CheckCircle2 } from 'lucide-react';
 import Avatar from '../ui/Avatar';
 
 // Interface for the aggregated group
@@ -16,6 +16,7 @@ interface AggregatedUserGroup {
     title: string;
     description?: string;
     completed: boolean;
+    completedAt?: string;
     dueDate?: string;
     branchId: string;
     branchTitle: string;
@@ -106,6 +107,7 @@ const UserTasksPanel: React.FC = () => {
               title: task.title,
               description: task.description,
               completed: task.completed,
+              completedAt: task.completedAt,
               dueDate: task.dueDate,
               branchId: branch.id,
               branchTitle: branch.title,
@@ -388,7 +390,7 @@ const UserTasksPanel: React.FC = () => {
                                                         )}
                                                     </div>
                                                     
-                                                    <div className="flex flex-wrap items-center gap-2 text-xs text-slate-500 dark:text-slate-400">
+                                                    <div className="flex flex-wrap items-center gap-3 text-[10px] text-slate-500 dark:text-slate-400">
                                                         <span 
                                                             className="flex items-center gap-1 hover:text-indigo-500 cursor-pointer transition-colors max-w-[150px] truncate"
                                                             onClick={() => {
@@ -401,12 +403,20 @@ const UserTasksPanel: React.FC = () => {
                                                             {task.branchTitle}
                                                         </span>
                                                         
-                                                        {task.dueDate && (
-                                                            <span className={`flex items-center gap-1 ${task.completed ? '' : 'text-amber-600 dark:text-amber-500'}`}>
-                                                                <Calendar className="w-3 h-3" />
-                                                                {new Date(task.dueDate).toLocaleDateString(undefined, { day: '2-digit', month: '2-digit'})}
-                                                            </span>
-                                                        )}
+                                                        <div className="flex flex-col gap-0.5">
+                                                            {task.dueDate && (
+                                                                <span className={`flex items-center gap-1 ${task.completed ? '' : 'text-amber-600 dark:text-amber-500 font-medium'}`}>
+                                                                    <Calendar className="w-3 h-3" />
+                                                                    {new Date(task.dueDate).toLocaleDateString(undefined, { day: '2-digit', month: '2-digit'})}
+                                                                </span>
+                                                            )}
+                                                            {task.completed && task.completedAt && (
+                                                                <span className="flex items-center gap-1 text-green-600 dark:text-green-400 font-bold" title={new Date(task.completedAt).toLocaleString()}>
+                                                                    <CheckCircle2 className="w-3 h-3" />
+                                                                    Chiuso: {new Date(task.completedAt).toLocaleDateString(undefined, { day: '2-digit', month: '2-digit'})}
+                                                                </span>
+                                                            )}
+                                                        </div>
                                                     </div>
                                                 </div>
 

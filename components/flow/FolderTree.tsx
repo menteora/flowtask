@@ -2,7 +2,7 @@
 import React, { useMemo } from 'react';
 import { useProject } from '../../context/ProjectContext';
 import { STATUS_CONFIG } from '../../constants';
-import { ChevronRight, ChevronDown, Plus, FileText, CheckSquare, Square, Archive, GitBranch, ChevronUp, Tag } from 'lucide-react';
+import { ChevronRight, ChevronDown, Plus, FileText, CheckSquare, Square, Archive, GitBranch, ChevronUp, Tag, Calendar, CheckCircle2 } from 'lucide-react';
 import Avatar from '../ui/Avatar';
 
 interface FolderNodeProps {
@@ -181,9 +181,23 @@ const FolderNode: React.FC<FolderNodeProps> = ({ branchId, depth = 0, index, sib
                             </button>
                         )}
                     </div>
-                    {task.assigneeId && (
-                        <Avatar person={state.people.find(p => p.id === task.assigneeId)!} size="sm" className="w-5 h-5 text-[10px] mr-2" />
-                    )}
+                    <div className="flex flex-col items-end gap-0.5">
+                        {task.dueDate && (
+                            <div className="flex items-center gap-1 text-[9px] text-slate-400">
+                                <Calendar className="w-2.5 h-2.5" />
+                                <span>{new Date(task.dueDate).toLocaleDateString(undefined, {day: '2-digit', month: '2-digit'})}</span>
+                            </div>
+                        )}
+                        {task.completed && task.completedAt && (
+                            <div className="flex items-center gap-1 text-[9px] text-green-500 font-bold">
+                                <CheckCircle2 className="w-2.5 h-2.5" />
+                                <span>{new Date(task.completedAt).toLocaleDateString(undefined, {day: '2-digit', month: '2-digit'})}</span>
+                            </div>
+                        )}
+                        {task.assigneeId && (
+                            <Avatar person={state.people.find(p => p.id === task.assigneeId)!} size="sm" className="w-5 h-5 text-[10px] mr-2" />
+                        )}
+                    </div>
                 </div>
 
                 <div className="flex flex-col gap-1 border-l border-gray-200 dark:border-slate-700 pl-2">
