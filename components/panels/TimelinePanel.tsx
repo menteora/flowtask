@@ -31,12 +31,11 @@ const TimelinePanel: React.FC = () => {
       sourceProjects.forEach(proj => {
           (Object.values(proj.branches) as Branch[]).forEach(b => {
               b.tasks.forEach(t => {
-                  if (t.completed) {
-                      const completedDate = t.completedAt ? new Date(t.completedAt) : null;
-                      if (completedDate) {
-                          const dateKey = getLocalDateString(completedDate);
-                          counts[dateKey] = (counts[dateKey] || 0) + 1;
-                      }
+                  // STRICT CHECK: ignore tasks without an explicit completion timestamp
+                  if (t.completed && t.completedAt) {
+                      const completedDate = new Date(t.completedAt);
+                      const dateKey = getLocalDateString(completedDate);
+                      counts[dateKey] = (counts[dateKey] || 0) + 1;
                   }
               });
           });
