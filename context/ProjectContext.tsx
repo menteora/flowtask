@@ -151,6 +151,7 @@ export const ProjectProvider: React.FC<{ children: React.ReactNode }> = ({ child
                     tasks: (b.tasks || []).map((t: any) => ({ 
                         ...t, 
                         pinned: t.pinned || false,
+                        // Fix for local persistence: ensure date isn't lost
                         completedAt: t.completedAt || (t.completed ? new Date().toISOString() : undefined)
                     }))
                 }]))
@@ -311,7 +312,7 @@ export const ProjectProvider: React.FC<{ children: React.ReactNode }> = ({ child
                       assignee_id: t.assigneeId,
                       due_date: t.dueDate,
                       completed: t.completed,
-                      completed_at: t.completedAt,
+                      completed_at: t.completedAt, // Sincronizzazione colonna DB
                       position: idx,
                       pinned: t.pinned || false 
                   });
@@ -379,16 +380,21 @@ export const ProjectProvider: React.FC<{ children: React.ReactNode }> = ({ child
               const branchTasks = (tasksData || [])
                   .filter((t: any) => t.branch_id === b.id)
                   .sort((a: any, b: any) => (a.position || 0) - (b.position || 0))
-                  .map((t: any) => ({
-                      id: t.id,
-                      title: t.title,
-                      description: t.description,
-                      completed: t.completed,
-                      completedAt: t.completed_at,
-                      assigneeId: t.assignee_id,
-                      dueDate: t.due_date,
-                      pinned: t.pinned || false
-                  }));
+                  .map((t: any) => {
+                      // Fix: If completed but missing completed_at from DB, generate current time to avoid "disappearing" UI
+                      const finalCompletedAt = t.completed_at || (t.completed ? new Date().toISOString() : undefined);
+                      
+                      return {
+                        id: t.id,
+                        title: t.title,
+                        description: t.description,
+                        completed: t.completed,
+                        completedAt: finalCompletedAt,
+                        assigneeId: t.assignee_id,
+                        dueDate: t.due_date,
+                        pinned: t.pinned || false
+                      };
+                  });
 
               branches[b.id] = {
                   id: b.id,
