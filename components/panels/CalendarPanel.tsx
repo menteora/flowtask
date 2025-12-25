@@ -1,8 +1,8 @@
 
-import React, { useMemo } from 'react';
+import React, { useMemo, useState } from 'react';
 import { useProject } from '../../context/ProjectContext';
 import { BranchStatus, Branch, Task } from '../../types';
-import { Calendar, Clock, AlertCircle, CheckCircle2, FileText, PlayCircle, StopCircle, ArrowRight, Folder, TrendingUp, CheckCircle } from 'lucide-react';
+import { Calendar, Clock, AlertCircle, CheckCircle2, FileText, PlayCircle, StopCircle, ArrowRight, Folder, TrendingUp, CheckCircle, Globe, Info } from 'lucide-react';
 import Avatar from '../ui/Avatar';
 
 interface TimelineItem {
@@ -23,24 +23,39 @@ interface TimelineItem {
 
 const CalendarPanel: React.FC = () => {
   const { state, projects, showAllProjects, selectBranch, setEditingTask, switchProject } = useProject();
+  
+  // Stats display mode: 'current' or 'global' (if showAllProjects is true)
+  const [statsMode, setStatsMode] = useState<'current' | 'global'>('current');
 
   const sourceProjects = showAllProjects ? projects : [state];
+  
+  // Ensure we switch stats mode back to current if showAllProjects is turned off
+  const effectiveStatsMode = showAllProjects ? statsMode : 'current';
 
   // 1. Calculate Completion Statistics
   const stats = useMemo(() => {
     const dailyCount: Record<string, number> = {};
-    const today = new Date();
-    today.setHours(0,0,0,0);
+    const projectContribution: Record<string, { name: string, count: number }> = {};
+    const todayStr = new Date().toISOString().split('T')[0];
     
-    sourceProjects.forEach(project => {
+    // Determine which projects to analyze for the stats box
+    const projectsForStats = effectiveStatsMode === 'global' ? projects : [state];
+    
+    projectsForStats.forEach(project => {
+        let projTodayCount = 0;
         Object.values(project.branches).forEach((branch: any) => {
             branch.tasks.forEach((task: Task) => {
                 if (task.completed && task.completedAt) {
                     const dateKey = task.completedAt.split('T')[0];
                     dailyCount[dateKey] = (dailyCount[dateKey] || 0) + 1;
+                    
+                    if (dateKey === todayStr) {
+                        projTodayCount++;
+                    }
                 }
             });
         });
+        projectContribution[project.id] = { name: project.name, count: projTodayCount };
     });
 
     // Get last 7 days labels and data
@@ -57,16 +72,14 @@ const CalendarPanel: React.FC = () => {
 
     const totalIn7Days = last7Days.reduce((acc, curr) => acc + curr.count, 0);
     const average = (totalIn7Days / 7).toFixed(1);
-    const completedToday = dailyCount[today.toISOString().split('T')[0]] || 0;
+    const completedToday = dailyCount[todayStr] || 0;
 
-    return { last7Days, average, completedToday, totalIn7Days };
-  }, [sourceProjects]);
+    return { last7Days, average, completedToday, totalIn7Days, projectContribution };
+  }, [state, projects, effectiveStatsMode]);
 
-  // 2. Prepare Calendar Items
+  // 2. Prepare Calendar Items (Timeline)
   const items = useMemo(() => {
     const list: TimelineItem[] = [];
-    const now = new Date();
-    now.setHours(0,0,0,0);
 
     sourceProjects.forEach(project => {
         (Object.values(project.branches) as Branch[]).forEach(branch => {
@@ -218,44 +231,79 @@ const CalendarPanel: React.FC = () => {
 
   return (
     <div className="w-full max-w-4xl mx-auto h-full flex flex-col p-4 md:p-8 overflow-y-auto pb-24">
-        <div className="mb-6 flex flex-col sm:flex-row sm:items-end sm:justify-between gap-4">
+        <div className="mb-6 flex flex-col lg:flex-row lg:items-center lg:justify-between gap-6">
             <div>
                 <h2 className="text-2xl font-bold text-slate-800 dark:text-white flex items-center gap-2">
                     <Calendar className="w-8 h-8 text-indigo-600" />
                     Scadenze & Performance
-                    {showAllProjects && <span className="text-xs font-normal text-slate-400 bg-slate-100 dark:bg-slate-800 px-2 py-1 rounded-full ml-2">Tutti i progetti</span>}
+                    {showAllProjects && <span className="text-xs font-normal text-slate-400 bg-slate-100 dark:bg-slate-800 px-2 py-1 rounded-full ml-2">Vista Estesa</span>}
                 </h2>
                 <p className="text-slate-500 dark:text-slate-400 mt-1">Timeline delle scadenze e analisi completamenti.</p>
             </div>
             
             {/* Stats Summary Card */}
-            <div className="bg-white dark:bg-slate-900 border border-slate-200 dark:border-slate-800 p-4 rounded-xl shadow-sm flex items-center gap-6 min-w-[280px]">
-                <div className="flex flex-col">
-                    <span className="text-[10px] font-bold text-slate-400 uppercase tracking-widest">Oggi</span>
-                    <span className="text-2xl font-black text-indigo-600 dark:text-indigo-400">{stats.completedToday}</span>
+            <div className="bg-white dark:bg-slate-900 border border-slate-200 dark:border-slate-800 p-4 rounded-2xl shadow-sm flex flex-col gap-3 min-w-[320px] relative overflow-hidden">
+                <div className="flex items-center justify-between z-10">
+                    <div className="flex bg-slate-100 dark:bg-slate-800 p-1 rounded-lg">
+                        <button 
+                            onClick={() => setStatsMode('current')}
+                            className={`px-3 py-1 text-[10px] font-bold rounded-md transition-all ${effectiveStatsMode === 'current' ? 'bg-white dark:bg-slate-700 text-indigo-600 shadow-sm' : 'text-slate-500 hover:text-slate-700 dark:hover:text-slate-300'}`}
+                        >
+                            Progetto
+                        </button>
+                        {showAllProjects && (
+                            <button 
+                                onClick={() => setStatsMode('global')}
+                                className={`px-3 py-1 text-[10px] font-bold rounded-md transition-all flex items-center gap-1 ${effectiveStatsMode === 'global' ? 'bg-white dark:bg-slate-700 text-indigo-600 shadow-sm' : 'text-slate-500 hover:text-slate-700 dark:hover:text-slate-300'}`}
+                            >
+                                <Globe className="w-2.5 h-2.5" /> Globale
+                            </button>
+                        )}
+                    </div>
+                    <div className="flex flex-col items-end">
+                        <span className="text-[10px] font-bold text-slate-400 uppercase tracking-widest flex items-center gap-1">
+                            <TrendingUp className="w-3 h-3 text-emerald-500" /> Media 7gg
+                        </span>
+                        <span className="text-xl font-black text-slate-800 dark:text-white leading-none">{stats.average}</span>
+                    </div>
                 </div>
-                <div className="w-px h-10 bg-slate-100 dark:bg-slate-800"></div>
-                <div className="flex flex-col">
-                    <span className="text-[10px] font-bold text-slate-400 uppercase tracking-widest flex items-center gap-1">
-                        <TrendingUp className="w-3 h-3 text-emerald-500" /> Media 7gg
-                    </span>
-                    <span className="text-2xl font-black text-slate-800 dark:text-white">{stats.average}</span>
-                </div>
-                {/* Mini chart visualizer */}
-                <div className="flex items-end gap-1 h-10 ml-auto">
-                    {stats.last7Days.map((d, i) => {
-                        const maxHeight = 30;
-                        const height = stats.totalIn7Days > 0 ? (d.count / Math.max(...stats.last7Days.map(x => x.count || 1))) * maxHeight : 2;
-                        return (
-                            <div key={i} className="flex flex-col items-center gap-1">
-                                <div 
-                                    className={`w-1.5 rounded-t-sm transition-all duration-500 ${i === 6 ? 'bg-indigo-500' : 'bg-slate-300 dark:bg-slate-700'}`} 
-                                    style={{ height: `${Math.max(height, 2)}px` }}
-                                />
-                                <span className="text-[7px] text-slate-400 font-bold uppercase">{d.label[0]}</span>
-                            </div>
-                        );
-                    })}
+
+                <div className="flex items-center gap-4 z-10">
+                    <div className="flex flex-col">
+                        <span className="text-[10px] font-bold text-slate-400 uppercase tracking-widest">Task Oggi</span>
+                        <div className="flex items-baseline gap-2">
+                             <span className="text-3xl font-black text-indigo-600 dark:text-indigo-400">{stats.completedToday}</span>
+                             {effectiveStatsMode === 'global' && (
+                                 <div className="flex flex-wrap gap-x-2 text-[9px] text-slate-500 font-medium">
+                                     {/* Fix: Explicitly cast Object.values result to handle 'unknown' type error */}
+                                     {(Object.values(stats.projectContribution) as any[]).filter(p => p.count > 0).map((p, idx) => (
+                                         <span key={idx}>{p.name}: {p.count}</span>
+                                     ))}
+                                 </div>
+                             )}
+                        </div>
+                    </div>
+                    
+                    {/* Mini chart visualizer */}
+                    <div className="flex items-end gap-1.5 h-12 ml-auto">
+                        {stats.last7Days.map((d, i) => {
+                            const maxVal = Math.max(...stats.last7Days.map(x => x.count)) || 1;
+                            const height = (d.count / maxVal) * 40;
+                            return (
+                                <div key={i} className="flex flex-col items-center gap-1 group/bar relative">
+                                    <div 
+                                        className={`w-2 rounded-t-md transition-all duration-500 ${i === 6 ? 'bg-indigo-500' : 'bg-slate-200 dark:bg-slate-700'} group-hover/bar:bg-indigo-400`} 
+                                        style={{ height: `${Math.max(height, 2)}px` }}
+                                    />
+                                    <span className="text-[8px] text-slate-400 font-bold uppercase">{d.label[0]}</span>
+                                    {/* Tooltip */}
+                                    <div className="absolute bottom-full left-1/2 -translate-x-1/2 mb-1 hidden group-hover/bar:block bg-slate-800 text-white text-[9px] px-1.5 py-0.5 rounded z-50 whitespace-nowrap">
+                                        {d.count} task
+                                    </div>
+                                </div>
+                            );
+                        })}
+                    </div>
                 </div>
             </div>
         </div>

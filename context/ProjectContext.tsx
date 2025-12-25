@@ -306,6 +306,7 @@ export const ProjectProvider: React.FC<{ children: React.ReactNode }> = ({ child
                       assignee_id: t.assigneeId,
                       due_date: t.dueDate,
                       completed: t.completed,
+                      completed_at: t.completedAt, // Added
                       position: idx,
                       pinned: t.pinned || false 
                   });
@@ -378,6 +379,7 @@ export const ProjectProvider: React.FC<{ children: React.ReactNode }> = ({ child
                       title: t.title,
                       description: t.description,
                       completed: t.completed,
+                      completedAt: t.completed_at, // Added
                       assigneeId: t.assignee_id,
                       dueDate: t.due_date,
                       pinned: t.pinned || false
@@ -666,10 +668,29 @@ export const ProjectProvider: React.FC<{ children: React.ReactNode }> = ({ child
 
   const updateTask = useCallback((branchId: string, taskId: string, updates: Partial<Task>) => {
       setProjects(prev => prev.map(p => {
-          if (p.id !== activeProjectId) return p;
+          // If we are updating a task in a project that is NOT currently active,
+          // we need to find it by project ID. However, the current API assumes active project.
+          // For multi-project safety, we let this function work only on the project context it's in.
+          if (p.id !== activeProjectId) return p; 
+          
           const branch = p.branches[branchId];
           if (!branch) return p;
-          const newTasks = branch.tasks.map(t => t.id === taskId ? { ...t, ...updates } : t);
+
+          const newTasks = branch.tasks.map(t => {
+              if (t.id === taskId) {
+                  // Handle automated completion date
+                  const becomingCompleted = updates.completed === true && t.completed === false;
+                  const becomingOpen = updates.completed === false && t.completed === true;
+                  
+                  let completedAt = t.completedAt;
+                  if (becomingCompleted) completedAt = new Date().toISOString();
+                  else if (becomingOpen) completedAt = undefined;
+
+                  return { ...t, ...updates, completedAt };
+              }
+              return t;
+          });
+          
           return {
               ...p,
               branches: { ...p.branches, [branchId]: { ...branch, tasks: newTasks } }
