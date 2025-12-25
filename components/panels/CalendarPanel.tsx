@@ -1,7 +1,8 @@
+
 import React, { useMemo } from 'react';
 import { useProject } from '../../context/ProjectContext';
-import { BranchStatus, Branch } from '../../types';
-import { Calendar, Clock, AlertCircle, CheckCircle2, FileText, PlayCircle, StopCircle, ArrowRight, Folder } from 'lucide-react';
+import { BranchStatus, Branch, Task } from '../../types';
+import { Calendar, Clock, AlertCircle, CheckCircle2, FileText, PlayCircle, StopCircle, ArrowRight, Folder, TrendingUp, CheckCircle } from 'lucide-react';
 import Avatar from '../ui/Avatar';
 
 interface TimelineItem {
@@ -23,16 +24,52 @@ interface TimelineItem {
 const CalendarPanel: React.FC = () => {
   const { state, projects, showAllProjects, selectBranch, setEditingTask, switchProject } = useProject();
 
+  const sourceProjects = showAllProjects ? projects : [state];
+
+  // 1. Calculate Completion Statistics
+  const stats = useMemo(() => {
+    const dailyCount: Record<string, number> = {};
+    const today = new Date();
+    today.setHours(0,0,0,0);
+    
+    sourceProjects.forEach(project => {
+        Object.values(project.branches).forEach((branch: any) => {
+            branch.tasks.forEach((task: Task) => {
+                if (task.completed && task.completedAt) {
+                    const dateKey = task.completedAt.split('T')[0];
+                    dailyCount[dateKey] = (dailyCount[dateKey] || 0) + 1;
+                }
+            });
+        });
+    });
+
+    // Get last 7 days labels and data
+    const last7Days = Array.from({ length: 7 }).map((_, i) => {
+        const d = new Date();
+        d.setDate(d.getDate() - (6 - i));
+        const key = d.toISOString().split('T')[0];
+        return {
+            label: d.toLocaleDateString('it-IT', { weekday: 'short' }),
+            date: key,
+            count: dailyCount[key] || 0
+        };
+    });
+
+    const totalIn7Days = last7Days.reduce((acc, curr) => acc + curr.count, 0);
+    const average = (totalIn7Days / 7).toFixed(1);
+    const completedToday = dailyCount[today.toISOString().split('T')[0]] || 0;
+
+    return { last7Days, average, completedToday, totalIn7Days };
+  }, [sourceProjects]);
+
+  // 2. Prepare Calendar Items
   const items = useMemo(() => {
     const list: TimelineItem[] = [];
     const now = new Date();
     now.setHours(0,0,0,0);
 
-    const sourceProjects = showAllProjects ? projects : [state];
-
     sourceProjects.forEach(project => {
         (Object.values(project.branches) as Branch[]).forEach(branch => {
-            // Skip archived if needed, but usually deadlines are important regardless. 
             if (branch.archived || branch.status === BranchStatus.CANCELLED) return;
 
             const commonProps = {
@@ -42,9 +79,6 @@ const CalendarPanel: React.FC = () => {
                 projectId: project.id,
                 projectName: project.name
             };
-
-            // Branch Dates
-            // NOTE: Removed branch.startDate (branch_start) to reduce clutter as requested.
 
             if (branch.dueDate) {
                 list.push({
@@ -56,8 +90,6 @@ const CalendarPanel: React.FC = () => {
                     ...commonProps
                 });
             }
-            // End date (only if closed, but we filtered closed above? Let's keep Active deadlines mostly)
-            // If a branch is Active but has an endDate set manually (projection), show it.
             if (branch.endDate && branch.status !== BranchStatus.CLOSED) {
                 list.push({
                     id: `${branch.id}-end`,
@@ -69,7 +101,6 @@ const CalendarPanel: React.FC = () => {
                 });
             }
 
-            // Task Dates
             branch.tasks.forEach(task => {
                 if (task.dueDate && !task.completed) {
                     list.push({
@@ -88,7 +119,7 @@ const CalendarPanel: React.FC = () => {
     });
 
     return list.sort((a, b) => a.dateObj.getTime() - b.dateObj.getTime());
-  }, [state, projects, showAllProjects]);
+  }, [sourceProjects]);
 
   // Grouping
   const grouped = useMemo(() => {
@@ -128,7 +159,6 @@ const CalendarPanel: React.FC = () => {
               break;
       }
 
-      // Find person across all projects if viewing all
       let assignee = null;
       if (item.assigneeId) {
           const project = projects.find(p => p.id === item.projectId);
@@ -136,10 +166,8 @@ const CalendarPanel: React.FC = () => {
       }
 
       const handleClick = () => {
-          // If viewing all projects and clicking item from another project
           if (showAllProjects && item.projectId !== state.id) {
               switchProject(item.projectId);
-              // Small delay to allow state update before selecting item
               setTimeout(() => {
                    if (item.type === 'task') {
                        setEditingTask({ branchId: item.branchId, taskId: item.id });
@@ -190,13 +218,46 @@ const CalendarPanel: React.FC = () => {
 
   return (
     <div className="w-full max-w-4xl mx-auto h-full flex flex-col p-4 md:p-8 overflow-y-auto pb-24">
-        <div className="mb-6">
-            <h2 className="text-2xl font-bold text-slate-800 dark:text-white flex items-center gap-2">
-                <Calendar className="w-8 h-8 text-indigo-600" />
-                Scadenze & Timeline
-                {showAllProjects && <span className="text-xs font-normal text-slate-400 bg-slate-100 dark:bg-slate-800 px-2 py-1 rounded-full ml-2">Tutti i progetti</span>}
-            </h2>
-            <p className="text-slate-500 dark:text-slate-400 mt-1">Una panoramica cronologica di task e rami.</p>
+        <div className="mb-6 flex flex-col sm:flex-row sm:items-end sm:justify-between gap-4">
+            <div>
+                <h2 className="text-2xl font-bold text-slate-800 dark:text-white flex items-center gap-2">
+                    <Calendar className="w-8 h-8 text-indigo-600" />
+                    Scadenze & Performance
+                    {showAllProjects && <span className="text-xs font-normal text-slate-400 bg-slate-100 dark:bg-slate-800 px-2 py-1 rounded-full ml-2">Tutti i progetti</span>}
+                </h2>
+                <p className="text-slate-500 dark:text-slate-400 mt-1">Timeline delle scadenze e analisi completamenti.</p>
+            </div>
+            
+            {/* Stats Summary Card */}
+            <div className="bg-white dark:bg-slate-900 border border-slate-200 dark:border-slate-800 p-4 rounded-xl shadow-sm flex items-center gap-6 min-w-[280px]">
+                <div className="flex flex-col">
+                    <span className="text-[10px] font-bold text-slate-400 uppercase tracking-widest">Oggi</span>
+                    <span className="text-2xl font-black text-indigo-600 dark:text-indigo-400">{stats.completedToday}</span>
+                </div>
+                <div className="w-px h-10 bg-slate-100 dark:bg-slate-800"></div>
+                <div className="flex flex-col">
+                    <span className="text-[10px] font-bold text-slate-400 uppercase tracking-widest flex items-center gap-1">
+                        <TrendingUp className="w-3 h-3 text-emerald-500" /> Media 7gg
+                    </span>
+                    <span className="text-2xl font-black text-slate-800 dark:text-white">{stats.average}</span>
+                </div>
+                {/* Mini chart visualizer */}
+                <div className="flex items-end gap-1 h-10 ml-auto">
+                    {stats.last7Days.map((d, i) => {
+                        const maxHeight = 30;
+                        const height = stats.totalIn7Days > 0 ? (d.count / Math.max(...stats.last7Days.map(x => x.count || 1))) * maxHeight : 2;
+                        return (
+                            <div key={i} className="flex flex-col items-center gap-1">
+                                <div 
+                                    className={`w-1.5 rounded-t-sm transition-all duration-500 ${i === 6 ? 'bg-indigo-500' : 'bg-slate-300 dark:bg-slate-700'}`} 
+                                    style={{ height: `${Math.max(height, 2)}px` }}
+                                />
+                                <span className="text-[7px] text-slate-400 font-bold uppercase">{d.label[0]}</span>
+                            </div>
+                        );
+                    })}
+                </div>
+            </div>
         </div>
 
         <div className="space-y-8">
