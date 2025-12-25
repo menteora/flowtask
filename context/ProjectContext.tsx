@@ -151,7 +151,6 @@ export const ProjectProvider: React.FC<{ children: React.ReactNode }> = ({ child
                     tasks: (b.tasks || []).map((t: any) => ({ 
                         ...t, 
                         pinned: t.pinned || false,
-                        // Fix for local persistence: ensure date isn't lost
                         completedAt: t.completedAt || (t.completed ? new Date().toISOString() : undefined)
                     }))
                 }]))
@@ -312,7 +311,7 @@ export const ProjectProvider: React.FC<{ children: React.ReactNode }> = ({ child
                       assignee_id: t.assigneeId,
                       due_date: t.dueDate,
                       completed: t.completed,
-                      completed_at: t.completedAt, // Sincronizzazione colonna DB
+                      completed_at: t.completedAt,
                       position: idx,
                       pinned: t.pinned || false 
                   });
@@ -381,7 +380,6 @@ export const ProjectProvider: React.FC<{ children: React.ReactNode }> = ({ child
                   .filter((t: any) => t.branch_id === b.id)
                   .sort((a: any, b: any) => (a.position || 0) - (b.position || 0))
                   .map((t: any) => {
-                      // Fix: If completed but missing completed_at from DB, generate current time to avoid "disappearing" UI
                       const finalCompletedAt = t.completed_at || (t.completed ? new Date().toISOString() : undefined);
                       
                       return {
@@ -686,12 +684,17 @@ export const ProjectProvider: React.FC<{ children: React.ReactNode }> = ({ child
 
           const newTasks = branch.tasks.map(t => {
               if (t.id === taskId) {
-                  const becomingCompleted = updates.completed === true && t.completed === false;
-                  const becomingOpen = updates.completed === false && t.completed === true;
+                  // PRIORITY: Use manually provided completedAt if present in updates
+                  let completedAt = updates.completedAt !== undefined ? updates.completedAt : t.completedAt;
                   
-                  let completedAt = t.completedAt;
-                  if (becomingCompleted) completedAt = new Date().toISOString();
-                  else if (becomingOpen) completedAt = undefined;
+                  // LOGIC FOR TOGGLE: Only calculate if manual override wasn't provided for this specific action
+                  if (updates.completed !== undefined && updates.completedAt === undefined) {
+                      const becomingCompleted = updates.completed === true && t.completed === false;
+                      const becomingOpen = updates.completed === false && t.completed === true;
+                      
+                      if (becomingCompleted) completedAt = new Date().toISOString();
+                      else if (becomingOpen) completedAt = undefined;
+                  }
 
                   return { ...t, ...updates, completedAt };
               }
