@@ -4,10 +4,16 @@ import { createClient, SupabaseClient, Session } from '@supabase/supabase-js';
 import { ProjectState, Branch, Task, Person, BranchStatus } from '../types';
 import { INITIAL_STATE, createInitialProjectState } from '../constants';
 
-interface ProjectHealthReport {
+export interface OrphanInfo {
+    id: string;
+    title: string;
+    taskCount: number;
+}
+
+export interface ProjectHealthReport {
     legacyRootFound: boolean;
     missingRootNode: boolean;
-    orphanedBranchesCount: number;
+    orphanedBranches: OrphanInfo[];
     totalIssues: number;
 }
 
@@ -59,6 +65,7 @@ interface ProjectContextType {
 
   checkProjectHealth: () => ProjectHealthReport;
   repairProjectStructure: () => void;
+  resolveOrphans: (idsToFix: string[], idsToDelete: string[]) => void;
 
   addPerson: (name: string, email?: string, phone?: string) => void;
   updatePerson: (id: string, updates: Partial<Person>) => void;
@@ -92,7 +99,6 @@ interface ProjectContextType {
 const ProjectContext = createContext<ProjectContextType | undefined>(undefined);
 
 export const ProjectProvider: React.FC<{ children: React.ReactNode }> = ({ children }) => {
-  // State initialization using the factory to ensure unique IDs from start
   const [projects, setProjects] = useState<ProjectState[]>(() => {
     const saved = localStorage.getItem('flowtask_projects');
     if (saved) {
@@ -117,20 +123,17 @@ export const ProjectProvider: React.FC<{ children: React.ReactNode }> = ({ child
     return localStorage.getItem('flowtask_show_only_open') === 'true';
   });
   
-  // UI State
   const [readingDescriptionId, setReadingDescriptionId] = useState<string | null>(null);
   const [editingTask, setEditingTask] = useState<{ branchId: string; taskId: string } | null>(null);
   const [readingTask, setReadingTask] = useState<{ branchId: string; taskId: string } | null>(null);
   const [remindingUserId, setRemindingUserId] = useState<string | null>(null);
   const [notification, setNotification] = useState<{ type: 'success' | 'error'; message: string } | null>(null);
 
-  // Settings
   const [messageTemplates, setMessageTemplates] = useState({ 
       opening: "Ciao {name}, ecco un riepilogo dei tuoi task:", 
       closing: "Buon lavoro!" 
   });
   
-  // Supabase / Auth
   const [supabaseConfig, setSupabaseConfigState] = useState<{ url: string; key: string }>({ url: '', key: '' });
   const [supabaseClient, setSupabaseClient] = useState<SupabaseClient | null>(null);
   const [session, setSession] = useState<Session | null>(null);
@@ -651,7 +654,6 @@ export const ProjectProvider: React.FC<{ children: React.ReactNode }> = ({ child
           const branch = p.branches[branchId];
           if (!branch) return p;
 
-          // LOGICA AUTO-PIN: Se è il ramo radice (rootBranchId) o collegato direttamente ad esso, fixa in Focus
           const isAtRoot = branchId === p.rootBranchId;
           const isDirectChildOfRoot = branch.parentIds.includes(p.rootBranchId);
           const autoPin = isAtRoot || isDirectChildOfRoot;
@@ -793,7 +795,6 @@ export const ProjectProvider: React.FC<{ children: React.ReactNode }> = ({ child
            const branch = p.branches[branchId];
            if (!branch) return p;
            
-           // LOGICA AUTO-PIN anche per bulk update
            const isAtRoot = branchId === p.rootBranchId;
            const isDirectChildOfRoot = branch.parentIds.includes(p.rootBranchId);
            const autoPin = isAtRoot || isDirectChildOfRoot;
@@ -852,7 +853,6 @@ export const ProjectProvider: React.FC<{ children: React.ReactNode }> = ({ child
           return { ...p, branches: newBranches };
       }));
 
-      // Remote deletion
       if (idsToDelete.length > 0 && supabaseClient && session && !isOfflineMode) {
           const { error } = await supabaseClient
               .from('flowtask_tasks')
@@ -869,11 +869,10 @@ export const ProjectProvider: React.FC<{ children: React.ReactNode }> = ({ child
       const report: ProjectHealthReport = {
           legacyRootFound: proj.rootBranchId === 'root' || !!proj.branches['root'],
           missingRootNode: !proj.branches[proj.rootBranchId],
-          orphanedBranchesCount: 0,
+          orphanedBranches: [],
           totalIssues: 0
       };
 
-      // Find reachable nodes via BFS
       const reachable = new Set<string>();
       if (!report.missingRootNode) {
           const queue = [proj.rootBranchId];
@@ -884,7 +883,7 @@ export const ProjectProvider: React.FC<{ children: React.ReactNode }> = ({ child
               const branch = proj.branches[currentId];
               if (branch) {
                   branch.childrenIds.forEach(cid => {
-                      if (!reachable.has(cid)) {
+                      if (!reachable.has(cid) && proj.branches[cid]) {
                           reachable.add(cid);
                           queue.push(cid);
                       }
@@ -893,14 +892,18 @@ export const ProjectProvider: React.FC<{ children: React.ReactNode }> = ({ child
           }
       }
 
-      // Any branch in the record that wasn't reachable is an orphan
       Object.keys(proj.branches).forEach(bid => {
           if (!reachable.has(bid)) {
-              report.orphanedBranchesCount++;
+              const b = proj.branches[bid];
+              report.orphanedBranches.push({
+                  id: bid,
+                  title: b.title,
+                  taskCount: b.tasks.length
+              });
           }
       });
 
-      report.totalIssues = (report.legacyRootFound ? 1 : 0) + (report.missingRootNode ? 1 : 0) + report.orphanedBranchesCount;
+      report.totalIssues = (report.legacyRootFound ? 1 : 0) + (report.missingRootNode ? 1 : 0) + report.orphanedBranches.length;
       return report;
   }, [activeProject]);
 
@@ -911,38 +914,32 @@ export const ProjectProvider: React.FC<{ children: React.ReactNode }> = ({ child
           let updatedBranches = { ...p.branches };
           let updatedRootId = p.rootBranchId;
 
-          // 1. Fix Legacy Root ID 'root'
           if (updatedBranches['root'] || updatedRootId === 'root') {
               const oldRoot = updatedBranches['root'] || updatedBranches[updatedRootId];
               const newRootId = crypto.randomUUID();
               
               if (oldRoot) {
-                  // Create new node with same data
                   updatedBranches[newRootId] = { 
                       ...oldRoot, 
                       id: newRootId,
-                      parentIds: [] // Root has no parents
+                      parentIds: [] 
                   };
                   
-                  // Update all children of old root to point to new root
                   oldRoot.childrenIds.forEach(cid => {
                       if (updatedBranches[cid]) {
                           updatedBranches[cid] = {
                               ...updatedBranches[cid],
-                              parentIds: updatedBranches[cid].parentIds.map(pid => pid === oldRoot.id ? newRootId : pid)
+                              parentIds: updatedBranches[cid].parentIds.map(pid => pid === oldRoot.id || pid === 'root' ? newRootId : pid)
                           };
                       }
                   });
                   
-                  // Delete old root entry
                   delete updatedBranches['root'];
                   if (updatedRootId !== 'root') delete updatedBranches[updatedRootId];
-                  
                   updatedRootId = newRootId;
               }
           }
 
-          // 2. Ensure Root Node Exists
           if (!updatedBranches[updatedRootId]) {
               updatedBranches[updatedRootId] = {
                   id: updatedRootId,
@@ -955,46 +952,44 @@ export const ProjectProvider: React.FC<{ children: React.ReactNode }> = ({ child
               };
           }
 
-          // 3. Connect Orphans to Root
-          const reachable = new Set<string>();
-          const queue = [updatedRootId];
-          reachable.add(updatedRootId);
-          while (queue.length > 0) {
-              const currentId = queue.shift()!;
-              const branch = updatedBranches[currentId];
-              if (branch) {
-                  branch.childrenIds.forEach(cid => {
-                      if (!reachable.has(cid) && updatedBranches[cid]) {
-                          reachable.add(cid);
-                          queue.push(cid);
-                      }
-                  });
-              }
-          }
-
-          Object.keys(updatedBranches).forEach(bid => {
-              if (!reachable.has(bid)) {
-                  // Connect to root
-                  const orphan = updatedBranches[bid];
-                  updatedBranches[bid] = {
-                      ...orphan,
-                      parentIds: [...new Set([...orphan.parentIds, updatedRootId])]
-                  };
-                  updatedBranches[updatedRootId] = {
-                      ...updatedBranches[updatedRootId],
-                      childrenIds: [...new Set([...updatedBranches[updatedRootId].childrenIds, bid])]
-                  };
-              }
-          });
-
           return { 
               ...p, 
               rootBranchId: updatedRootId, 
               branches: updatedBranches 
           };
       }));
-      
-      showNotification("Struttura progetto riparata e rami orfani recuperati.", 'success');
+      showNotification("Integrità radice ripristinata.", 'success');
+  }, [activeProjectId]);
+
+  const resolveOrphans = useCallback((idsToFix: string[], idsToDelete: string[]) => {
+      setProjects(prev => prev.map(p => {
+          if (p.id !== activeProjectId) return p;
+          
+          let updatedBranches = { ...p.branches };
+          const rootId = p.rootBranchId;
+
+          idsToDelete.forEach(id => {
+              delete updatedBranches[id];
+          });
+
+          idsToFix.forEach(id => {
+              if (updatedBranches[id]) {
+                  updatedBranches[id] = {
+                      ...updatedBranches[id],
+                      parentIds: [...new Set([...updatedBranches[id].parentIds, rootId])]
+                  };
+                  if (updatedBranches[rootId]) {
+                      updatedBranches[rootId] = {
+                          ...updatedBranches[rootId],
+                          childrenIds: [...new Set([...updatedBranches[rootId].childrenIds, id])]
+                      };
+                  }
+              }
+          });
+
+          return { ...p, branches: updatedBranches };
+      }));
+      showNotification(`${idsToFix.length} rami ripristinati e ${idsToDelete.length} eliminati.`, 'success');
   }, [activeProjectId]);
 
   const addPerson = useCallback((name: string, email?: string, phone?: string) => {
@@ -1089,6 +1084,7 @@ export const ProjectProvider: React.FC<{ children: React.ReactNode }> = ({ child
 
       checkProjectHealth,
       repairProjectStructure,
+      resolveOrphans,
       
       addPerson,
       updatePerson,
