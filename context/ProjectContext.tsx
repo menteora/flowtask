@@ -2,7 +2,7 @@
 import React, { createContext, useContext, useState, useEffect, useCallback, useRef } from 'react';
 import { createClient, SupabaseClient, Session } from '@supabase/supabase-js';
 import { ProjectState, Branch, Task, Person, BranchStatus } from '../types';
-import { INITIAL_STATE } from '../constants';
+import { INITIAL_STATE, createInitialProjectState } from '../constants';
 
 interface ProjectContextType {
   state: ProjectState;
@@ -82,9 +82,24 @@ interface ProjectContextType {
 const ProjectContext = createContext<ProjectContextType | undefined>(undefined);
 
 export const ProjectProvider: React.FC<{ children: React.ReactNode }> = ({ children }) => {
-  // State
-  const [projects, setProjects] = useState<ProjectState[]>([INITIAL_STATE]);
-  const [activeProjectId, setActiveProjectId] = useState<string>(INITIAL_STATE.id);
+  // State initialization using the factory to ensure unique IDs from start
+  const [projects, setProjects] = useState<ProjectState[]>(() => {
+    const saved = localStorage.getItem('flowtask_projects');
+    if (saved) {
+      try {
+        return JSON.parse(saved);
+      } catch (e) {
+        console.error("Error parsing saved projects", e);
+      }
+    }
+    return [createInitialProjectState()];
+  });
+
+  const [activeProjectId, setActiveProjectId] = useState<string>(() => {
+    const savedId = localStorage.getItem('active_project_id');
+    return savedId || projects[0]?.id || '';
+  });
+
   const [selectedBranchId, setSelectedBranchId] = useState<string | null>(null);
   const [showArchived, setShowArchived] = useState(false);
   const [showAllProjects, setShowAllProjects] = useState(false);
@@ -139,28 +154,6 @@ export const ProjectProvider: React.FC<{ children: React.ReactNode }> = ({ child
     if (config.url && config.key) {
         setSupabaseConfigState(config);
     }
-    
-    const savedProjects = localStorage.getItem('flowtask_projects');
-    if (savedProjects) {
-        try {
-            const parsed = JSON.parse(savedProjects);
-            const sanitized = parsed.map((p: any) => ({
-                ...p,
-                branches: Object.fromEntries(Object.entries(p.branches).map(([k, b]: any) => [k, {
-                    ...b,
-                    tasks: (b.tasks || []).map((t: any) => ({ 
-                        ...t, 
-                        pinned: t.pinned || false,
-                        completedAt: t.completedAt || (t.completed ? new Date().toISOString() : undefined)
-                    }))
-                }]))
-            }));
-            setProjects(sanitized);
-        } catch (e) { console.error("Error loading local projects", e); }
-    }
-    
-    const savedActiveId = localStorage.getItem('active_project_id');
-    if (savedActiveId) setActiveProjectId(savedActiveId);
 
     setIsInitializing(false);
     setLoadingAuth(false); 
@@ -185,7 +178,7 @@ export const ProjectProvider: React.FC<{ children: React.ReactNode }> = ({ child
   }, [supabaseConfig]);
 
   useEffect(() => {
-      if (session && !isOfflineMode && activeProjectId && activeProjectId !== 'default-project') {
+      if (session && !isOfflineMode && activeProjectId && !projects.find(p => p.id === activeProjectId)?.id.includes('default')) {
           downloadProjectFromSupabase(activeProjectId, false, false)
              .then(() => setRemoteDataLoaded(true))
              .catch(err => console.error("Initial fetch failed", err));
@@ -219,14 +212,7 @@ export const ProjectProvider: React.FC<{ children: React.ReactNode }> = ({ child
   }, []);
 
   const createProject = useCallback(() => {
-      const newProject: ProjectState = {
-          ...INITIAL_STATE,
-          id: crypto.randomUUID(),
-          name: 'Nuovo Progetto ' + (projects.length + 1),
-          branches: {
-              'root': { ...INITIAL_STATE.branches['root'], id: 'root' } 
-          }
-      };
+      const newProject = createInitialProjectState('Nuovo Progetto ' + (projects.length + 1));
       setProjects(prev => [...prev, newProject]);
       setActiveProjectId(newProject.id);
   }, [projects.length]);
@@ -379,20 +365,16 @@ export const ProjectProvider: React.FC<{ children: React.ReactNode }> = ({ child
               const branchTasks = (tasksData || [])
                   .filter((t: any) => t.branch_id === b.id)
                   .sort((a: any, b: any) => (a.position || 0) - (b.position || 0))
-                  .map((t: any) => {
-                      const finalCompletedAt = t.completed_at || (t.completed ? new Date().toISOString() : undefined);
-                      
-                      return {
-                        id: t.id,
-                        title: t.title,
-                        description: t.description,
-                        completed: t.completed,
-                        completedAt: finalCompletedAt,
-                        assigneeId: t.assignee_id,
-                        dueDate: t.due_date,
-                        pinned: t.pinned || false
-                      };
-                  });
+                  .map((t: any) => ({
+                    id: t.id,
+                    title: t.title,
+                    description: t.description,
+                    completed: t.completed,
+                    completedAt: t.completed_at,
+                    assigneeId: t.assignee_id,
+                    dueDate: t.due_date,
+                    pinned: t.pinned || false
+                  }));
 
               branches[b.id] = {
                   id: b.id,
@@ -658,12 +640,18 @@ export const ProjectProvider: React.FC<{ children: React.ReactNode }> = ({ child
           if (p.id !== activeProjectId) return p;
           const branch = p.branches[branchId];
           if (!branch) return p;
+
+          // LOGICA AUTO-PIN: Se è il ramo radice (rootBranchId) o collegato direttamente ad esso, fixa in Focus
+          const isAtRoot = branchId === p.rootBranchId;
+          const isDirectChildOfRoot = branch.parentIds.includes(p.rootBranchId);
+          const autoPin = isAtRoot || isDirectChildOfRoot;
+
           const newTask: Task = {
               id: crypto.randomUUID(),
               title,
               completed: false,
               description: '',
-              pinned: false
+              pinned: autoPin
           };
           return {
               ...p,
@@ -684,10 +672,8 @@ export const ProjectProvider: React.FC<{ children: React.ReactNode }> = ({ child
 
           const newTasks = branch.tasks.map(t => {
               if (t.id === taskId) {
-                  // PRIORITY: Use manually provided completedAt if present in updates
                   let completedAt = updates.completedAt !== undefined ? updates.completedAt : t.completedAt;
                   
-                  // LOGIC FOR TOGGLE: Only calculate if manual override wasn't provided for this specific action
                   if (updates.completed !== undefined && updates.completedAt === undefined) {
                       const becomingCompleted = updates.completed === true && t.completed === false;
                       const becomingOpen = updates.completed === false && t.completed === true;
@@ -797,9 +783,20 @@ export const ProjectProvider: React.FC<{ children: React.ReactNode }> = ({ child
            const branch = p.branches[branchId];
            if (!branch) return p;
            
+           // LOGICA AUTO-PIN anche per bulk update
+           const isAtRoot = branchId === p.rootBranchId;
+           const isDirectChildOfRoot = branch.parentIds.includes(p.rootBranchId);
+           const autoPin = isAtRoot || isDirectChildOfRoot;
+
            const newTasks: Task[] = lines.map(line => {
                const existing = branch.tasks.find(t => t.title === line);
-               return existing || { id: crypto.randomUUID(), title: line, completed: false, description: '', pinned: false };
+               return existing || { 
+                   id: crypto.randomUUID(), 
+                   title: line, 
+                   completed: false, 
+                   description: '', 
+                   pinned: autoPin 
+               };
            });
            
            return {
