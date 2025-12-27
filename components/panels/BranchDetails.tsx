@@ -190,6 +190,18 @@ const BranchDetails: React.FC = () => {
       return <div className="text-sm text-slate-700 dark:text-slate-300 leading-relaxed break-words" dangerouslySetInnerHTML={{ __html: html }} />;
   };
 
+  const handleBranchMoveToProject = async () => {
+      if (!selectedRemoteProj || !selectedRemoteParent) return;
+      if (!confirm(`Sei sicuro di voler spostare il ramo "${branch.title}" e TUTTA la sua gerarchia nel progetto selezionato?`)) return;
+      
+      try {
+          await moveLocalBranchToRemoteProject(branch.id, selectedRemoteProj, selectedRemoteParent);
+          setIsMoveMode(false);
+      } catch (err) {
+          console.error(err);
+      }
+  };
+
   return (
     <div className="fixed inset-0 z-50 md:absolute md:inset-auto md:right-0 md:top-0 md:bottom-0 md:w-96 bg-white dark:bg-slate-900 md:border-l border-gray-200 dark:border-slate-700 flex flex-col shadow-xl">
       <div className="p-4 border-b border-gray-100 dark:border-slate-700 flex justify-between items-center bg-gray-50 dark:bg-slate-800/50">
@@ -206,13 +218,126 @@ const BranchDetails: React.FC = () => {
       </div>
 
       <div className="flex-1 overflow-y-auto p-4 space-y-6 relative">
-        {branch.parentIds.length > 1 && (
-            <div className="bg-amber-50 dark:bg-amber-900/20 border border-amber-200 dark:border-amber-800 p-3 rounded-lg flex items-start gap-2">
-                <GitMerge className="w-4 h-4 text-amber-600 dark:text-amber-400 mt-0.5" />
-                <div>
-                    <p className="text-xs font-bold text-amber-700 dark:text-amber-300">Ramo Condiviso</p>
-                    <p className="text-[10px] text-amber-600 dark:text-amber-400">Questo ramo ha {branch.parentIds.length} genitori.</p>
+        {/* Gestione Gerarchia (Spostamento Ramo) */}
+        {branch.id !== state.rootBranchId && (
+            <div className="space-y-3 bg-indigo-50/30 dark:bg-indigo-900/10 p-3 rounded-lg border border-indigo-100 dark:border-indigo-900/30">
+                <div className="flex items-center justify-between">
+                    <label className="text-xs font-black uppercase text-indigo-600 dark:text-indigo-400 tracking-wider flex items-center gap-2">
+                        <ArrowUpLeft className="w-3.5 h-3.5" /> 
+                        Gerarchia & Collegamenti
+                    </label>
+                    <button 
+                        onClick={() => setIsMoveMode(!isMoveMode)}
+                        className={`text-[9px] font-bold px-2 py-1 rounded transition-colors ${isMoveMode ? 'bg-indigo-600 text-white' : 'bg-slate-100 text-slate-500 hover:bg-slate-200'}`}
+                    >
+                        {isMoveMode ? 'Esci da Sposta' : 'Sposta Progetto'}
+                    </button>
                 </div>
+                
+                {isMoveMode ? (
+                    <div className="space-y-3 p-2 bg-white dark:bg-slate-800 rounded border border-indigo-200 dark:border-indigo-800 animate-in fade-in slide-in-from-top-2">
+                        <p className="text-[10px] text-slate-500 font-bold uppercase">Sposta in un altro progetto</p>
+                        <select 
+                            value={selectedRemoteProj}
+                            onChange={(e) => setSelectedRemoteProj(e.target.value)}
+                            className="w-full text-xs bg-slate-50 dark:bg-slate-900 border border-slate-200 dark:border-slate-700 rounded px-2 py-1.5 focus:ring-1 focus:ring-indigo-500 outline-none"
+                            disabled={isLoadingRemote}
+                        >
+                            <option value="">Seleziona Progetto Target...</option>
+                            {remoteProjects.map(p => (
+                                <option key={p.id} value={p.id}>{p.name}</option>
+                            ))}
+                        </select>
+
+                        {selectedRemoteProj && (
+                            <select 
+                                value={selectedRemoteParent}
+                                onChange={(e) => setSelectedRemoteParent(e.target.value)}
+                                className="w-full text-xs bg-slate-50 dark:bg-slate-900 border border-slate-200 dark:border-slate-700 rounded px-2 py-1.5 focus:ring-1 focus:ring-indigo-500 outline-none"
+                                disabled={isLoadingRemote}
+                            >
+                                <option value="">Sotto quale ramo?</option>
+                                {remoteBranches.map(b => (
+                                    <option key={b.id} value={b.id}>{b.title}</option>
+                                ))}
+                            </select>
+                        )}
+
+                        {isLoadingRemote ? (
+                            <div className="flex justify-center py-2"><Loader2 className="w-4 h-4 animate-spin text-indigo-500" /></div>
+                        ) : (
+                            <button 
+                                onClick={handleBranchMoveToProject}
+                                disabled={!selectedRemoteProj || !selectedRemoteParent}
+                                className="w-full py-2 bg-indigo-600 hover:bg-indigo-700 text-white rounded-md text-xs font-bold disabled:opacity-50 transition-colors shadow-sm"
+                            >
+                                Esegui Spostamento
+                            </button>
+                        )}
+                        <p className="text-[9px] text-slate-400 italic leading-tight">Nota: Lo spostamento trasferirà questo ramo e tutti i suoi discendenti (figli e task).</p>
+                    </div>
+                ) : (
+                    <>
+                        <div className="space-y-2">
+                            <p className="text-[10px] text-slate-500 dark:text-slate-400 font-medium">Genitori attuali (da dove arriva il ramo):</p>
+                            <div className="flex flex-wrap gap-2">
+                                {branch.parentIds.map(pid => {
+                                    const pBranch = state.branches[pid];
+                                    return (
+                                        <div key={pid} className="flex items-center gap-1.5 bg-white dark:bg-slate-800 px-2 py-1 rounded border border-slate-200 dark:border-slate-700 shadow-sm">
+                                            <span className="text-[11px] font-bold text-slate-700 dark:text-slate-200 truncate max-w-[120px]">
+                                                {pBranch?.title || 'Radice'}
+                                            </span>
+                                            {branch.parentIds.length > 1 && (
+                                                <button 
+                                                    onClick={() => unlinkBranch(branch.id, pid)}
+                                                    className="text-red-400 hover:text-red-600 transition-colors"
+                                                    title="Scollega"
+                                                >
+                                                    <Unlink className="w-3 h-3" />
+                                                </button>
+                                            )}
+                                        </div>
+                                    );
+                                })}
+                            </div>
+                        </div>
+
+                        <div className="pt-2">
+                            <div className="flex gap-2">
+                                <select 
+                                    value={parentToAdd}
+                                    onChange={(e) => setParentToAdd(e.target.value)}
+                                    className="flex-1 text-[11px] bg-white dark:bg-slate-800 border border-slate-200 dark:border-slate-700 rounded px-2 py-1.5 focus:ring-1 focus:ring-indigo-500 outline-none"
+                                >
+                                    <option value="">Aggiungi Genitore...</option>
+                                    {(Object.values(state.branches) as Branch[])
+                                        .filter(b => b.id !== branch.id && !branch.parentIds.includes(b.id) && !b.childrenIds.includes(branch.id))
+                                        .map(b => (
+                                            <option key={b.id} value={b.id}>{b.title}</option>
+                                        ))
+                                    }
+                                </select>
+                                <button 
+                                    onClick={() => {
+                                        if (parentToAdd) {
+                                            linkBranch(branch.id, parentToAdd);
+                                            setParentToAdd('');
+                                        }
+                                    }}
+                                    disabled={!parentToAdd}
+                                    className="bg-indigo-600 text-white p-1.5 rounded disabled:opacity-50 hover:bg-indigo-700 transition-colors"
+                                    title="Collega ramo"
+                                >
+                                    <LinkIcon className="w-3.5 h-3.5" />
+                                </button>
+                            </div>
+                            <p className="text-[9px] text-slate-400 mt-1.5 italic">
+                                Il ramo apparirà sotto ogni genitore collegato (Multi-Parent).
+                            </p>
+                        </div>
+                    </>
+                )}
             </div>
         )}
 
@@ -255,7 +380,7 @@ const BranchDetails: React.FC = () => {
         {!branch.isLabel && (
             <div>
                 <div className="flex items-center justify-between mb-2">
-                    <label className="text-xs font-semibold text-gray-500 dark:text-gray-400 flex items-center gap-2">Tasks {sortedTasks.length > 0 && <span className="px-1.5 py-0.5 rounded-full bg-slate-100 dark:bg-slate-800 text-[10px]">{sortedTasks.length}</span>}</label>
+                    <label className="text-xs font-semibold text-gray-500 dark:text-gray-400 flex items-center gap-1"><FileText className="w-3 h-3" /> Tasks {sortedTasks.length > 0 && <span className="px-1.5 py-0.5 rounded-full bg-slate-100 dark:bg-slate-800 text-[10px]">{sortedTasks.length}</span>}</label>
                     <div className="flex items-center gap-3">
                         {sortedTasks.length > 0 && (
                             <button onClick={() => setIsBulkMoveMode(!isBulkMoveMode)} className={`text-xs flex items-center gap-1 transition-colors ${isBulkMoveMode ? 'text-indigo-600 font-bold' : 'text-slate-500 hover:text-indigo-600'}`}><Move className="w-3 h-3" />{isBulkMoveMode ? 'Annulla' : 'Sposta Bulk'}</button>
