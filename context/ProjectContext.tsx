@@ -7,7 +7,10 @@ import { INITIAL_STATE, createInitialProjectState } from '../constants';
 export interface OrphanInfo {
     id: string;
     title: string;
+    status: BranchStatus;
+    isLabel: boolean;
     taskCount: number;
+    completedCount: number;
 }
 
 export interface ProjectHealthReport {
@@ -113,7 +116,7 @@ export const ProjectProvider: React.FC<{ children: React.ReactNode }> = ({ child
 
   const [activeProjectId, setActiveProjectId] = useState<string>(() => {
     const savedId = localStorage.getItem('active_project_id');
-    return savedId || projects[0]?.id || '';
+    return savedId || (projects.length > 0 ? projects[0].id : '');
   });
 
   const [selectedBranchId, setSelectedBranchId] = useState<string | null>(null);
@@ -145,208 +148,33 @@ export const ProjectProvider: React.FC<{ children: React.ReactNode }> = ({ child
   const [remoteDataLoaded, setRemoteDataLoaded] = useState(false);
   const autoSaveTimerRef = useRef<ReturnType<typeof setTimeout> | null>(null);
 
-  useEffect(() => {
-    localStorage.setItem('flowtask_show_only_open', showOnlyOpen.toString());
-  }, [showOnlyOpen]);
+  // --- PRIMITIVE UTILS (must be declared first) ---
 
-  useEffect(() => {
-    const params = new URLSearchParams(window.location.search);
-    const configParam = params.get('config');
-    let config = { url: '', key: '' };
-    
-    if (configParam) {
-        try {
-            config = JSON.parse(atob(configParam));
-            window.history.replaceState({}, '', window.location.pathname); 
-        } catch (e) { console.error("Invalid config param"); }
-    } else {
-        const storedConfig = localStorage.getItem('supabase_config');
-        if (storedConfig) config = JSON.parse(storedConfig);
-    }
-
-    if (config.url && config.key) {
-        setSupabaseConfigState(config);
-    }
-
-    setIsInitializing(false);
-    setLoadingAuth(false); 
-  }, []);
-
-  useEffect(() => {
-    if (supabaseConfig.url && supabaseConfig.key) {
-        const client = createClient(supabaseConfig.url, supabaseConfig.key);
-        setSupabaseClient(client);
-        
-        client.auth.getSession().then(({ data: { session } }) => {
-            setSession(session);
-            setLoadingAuth(false);
-        });
-
-        const { data: { subscription } } = client.auth.onAuthStateChange((_event, session) => {
-            setSession(session);
-        });
-
-        return () => subscription.unsubscribe();
-    }
-  }, [supabaseConfig]);
-
-  useEffect(() => {
-      if (session && !isOfflineMode && activeProjectId && !projects.find(p => p.id === activeProjectId)?.id.includes('default')) {
-          downloadProjectFromSupabase(activeProjectId, false, false)
-             .then(() => setRemoteDataLoaded(true))
-             .catch(err => console.error("Initial fetch failed", err));
-      }
-  }, [session, isOfflineMode, activeProjectId]);
-
-  useEffect(() => {
-      localStorage.setItem('flowtask_projects', JSON.stringify(projects));
-      localStorage.setItem('active_project_id', activeProjectId);
-  }, [projects, activeProjectId]);
-
-  const activeProject = projects.find(p => p.id === activeProjectId) || projects[0];
-
-  const showNotification = (message: string, type: 'success' | 'error') => {
+  const showNotification = useCallback((message: string, type: 'success' | 'error') => {
       setNotification({ message, type });
       setTimeout(() => setNotification(null), 3000);
-  };
-
-  const setSupabaseConfig = (url: string, key: string) => {
-      setSupabaseConfigState({ url, key });
-      localStorage.setItem('supabase_config', JSON.stringify({ url, key }));
-  };
-
-  const updateMessageTemplates = (templates: Partial<{ opening: string; closing: string }>) => {
-      setMessageTemplates(prev => ({ ...prev, ...templates }));
-  };
-
-  const switchProject = useCallback((id: string) => {
-      setActiveProjectId(id);
-      setSelectedBranchId(null);
   }, []);
 
-  const createProject = useCallback(() => {
-      const newProject = createInitialProjectState('Nuovo Progetto ' + (projects.length + 1));
-      setProjects(prev => [...prev, newProject]);
-      setActiveProjectId(newProject.id);
-  }, [projects.length]);
+  const loadProject = useCallback((newState: ProjectState, activate = true, removeDefault = false) => {
+    setProjects(prev => {
+        let next = [...prev];
+        const existingIdx = next.findIndex(p => p.id === newState.id);
+        if (existingIdx >= 0) {
+            next[existingIdx] = newState;
+        } else {
+            next.push(newState);
+        }
+        if (removeDefault) {
+            next = next.filter(p => p.id !== 'default-project');
+        }
+        return next;
+    });
+    if (activate) {
+        setActiveProjectId(newState.id);
+    }
+  }, []);
 
-  const closeProject = useCallback((id: string) => {
-      setProjects(prev => {
-          if (prev.length <= 1) return prev;
-          const next = prev.filter(p => p.id !== id);
-          if (activeProjectId === id) {
-              setActiveProjectId(next[0].id);
-          }
-          return next;
-      });
-  }, [activeProjectId]);
-
-  const renameProject = useCallback((name: string) => {
-      setProjects(prev => prev.map(p => p.id === activeProjectId ? { ...p, name } : p));
-  }, [activeProjectId]);
-
-  const uploadProjectToSupabase = useCallback(async () => {
-      if (!supabaseClient || !session || isOfflineMode) return;
-      
-      const projectToSave = projects.find(p => p.id === activeProjectId);
-      if (!projectToSave || projectToSave.id === 'default-project') return;
-
-      setAutoSaveStatus('saving');
-      try {
-          const { error: pErr } = await supabaseClient
-              .from('flowtask_projects')
-              .upsert({
-                  id: projectToSave.id,
-                  name: projectToSave.name,
-                  root_branch_id: projectToSave.rootBranchId,
-                  owner_id: session.user.id,
-                  created_at: new Date().toISOString()
-              });
-          if (pErr) throw pErr;
-
-          const peoplePayload = projectToSave.people.map(p => ({
-              id: p.id,
-              project_id: projectToSave.id,
-              name: p.name,
-              email: p.email,
-              phone: p.phone,
-              initials: p.initials,
-              color: p.color
-          }));
-          if (peoplePayload.length > 0) {
-              const { error: ppErr } = await supabaseClient.from('flowtask_people').upsert(peoplePayload);
-              if (ppErr) throw ppErr;
-          }
-
-          const branchesPayload = Object.values(projectToSave.branches).map((b: Branch) => ({
-              id: b.id,
-              project_id: projectToSave.id,
-              title: b.title,
-              description: b.description,
-              status: b.status,
-              start_date: b.startDate,
-              end_date: b.endDate,
-              due_date: b.dueDate,
-              archived: b.archived,
-              collapsed: b.collapsed,
-              is_label: b.isLabel,
-              parent_ids: b.parentIds,
-              children_ids: b.childrenIds,
-              position: 0
-          }));
-          if (branchesPayload.length > 0) {
-              const { error: bErr } = await supabaseClient.from('flowtask_branches').upsert(branchesPayload);
-              if (bErr) throw bErr;
-          }
-
-          const tasksPayload: any[] = [];
-          Object.values(projectToSave.branches).forEach((b: Branch) => {
-              b.tasks.forEach((t: Task, idx: number) => {
-                  tasksPayload.push({
-                      id: t.id,
-                      branch_id: b.id,
-                      title: t.title,
-                      description: t.description,
-                      assignee_id: t.assigneeId,
-                      due_date: t.dueDate,
-                      completed: t.completed,
-                      completed_at: t.completedAt,
-                      position: idx,
-                      pinned: t.pinned || false 
-                  });
-              });
-          });
-          
-          if (tasksPayload.length > 0) {
-              const { error: tErr } = await supabaseClient.from('flowtask_tasks').upsert(tasksPayload);
-              if (tErr) throw tErr;
-          }
-
-          setAutoSaveStatus('saved');
-          setTimeout(() => setAutoSaveStatus('idle'), 2000);
-      } catch (e: any) {
-          console.error("Sync Error:", e);
-          setAutoSaveStatus('error');
-      }
-  }, [supabaseClient, session, isOfflineMode, projects, activeProjectId]);
-
-  useEffect(() => {
-      if (!session || isOfflineMode || isInitializing) return;
-      if (session && !remoteDataLoaded) return;
-      
-      if (autoSaveTimerRef.current) {
-          clearTimeout(autoSaveTimerRef.current);
-      }
-
-      autoSaveTimerRef.current = setTimeout(() => {
-          uploadProjectToSupabase();
-      }, 2000);
-
-      return () => {
-          if (autoSaveTimerRef.current) clearTimeout(autoSaveTimerRef.current);
-      };
-  }, [projects, session, isOfflineMode, isInitializing, uploadProjectToSupabase, remoteDataLoaded]);
-
+  // --- SYNC FUNCTIONS (depend on primitives) ---
 
   const downloadProjectFromSupabase = useCallback(async (id: string, activate = true, force = false) => {
       if (!supabaseClient || !session) return;
@@ -354,6 +182,7 @@ export const ProjectProvider: React.FC<{ children: React.ReactNode }> = ({ child
       try {
           const { data: projectData, error: pErr } = await supabaseClient.from('flowtask_projects').select('*').eq('id', id).single();
           if (pErr) throw pErr;
+          if (!projectData) throw new Error("Progetto non trovato");
 
           const { data: peopleData, error: ppErr } = await supabaseClient.from('flowtask_people').select('*').eq('project_id', id);
           if (ppErr) throw ppErr;
@@ -420,7 +249,215 @@ export const ProjectProvider: React.FC<{ children: React.ReactNode }> = ({ child
           console.error("Download Error:", e);
           if (force) showNotification("Errore nel download del progetto: " + e.message, 'error');
       }
-  }, [supabaseClient, session]);
+  }, [supabaseClient, session, loadProject, showNotification]);
+
+  const uploadProjectToSupabase = useCallback(async () => {
+    if (!supabaseClient || !session || isOfflineMode) return;
+    
+    const projectToSave = projects.find(p => p.id === activeProjectId);
+    if (!projectToSave || projectToSave.id === 'default-project') return;
+
+    setAutoSaveStatus('saving');
+    try {
+        const { error: pErr } = await supabaseClient
+            .from('flowtask_projects')
+            .upsert({
+                id: projectToSave.id,
+                name: projectToSave.name,
+                root_branch_id: projectToSave.rootBranchId,
+                owner_id: session.user.id,
+                created_at: new Date().toISOString()
+            });
+        if (pErr) throw pErr;
+
+        const peoplePayload = projectToSave.people.map(p => ({
+            id: p.id,
+            project_id: projectToSave.id,
+            name: p.name,
+            email: p.email,
+            phone: p.phone,
+            initials: p.initials,
+            color: p.color
+        }));
+        if (peoplePayload.length > 0) {
+            const { error: ppErr } = await supabaseClient.from('flowtask_people').upsert(peoplePayload);
+            if (ppErr) throw ppErr;
+        }
+
+        const branchesPayload = Object.values(projectToSave.branches).map((b: Branch) => ({
+            id: b.id,
+            project_id: projectToSave.id,
+            title: b.title,
+            description: b.description,
+            status: b.status,
+            start_date: b.startDate,
+            end_date: b.endDate,
+            due_date: b.dueDate,
+            archived: b.archived,
+            collapsed: b.collapsed,
+            is_label: b.isLabel,
+            parent_ids: b.parentIds,
+            children_ids: b.childrenIds,
+            position: 0
+        }));
+        if (branchesPayload.length > 0) {
+            const { error: bErr } = await supabaseClient.from('flowtask_branches').upsert(branchesPayload);
+            if (bErr) throw bErr;
+        }
+
+        const tasksPayload: any[] = [];
+        Object.values(projectToSave.branches).forEach((b: Branch) => {
+            b.tasks.forEach((t: Task, idx: number) => {
+                tasksPayload.push({
+                    id: t.id,
+                    branch_id: b.id,
+                    title: t.title,
+                    description: t.description,
+                    assignee_id: t.assigneeId,
+                    due_date: t.dueDate,
+                    completed: t.completed,
+                    completed_at: t.completedAt,
+                    position: idx,
+                    pinned: t.pinned || false 
+                });
+            });
+        });
+        
+        if (tasksPayload.length > 0) {
+            const { error: tErr } = await supabaseClient.from('flowtask_tasks').upsert(tasksPayload);
+            if (tErr) throw tErr;
+        }
+
+        setAutoSaveStatus('saved');
+        setTimeout(() => setAutoSaveStatus('idle'), 2000);
+    } catch (e: any) {
+        console.error("Sync Error:", e);
+        setAutoSaveStatus('error');
+    }
+  }, [supabaseClient, session, isOfflineMode, projects, activeProjectId]);
+
+  // --- REMAINING HOOKS ---
+
+  useEffect(() => {
+    localStorage.setItem('flowtask_show_only_open', showOnlyOpen.toString());
+  }, [showOnlyOpen]);
+
+  useEffect(() => {
+    const params = new URLSearchParams(window.location.search);
+    const configParam = params.get('config');
+    let config = { url: '', key: '' };
+    
+    if (configParam) {
+        try {
+            config = JSON.parse(atob(configParam));
+            window.history.replaceState({}, '', window.location.pathname); 
+        } catch (e) { console.error("Invalid config param"); }
+    } else {
+        const storedConfig = localStorage.getItem('supabase_config');
+        if (storedConfig) {
+            try { config = JSON.parse(storedConfig); } catch(e) {}
+        }
+    }
+
+    if (config.url && config.key) {
+        setSupabaseConfigState(config);
+    }
+
+    setIsInitializing(false);
+    setLoadingAuth(false); 
+  }, []);
+
+  useEffect(() => {
+    if (supabaseConfig.url && supabaseConfig.key) {
+        try {
+            const client = createClient(supabaseConfig.url, supabaseConfig.key);
+            setSupabaseClient(client);
+            
+            client.auth.getSession().then(({ data: { session } }) => {
+                setSession(session);
+                setLoadingAuth(false);
+            });
+
+            const { data: { subscription } } = client.auth.onAuthStateChange((_event, session) => {
+                setSession(session);
+            });
+
+            return () => subscription.unsubscribe();
+        } catch (e) {
+            console.error("Failed to initialize Supabase client", e);
+            setLoadingAuth(false);
+        }
+    }
+  }, [supabaseConfig]);
+
+  useEffect(() => {
+      const activeProject = projects.find(p => p.id === activeProjectId);
+      if (session && !isOfflineMode && activeProjectId && activeProject && !activeProject.id.includes('default')) {
+          downloadProjectFromSupabase(activeProjectId, false, false)
+             .then(() => setRemoteDataLoaded(true))
+             .catch(err => console.error("Initial fetch failed", err));
+      }
+  }, [session, isOfflineMode, activeProjectId, downloadProjectFromSupabase, projects]);
+
+  useEffect(() => {
+      localStorage.setItem('flowtask_projects', JSON.stringify(projects));
+      localStorage.setItem('active_project_id', activeProjectId);
+  }, [projects, activeProjectId]);
+
+  const activeProject = projects.find(p => p.id === activeProjectId) || projects[0] || createInitialProjectState();
+
+  const setSupabaseConfig = (url: string, key: string) => {
+      setSupabaseConfigState({ url, key });
+      localStorage.setItem('supabase_config', JSON.stringify({ url, key }));
+  };
+
+  const updateMessageTemplates = (templates: Partial<{ opening: string; closing: string }>) => {
+      setMessageTemplates(prev => ({ ...prev, ...templates }));
+  };
+
+  const switchProject = useCallback((id: string) => {
+      setActiveProjectId(id);
+      setSelectedBranchId(null);
+  }, []);
+
+  const createProject = useCallback(() => {
+      const newProject = createInitialProjectState('Nuovo Progetto ' + (projects.length + 1));
+      setProjects(prev => [...prev, newProject]);
+      setActiveProjectId(newProject.id);
+  }, [projects.length]);
+
+  const closeProject = useCallback((id: string) => {
+      setProjects(prev => {
+          if (prev.length <= 1) return prev;
+          const next = prev.filter(p => p.id !== id);
+          if (activeProjectId === id) {
+              setActiveProjectId(next[0].id);
+          }
+          return next;
+      });
+  }, [activeProjectId]);
+
+  const renameProject = useCallback((name: string) => {
+      setProjects(prev => prev.map(p => p.id === activeProjectId ? { ...p, name } : p));
+  }, [activeProjectId]);
+
+  useEffect(() => {
+      if (!session || isOfflineMode || isInitializing) return;
+      if (session && !remoteDataLoaded) return;
+      
+      if (autoSaveTimerRef.current) {
+          clearTimeout(autoSaveTimerRef.current);
+      }
+
+      autoSaveTimerRef.current = setTimeout(() => {
+          uploadProjectToSupabase();
+      }, 2000);
+
+      return () => {
+          if (autoSaveTimerRef.current) clearTimeout(autoSaveTimerRef.current);
+      };
+  }, [projects, session, isOfflineMode, isInitializing, uploadProjectToSupabase, remoteDataLoaded]);
+
 
   const listProjectsFromSupabase = useCallback(async () => {
       if (!supabaseClient) return [];
@@ -433,7 +470,7 @@ export const ProjectProvider: React.FC<{ children: React.ReactNode }> = ({ child
       if (!supabaseClient) return [];
       const { data, error } = await supabaseClient.from('flowtask_branches').select('*').eq('project_id', projectId);
       if (error) throw error;
-      return data.map((b: any) => ({
+      return (data || []).map((b: any) => ({
           id: b.id,
           title: b.title,
           status: b.status,
@@ -451,25 +488,6 @@ export const ProjectProvider: React.FC<{ children: React.ReactNode }> = ({ child
 
   const moveLocalBranchToRemoteProject = useCallback(async (branchId: string, targetProjectId: string, targetParentId: string) => {
       console.warn("Cross-project move not fully implemented in this version.");
-  }, []);
-
-  const loadProject = useCallback((newState: ProjectState, activate = true, removeDefault = false) => {
-    setProjects(prev => {
-        let next = [...prev];
-        const existingIdx = next.findIndex(p => p.id === newState.id);
-        if (existingIdx >= 0) {
-            next[existingIdx] = newState;
-        } else {
-            next.push(newState);
-        }
-        if (removeDefault) {
-            next = next.filter(p => p.id !== 'default-project');
-        }
-        return next;
-    });
-    if (activate) {
-        setActiveProjectId(newState.id);
-    }
   }, []);
 
   const toggleShowArchived = useCallback(() => {
@@ -654,16 +672,14 @@ export const ProjectProvider: React.FC<{ children: React.ReactNode }> = ({ child
           const branch = p.branches[branchId];
           if (!branch) return p;
 
-          const isAtRoot = branchId === p.rootBranchId;
-          const isDirectChildOfRoot = branch.parentIds.includes(p.rootBranchId);
-          const autoPin = isAtRoot || isDirectChildOfRoot;
-
+          // Rimossa logica autoPin basata sulla posizione del ramo. 
+          // Tutti i task nuovi ora nascono non pinnati per default.
           const newTask: Task = {
               id: crypto.randomUUID(),
               title,
               completed: false,
               description: '',
-              pinned: autoPin
+              pinned: false
           };
           return {
               ...p,
@@ -795,10 +811,6 @@ export const ProjectProvider: React.FC<{ children: React.ReactNode }> = ({ child
            const branch = p.branches[branchId];
            if (!branch) return p;
            
-           const isAtRoot = branchId === p.rootBranchId;
-           const isDirectChildOfRoot = branch.parentIds.includes(p.rootBranchId);
-           const autoPin = isAtRoot || isDirectChildOfRoot;
-
            const newTasks: Task[] = lines.map(line => {
                const existing = branch.tasks.find(t => t.title === line);
                return existing || { 
@@ -806,7 +818,7 @@ export const ProjectProvider: React.FC<{ children: React.ReactNode }> = ({ child
                    title: line, 
                    completed: false, 
                    description: '', 
-                   pinned: autoPin 
+                   pinned: false // I task nuovi in bulk nascono non pinnati.
                };
            });
            
@@ -898,7 +910,10 @@ export const ProjectProvider: React.FC<{ children: React.ReactNode }> = ({ child
               report.orphanedBranches.push({
                   id: bid,
                   title: b.title,
-                  taskCount: b.tasks.length
+                  status: b.status,
+                  isLabel: !!b.isLabel,
+                  taskCount: b.tasks.length,
+                  completedCount: b.tasks.filter(t => t.completed).length
               });
           }
       });
@@ -925,14 +940,16 @@ export const ProjectProvider: React.FC<{ children: React.ReactNode }> = ({ child
                       parentIds: [] 
                   };
                   
-                  oldRoot.childrenIds.forEach(cid => {
-                      if (updatedBranches[cid]) {
-                          updatedBranches[cid] = {
-                              ...updatedBranches[cid],
-                              parentIds: updatedBranches[cid].parentIds.map(pid => pid === oldRoot.id || pid === 'root' ? newRootId : pid)
-                          };
-                      }
-                  });
+                  if (oldRoot.childrenIds) {
+                      oldRoot.childrenIds.forEach(cid => {
+                          if (updatedBranches[cid]) {
+                              updatedBranches[cid] = {
+                                  ...updatedBranches[cid],
+                                  parentIds: (updatedBranches[cid].parentIds || []).map(pid => pid === oldRoot.id || pid === 'root' ? newRootId : pid)
+                              };
+                          }
+                      });
+                  }
                   
                   delete updatedBranches['root'];
                   if (updatedRootId !== 'root') delete updatedBranches[updatedRootId];
@@ -959,7 +976,7 @@ export const ProjectProvider: React.FC<{ children: React.ReactNode }> = ({ child
           };
       }));
       showNotification("Integrità radice ripristinata.", 'success');
-  }, [activeProjectId]);
+  }, [activeProjectId, showNotification]);
 
   const resolveOrphans = useCallback((idsToFix: string[], idsToDelete: string[]) => {
       setProjects(prev => prev.map(p => {
@@ -976,12 +993,12 @@ export const ProjectProvider: React.FC<{ children: React.ReactNode }> = ({ child
               if (updatedBranches[id]) {
                   updatedBranches[id] = {
                       ...updatedBranches[id],
-                      parentIds: [...new Set([...updatedBranches[id].parentIds, rootId])]
+                      parentIds: [...new Set([...(updatedBranches[id].parentIds || []), rootId])]
                   };
                   if (updatedBranches[rootId]) {
                       updatedBranches[rootId] = {
                           ...updatedBranches[rootId],
-                          childrenIds: [...new Set([...updatedBranches[rootId].childrenIds, id])]
+                          childrenIds: [...new Set([...(updatedBranches[rootId].childrenIds || []), id])]
                       };
                   }
               }
@@ -990,7 +1007,7 @@ export const ProjectProvider: React.FC<{ children: React.ReactNode }> = ({ child
           return { ...p, branches: updatedBranches };
       }));
       showNotification(`${idsToFix.length} rami ripristinati e ${idsToDelete.length} eliminati.`, 'success');
-  }, [activeProjectId]);
+  }, [activeProjectId, showNotification]);
 
   const addPerson = useCallback((name: string, email?: string, phone?: string) => {
       setProjects(prev => prev.map(p => {
