@@ -1,7 +1,8 @@
+
 import React, { useState, useEffect, useRef, useMemo } from 'react';
 import { useProject } from '../../context/ProjectContext';
 import { Branch } from '../../types';
-import { Database, Save, Download, Key, ShieldCheck, Check, Copy, Terminal, Cloud, CloudRain, Loader2, AlertCircle, Upload, User, LogOut, LogIn, WifiOff, X, Share2, Link, Trash2, MessageSquare, Eraser, Archive, AlertTriangle } from 'lucide-react';
+import { Database, Save, Download, Key, ShieldCheck, Check, Copy, Terminal, Cloud, CloudRain, Loader2, AlertCircle, Upload, User, LogOut, LogIn, WifiOff, X, Share2, Link, Trash2, MessageSquare, Eraser, Archive, AlertTriangle, Stethoscope, Wrench, Search, Info } from 'lucide-react';
 
 const SQL_SCHEMA = `
 -- CANCELLAZIONE VECCHIE TABELLE (Se esistono)
@@ -120,6 +121,8 @@ const SettingsPanel: React.FC = () => {
     downloadProjectFromSupabase,
     deleteProjectFromSupabase,
     cleanupOldTasks,
+    checkProjectHealth,
+    repairProjectStructure,
     state,
     session,
     logout,
@@ -147,11 +150,14 @@ const SettingsPanel: React.FC = () => {
   const [showCleanupConfirm, setShowCleanupConfirm] = useState(false);
   const [isCleaning, setIsCleaning] = useState(false);
 
+  // Health Check State
+  const [healthReport, setHealthReport] = useState<any>(null);
+  const [isAnalyzing, setIsAnalyzing] = useState(false);
+
   const cleanupStats = useMemo(() => {
     const threshold = new Date();
     threshold.setMonth(threshold.getMonth() - cleanupMonths);
     let count = 0;
-    // Fix: Explicitly cast Object.values to Branch[] to avoid type error on tasks property access
     (Object.values(state.branches) as Branch[]).forEach(b => {
         b.tasks.forEach(t => {
             if (t.completed && t.completedAt) {
@@ -311,7 +317,6 @@ const SettingsPanel: React.FC = () => {
           const result = await cleanupOldTasks(cleanupMonths);
           
           if (result.count > 0) {
-              // Trigger backup download
               const timestamp = new Date().toISOString().slice(0, 10);
               const dataStr = "data:text/json;charset=utf-8," + encodeURIComponent(JSON.stringify(result.backup, null, 2));
               const downloadAnchorNode = document.createElement('a');
@@ -331,6 +336,20 @@ const SettingsPanel: React.FC = () => {
           setIsCleaning(false);
           setShowCleanupConfirm(false);
       }
+  };
+
+  const handleRunAnalysis = () => {
+      setIsAnalyzing(true);
+      setTimeout(() => {
+          const report = checkProjectHealth();
+          setHealthReport(report);
+          setIsAnalyzing(false);
+      }, 500);
+  };
+
+  const handleRepair = () => {
+      repairProjectStructure();
+      setHealthReport(null);
   };
 
   return (
@@ -462,6 +481,88 @@ const SettingsPanel: React.FC = () => {
       </div>
 
       <div className="grid gap-6 md:gap-8 w-full min-w-0 max-w-full">
+
+          {/* Project Health Section */}
+          <div className="bg-white dark:bg-slate-800 rounded-xl shadow-sm border border-slate-200 dark:border-slate-700 p-4 md:p-6 w-full min-w-0 max-w-full">
+              <h3 className="text-lg font-semibold text-slate-800 dark:text-white mb-2 flex items-center gap-2">
+                  <Stethoscope className="w-5 h-5 text-rose-500" />
+                  Salute del Progetto & Diagnostica
+              </h3>
+              <p className="text-xs text-slate-500 dark:text-slate-400 mb-6">
+                  Controlla l'integrità della struttura, migra ID obsoleti e recupera rami che non appaiono nel grafico.
+              </p>
+
+              {!healthReport ? (
+                   <button 
+                    onClick={handleRunAnalysis}
+                    disabled={isAnalyzing}
+                    className="w-full py-4 bg-slate-50 dark:bg-slate-900/50 border border-dashed border-slate-300 dark:border-slate-700 rounded-xl flex flex-col items-center justify-center gap-2 hover:bg-slate-100 dark:hover:bg-slate-800 transition-all text-slate-600 dark:text-slate-400"
+                  >
+                      {isAnalyzing ? <Loader2 className="w-6 h-6 animate-spin text-indigo-500" /> : <Search className="w-6 h-6" />}
+                      <span className="font-bold text-sm">{isAnalyzing ? 'Analisi in corso...' : 'Avvia Diagnostica'}</span>
+                  </button>
+              ) : (
+                  <div className="space-y-4 animate-in fade-in zoom-in-95 duration-200">
+                      <div className="grid grid-cols-1 sm:grid-cols-3 gap-3">
+                          <div className={`p-3 rounded-lg border flex flex-col gap-1 ${healthReport.legacyRootFound ? 'bg-amber-50 border-amber-200 dark:bg-amber-900/10 dark:border-amber-800' : 'bg-emerald-50 border-emerald-200 dark:bg-emerald-900/10 dark:border-emerald-800'}`}>
+                              <span className="text-[10px] font-black uppercase text-slate-400">ID Root Legacy</span>
+                              <div className="flex items-center justify-between">
+                                  <span className={`text-sm font-bold ${healthReport.legacyRootFound ? 'text-amber-600' : 'text-emerald-600'}`}>
+                                      {healthReport.legacyRootFound ? 'Trovato' : 'Ok'}
+                                  </span>
+                                  {healthReport.legacyRootFound ? <AlertTriangle className="w-4 h-4 text-amber-500" /> : <Check className="w-4 h-4 text-emerald-500" />}
+                              </div>
+                          </div>
+                          
+                          <div className={`p-3 rounded-lg border flex flex-col gap-1 ${healthReport.missingRootNode ? 'bg-rose-50 border-rose-200 dark:bg-rose-900/10 dark:border-rose-800' : 'bg-emerald-50 border-emerald-200 dark:bg-emerald-900/10 dark:border-emerald-800'}`}>
+                              <span className="text-[10px] font-black uppercase text-slate-400">Nodo Radice</span>
+                              <div className="flex items-center justify-between">
+                                  <span className={`text-sm font-bold ${healthReport.missingRootNode ? 'text-rose-600' : 'text-emerald-600'}`}>
+                                      {healthReport.missingRootNode ? 'Mancante' : 'Presente'}
+                                  </span>
+                                  {healthReport.missingRootNode ? <AlertTriangle className="w-4 h-4 text-rose-500" /> : <Check className="w-4 h-4 text-emerald-500" />}
+                              </div>
+                          </div>
+
+                          <div className={`p-3 rounded-lg border flex flex-col gap-1 ${healthReport.orphanedBranchesCount > 0 ? 'bg-amber-50 border-amber-200 dark:bg-amber-900/10 dark:border-amber-800' : 'bg-emerald-50 border-emerald-200 dark:bg-emerald-900/10 dark:border-emerald-800'}`}>
+                              <span className="text-[10px] font-black uppercase text-slate-400">Rami Orfani</span>
+                              <div className="flex items-center justify-between">
+                                  <span className={`text-sm font-bold ${healthReport.orphanedBranchesCount > 0 ? 'text-amber-600' : 'text-emerald-600'}`}>
+                                      {healthReport.orphanedBranchesCount} trovati
+                                  </span>
+                                  {healthReport.orphanedBranchesCount > 0 ? <AlertTriangle className="w-4 h-4 text-amber-500" /> : <Check className="w-4 h-4 text-emerald-500" />}
+                              </div>
+                          </div>
+                      </div>
+
+                      <div className="flex items-center justify-between gap-4 p-4 bg-slate-50 dark:bg-slate-900 rounded-xl border border-slate-200 dark:border-slate-700">
+                          <div className="flex items-center gap-3">
+                              <div className={`w-10 h-10 rounded-full flex items-center justify-center ${healthReport.totalIssues > 0 ? 'bg-amber-100 text-amber-600' : 'bg-emerald-100 text-emerald-600'}`}>
+                                  {healthReport.totalIssues > 0 ? <AlertCircle className="w-6 h-6" /> : <Check className="w-6 h-6" />}
+                              </div>
+                              <div>
+                                  <p className="text-sm font-bold text-slate-800 dark:text-white">
+                                      {healthReport.totalIssues > 0 ? `Trovati ${healthReport.totalIssues} problemi strutturali` : 'Nessun problema rilevato'}
+                                  </p>
+                                  <p className="text-[10px] text-slate-500">
+                                      {healthReport.totalIssues > 0 ? 'Si consiglia di eseguire la riparazione automatica.' : 'La struttura del progetto è integra.'}
+                                  </p>
+                              </div>
+                          </div>
+                          <div className="flex gap-2">
+                             <button onClick={() => setHealthReport(null)} className="px-3 py-1.5 text-xs text-slate-500 hover:underline">Annulla</button>
+                             <button 
+                                onClick={handleRepair}
+                                disabled={healthReport.totalIssues === 0}
+                                className="px-4 py-2 bg-indigo-600 text-white rounded-lg text-xs font-bold hover:bg-indigo-700 transition-colors shadow-md shadow-indigo-500/20 flex items-center gap-2 disabled:opacity-50 disabled:grayscale"
+                             >
+                                 <Wrench className="w-3.5 h-3.5" /> Fix Automatico
+                             </button>
+                          </div>
+                      </div>
+                  </div>
+              )}
+          </div>
 
           {/* Cleanup Section */}
           <div className="bg-white dark:bg-slate-800 rounded-xl shadow-sm border border-slate-200 dark:border-slate-700 p-4 md:p-6 w-full min-w-0 max-w-full">

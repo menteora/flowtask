@@ -4,6 +4,13 @@ import { createClient, SupabaseClient, Session } from '@supabase/supabase-js';
 import { ProjectState, Branch, Task, Person, BranchStatus } from '../types';
 import { INITIAL_STATE, createInitialProjectState } from '../constants';
 
+interface ProjectHealthReport {
+    legacyRootFound: boolean;
+    missingRootNode: boolean;
+    orphanedBranchesCount: number;
+    totalIssues: number;
+}
+
 interface ProjectContextType {
   state: ProjectState;
   projects: ProjectState[];
@@ -49,6 +56,9 @@ interface ProjectContextType {
   bulkMoveTasks: (taskIds: string[], sourceBranchId: string, targetBranchId: string) => void;
   bulkUpdateTasks: (branchId: string, text: string) => void;
   cleanupOldTasks: (months: number) => Promise<{ count: number; backup: any[] }>;
+
+  checkProjectHealth: () => ProjectHealthReport;
+  repairProjectStructure: () => void;
 
   addPerson: (name: string, email?: string, phone?: string) => void;
   updatePerson: (id: string, updates: Partial<Person>) => void;
@@ -854,6 +864,139 @@ export const ProjectProvider: React.FC<{ children: React.ReactNode }> = ({ child
       return { count: idsToDelete.length, backup };
   }, [activeProjectId, supabaseClient, session, isOfflineMode]);
 
+  const checkProjectHealth = useCallback((): ProjectHealthReport => {
+      const proj = activeProject;
+      const report: ProjectHealthReport = {
+          legacyRootFound: proj.rootBranchId === 'root' || !!proj.branches['root'],
+          missingRootNode: !proj.branches[proj.rootBranchId],
+          orphanedBranchesCount: 0,
+          totalIssues: 0
+      };
+
+      // Find reachable nodes via BFS
+      const reachable = new Set<string>();
+      if (!report.missingRootNode) {
+          const queue = [proj.rootBranchId];
+          reachable.add(proj.rootBranchId);
+          
+          while (queue.length > 0) {
+              const currentId = queue.shift()!;
+              const branch = proj.branches[currentId];
+              if (branch) {
+                  branch.childrenIds.forEach(cid => {
+                      if (!reachable.has(cid)) {
+                          reachable.add(cid);
+                          queue.push(cid);
+                      }
+                  });
+              }
+          }
+      }
+
+      // Any branch in the record that wasn't reachable is an orphan
+      Object.keys(proj.branches).forEach(bid => {
+          if (!reachable.has(bid)) {
+              report.orphanedBranchesCount++;
+          }
+      });
+
+      report.totalIssues = (report.legacyRootFound ? 1 : 0) + (report.missingRootNode ? 1 : 0) + report.orphanedBranchesCount;
+      return report;
+  }, [activeProject]);
+
+  const repairProjectStructure = useCallback(() => {
+      setProjects(prev => prev.map(p => {
+          if (p.id !== activeProjectId) return p;
+          
+          let updatedBranches = { ...p.branches };
+          let updatedRootId = p.rootBranchId;
+
+          // 1. Fix Legacy Root ID 'root'
+          if (updatedBranches['root'] || updatedRootId === 'root') {
+              const oldRoot = updatedBranches['root'] || updatedBranches[updatedRootId];
+              const newRootId = crypto.randomUUID();
+              
+              if (oldRoot) {
+                  // Create new node with same data
+                  updatedBranches[newRootId] = { 
+                      ...oldRoot, 
+                      id: newRootId,
+                      parentIds: [] // Root has no parents
+                  };
+                  
+                  // Update all children of old root to point to new root
+                  oldRoot.childrenIds.forEach(cid => {
+                      if (updatedBranches[cid]) {
+                          updatedBranches[cid] = {
+                              ...updatedBranches[cid],
+                              parentIds: updatedBranches[cid].parentIds.map(pid => pid === oldRoot.id ? newRootId : pid)
+                          };
+                      }
+                  });
+                  
+                  // Delete old root entry
+                  delete updatedBranches['root'];
+                  if (updatedRootId !== 'root') delete updatedBranches[updatedRootId];
+                  
+                  updatedRootId = newRootId;
+              }
+          }
+
+          // 2. Ensure Root Node Exists
+          if (!updatedBranches[updatedRootId]) {
+              updatedBranches[updatedRootId] = {
+                  id: updatedRootId,
+                  title: 'Inizio Progetto (Ripristinato)',
+                  status: BranchStatus.PLANNED,
+                  isLabel: true,
+                  tasks: [],
+                  childrenIds: [],
+                  parentIds: [],
+              };
+          }
+
+          // 3. Connect Orphans to Root
+          const reachable = new Set<string>();
+          const queue = [updatedRootId];
+          reachable.add(updatedRootId);
+          while (queue.length > 0) {
+              const currentId = queue.shift()!;
+              const branch = updatedBranches[currentId];
+              if (branch) {
+                  branch.childrenIds.forEach(cid => {
+                      if (!reachable.has(cid) && updatedBranches[cid]) {
+                          reachable.add(cid);
+                          queue.push(cid);
+                      }
+                  });
+              }
+          }
+
+          Object.keys(updatedBranches).forEach(bid => {
+              if (!reachable.has(bid)) {
+                  // Connect to root
+                  const orphan = updatedBranches[bid];
+                  updatedBranches[bid] = {
+                      ...orphan,
+                      parentIds: [...new Set([...orphan.parentIds, updatedRootId])]
+                  };
+                  updatedBranches[updatedRootId] = {
+                      ...updatedBranches[updatedRootId],
+                      childrenIds: [...new Set([...updatedBranches[updatedRootId].childrenIds, bid])]
+                  };
+              }
+          });
+
+          return { 
+              ...p, 
+              rootBranchId: updatedRootId, 
+              branches: updatedBranches 
+          };
+      }));
+      
+      showNotification("Struttura progetto riparata e rami orfani recuperati.", 'success');
+  }, [activeProjectId]);
+
   const addPerson = useCallback((name: string, email?: string, phone?: string) => {
       setProjects(prev => prev.map(p => {
           if (p.id !== activeProjectId) return p;
@@ -943,6 +1086,9 @@ export const ProjectProvider: React.FC<{ children: React.ReactNode }> = ({ child
       bulkMoveTasks,
       bulkUpdateTasks,
       cleanupOldTasks,
+
+      checkProjectHealth,
+      repairProjectStructure,
       
       addPerson,
       updatePerson,
