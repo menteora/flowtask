@@ -147,8 +147,7 @@ export const ProjectProvider: React.FC<{ children: React.ReactNode }> = ({ child
   
   const [remoteDataLoaded, setRemoteDataLoaded] = useState(false);
   const autoSaveTimerRef = useRef<ReturnType<typeof setTimeout> | null>(null);
-
-  // --- PRIMITIVE UTILS (must be declared first) ---
+  const lastSyncedProjectIdRef = useRef<string | null>(null);
 
   const showNotification = useCallback((message: string, type: 'success' | 'error') => {
       setNotification({ message, type });
@@ -173,8 +172,6 @@ export const ProjectProvider: React.FC<{ children: React.ReactNode }> = ({ child
         setActiveProjectId(newState.id);
     }
   }, []);
-
-  // --- SYNC FUNCTIONS (depend on primitives) ---
 
   const downloadProjectFromSupabase = useCallback(async (id: string, activate = true, force = false) => {
       if (!supabaseClient || !session) return;
@@ -244,6 +241,7 @@ export const ProjectProvider: React.FC<{ children: React.ReactNode }> = ({ child
           };
 
           loadProject(newState, activate, true); 
+          lastSyncedProjectIdRef.current = id;
           setRemoteDataLoaded(true); 
       } catch (e: any) {
           console.error("Download Error:", e);
@@ -336,8 +334,6 @@ export const ProjectProvider: React.FC<{ children: React.ReactNode }> = ({ child
     }
   }, [supabaseClient, session, isOfflineMode, projects, activeProjectId]);
 
-  // --- REMAINING HOOKS ---
-
   useEffect(() => {
     localStorage.setItem('flowtask_show_only_open', showOnlyOpen.toString());
   }, [showOnlyOpen]);
@@ -390,14 +386,17 @@ export const ProjectProvider: React.FC<{ children: React.ReactNode }> = ({ child
     }
   }, [supabaseConfig]);
 
+  // CRITICO: Effetto di download iniziale rimosso dalle dipendenze 'projects' per evitare cicli infiniti e sovrascritture durante gli upload.
   useEffect(() => {
       const activeProject = projects.find(p => p.id === activeProjectId);
-      if (session && !isOfflineMode && activeProjectId && activeProject && !activeProject.id.includes('default')) {
+      // Solo se cambiamo progetto o non abbiamo mai sincronizzato questo specifico ID progetto in questa sessione.
+      if (session && !isOfflineMode && activeProjectId && activeProject && !activeProject.id.includes('default') && lastSyncedProjectIdRef.current !== activeProjectId) {
+          setRemoteDataLoaded(false); // Reset per forzare l'attesa del download prima di abilitare l'autosave
           downloadProjectFromSupabase(activeProjectId, false, false)
              .then(() => setRemoteDataLoaded(true))
              .catch(err => console.error("Initial fetch failed", err));
       }
-  }, [session, isOfflineMode, activeProjectId, downloadProjectFromSupabase, projects]);
+  }, [session, isOfflineMode, activeProjectId, downloadProjectFromSupabase]);
 
   useEffect(() => {
       localStorage.setItem('flowtask_projects', JSON.stringify(projects));
@@ -443,6 +442,7 @@ export const ProjectProvider: React.FC<{ children: React.ReactNode }> = ({ child
 
   useEffect(() => {
       if (!session || isOfflineMode || isInitializing) return;
+      // IMPORTANTE: Se i dati remoti non sono ancora stati caricati per il progetto attivo, non avviare l'autosave per non piallare il DB.
       if (session && !remoteDataLoaded) return;
       
       if (autoSaveTimerRef.current) {
@@ -672,8 +672,6 @@ export const ProjectProvider: React.FC<{ children: React.ReactNode }> = ({ child
           const branch = p.branches[branchId];
           if (!branch) return p;
 
-          // Rimossa logica autoPin basata sulla posizione del ramo. 
-          // Tutti i task nuovi ora nascono non pinnati per default.
           const newTask: Task = {
               id: crypto.randomUUID(),
               title,
@@ -818,7 +816,7 @@ export const ProjectProvider: React.FC<{ children: React.ReactNode }> = ({ child
                    title: line, 
                    completed: false, 
                    description: '', 
-                   pinned: false // I task nuovi in bulk nascono non pinnati.
+                   pinned: false 
                };
            });
            
