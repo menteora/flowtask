@@ -67,7 +67,7 @@ interface ProjectContextType {
   cleanupOldTasks: (months: number) => Promise<{ count: number; backup: any[] }>;
 
   checkProjectHealth: () => ProjectHealthReport;
-  repairProjectStructure: () => Promise<void>;
+  repairProjectStructure: () => Promise<boolean>;
   resolveOrphans: (idsToFix: string[], idsToDelete: string[]) => void;
 
   addPerson: (name: string, email?: string, phone?: string) => void;
@@ -997,7 +997,7 @@ export const ProjectProvider: React.FC<{ children: React.ReactNode }> = ({ child
       return report;
   }, [activeProject]);
 
-  const repairProjectStructure = useCallback(async () => {
+  const repairProjectStructure = useCallback(async (): Promise<boolean> => {
       let finalRootId = activeProject.rootBranchId;
       let finalBranches = { ...activeProject.branches };
 
@@ -1065,18 +1065,22 @@ export const ProjectProvider: React.FC<{ children: React.ReactNode }> = ({ child
               
               if (error) throw error;
               
-              // Carica i rami modificati (specialmente se l'ID è cambiato)
+              // Forza caricamento completo per assicurarsi che i rami orfani siano salvati prima del loro recupero
               await uploadProjectToSupabase(); 
               setAutoSaveStatus('saved');
               setTimeout(() => setAutoSaveStatus('idle'), 2000);
+              showNotification("Integrità radice ripristinata e sincronizzata.", 'success');
+              return true;
           } catch (e: any) {
               console.error("Remote root update error", e);
               setAutoSaveStatus('error');
               showNotification("Errore sincronizzazione radice remota.", 'error');
+              return false;
           }
       }
 
-      showNotification("Integrità radice ripristinata.", 'success');
+      showNotification("Integrità radice ripristinata localmente.", 'success');
+      return true;
   }, [activeProjectId, activeProject, session, isOfflineMode, supabaseClient, uploadProjectToSupabase, showNotification]);
 
   const resolveOrphans = useCallback((idsToFix: string[], idsToDelete: string[]) => {

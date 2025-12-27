@@ -7,7 +7,7 @@ import {
   Database, Save, Download, Key, Check, Copy, Terminal, Cloud, Loader2, Upload, 
   User, LogOut, WifiOff, X, Link, Trash2, Eraser, AlertTriangle, Stethoscope, 
   Search, Square, CheckSquare, RefreshCw, Tag, GitBranch, Calendar, Info, 
-  MessageSquare, Settings as SettingsIcon, ShieldCheck
+  MessageSquare, Settings as SettingsIcon, ShieldCheck, Rocket, ChevronRight
 } from 'lucide-react';
 
 const SQL_SCHEMA = `
@@ -215,10 +215,13 @@ const SettingsPanel: React.FC = () => {
   const handleFixRootIssues = async () => {
       setIsRepairing(true);
       try {
-          await repairProjectStructure();
-          const report = checkProjectHealth();
-          setHealthReport(report);
-          setSelectedOrphans(report.orphanedBranches.map(o => o.id));
+          const success = await repairProjectStructure();
+          if (success) {
+            // Dopo il fix, rifai l'analisi per aggiornare l'UI e mostrare che Fase 1 è risolta
+            const report = checkProjectHealth();
+            setHealthReport(report);
+            setSelectedOrphans(report.orphanedBranches.map(o => o.id));
+          }
       } finally {
           setIsRepairing(false);
       }
@@ -227,8 +230,10 @@ const SettingsPanel: React.FC = () => {
   const handleRestoreSelectedOrphans = () => {
       setIsRepairing(true);
       resolveOrphans(selectedOrphans, []);
+      // Resetta il report per forzare una nuova analisi manuale o pulire la vista
       setHealthReport(null);
       setIsRepairing(false);
+      showNotification("Rami ripristinati correttamente.", 'success');
   };
 
   const handleRunCleanup = async () => {
@@ -241,115 +246,90 @@ const SettingsPanel: React.FC = () => {
   };
 
   return (
-    <div className="w-full max-w-5xl mx-auto h-full flex flex-col p-4 md:p-8 overflow-hidden relative">
+    <div className="w-full max-w-5xl mx-auto h-full flex flex-col p-3 md:p-8 overflow-hidden relative">
       
       {/* Header statico */}
-      <div className="mb-8 flex flex-col md:flex-row md:justify-between md:items-start gap-4 flex-shrink-0">
+      <div className="mb-6 md:mb-8 flex flex-col md:flex-row md:justify-between md:items-start gap-4 flex-shrink-0">
         <div>
-            <h2 className="text-3xl font-black text-slate-800 dark:text-white flex items-center gap-3">
-                <SettingsIcon className="w-10 h-10 text-indigo-600 animate-pulse-slow" /> 
+            <h2 className="text-2xl md:text-3xl font-black text-slate-800 dark:text-white flex items-center gap-3">
+                <SettingsIcon className="w-8 h-8 md:w-10 md:h-10 text-indigo-600" /> 
                 Impostazioni
             </h2>
-            <p className="text-slate-500 dark:text-slate-400 mt-1 font-medium">Gestisci la configurazione, la sicurezza e la salute dei tuoi dati.</p>
+            <p className="text-xs md:text-sm text-slate-500 dark:text-slate-400 mt-1 font-medium">Gestisci la configurazione e la salute dei dati.</p>
         </div>
         {session ? (
-            <div className="flex items-center gap-3 bg-white dark:bg-slate-800 p-2.5 rounded-xl border border-slate-200 dark:border-slate-700 shadow-sm transition-all hover:shadow-md">
-                <div className="flex items-center gap-2">
-                    <div className="w-8 h-8 rounded-lg bg-indigo-100 dark:bg-indigo-900/40 flex items-center justify-center">
+            <div className="flex items-center gap-3 bg-white dark:bg-slate-800 p-2 rounded-xl border border-slate-200 dark:border-slate-700 shadow-sm">
+                <div className="flex items-center gap-2 min-w-0">
+                    <div className="w-8 h-8 rounded-lg bg-indigo-100 dark:bg-indigo-900/40 flex items-center justify-center shrink-0">
                         <User className="w-4 h-4 text-indigo-600 dark:text-indigo-400" />
                     </div>
                     <div className="flex flex-col min-w-0">
-                        <span className="text-[10px] font-bold text-slate-400 uppercase leading-none mb-0.5">Connesso come</span>
-                        <span className="text-xs font-black text-slate-700 dark:text-slate-200 truncate max-w-[150px] leading-none">{session.user.email}</span>
+                        <span className="text-[10px] font-bold text-slate-400 uppercase leading-none mb-0.5">Account</span>
+                        <span className="text-xs font-black text-slate-700 dark:text-slate-200 truncate max-w-[120px] leading-none">{session.user.email}</span>
                     </div>
                 </div>
                 <button onClick={logout} className="p-2 text-slate-400 hover:text-red-500 hover:bg-red-50 dark:hover:bg-red-900/20 rounded-lg transition-colors" title="Logout"><LogOut className="w-4 h-4" /></button>
             </div>
         ) : (
-            <button onClick={disableOfflineMode} className="px-6 py-2.5 bg-indigo-600 hover:bg-indigo-700 text-white rounded-xl text-sm font-bold shadow-lg shadow-indigo-500/20 transition-all flex items-center gap-2">
-                <Cloud className="w-4 h-4" /> Connetti Account
+            <button onClick={disableOfflineMode} className="px-5 py-2 bg-indigo-600 hover:bg-indigo-700 text-white rounded-xl text-sm font-bold shadow-lg transition-all flex items-center gap-2">
+                <Cloud className="w-4 h-4" /> Connetti
             </button>
         )}
       </div>
 
-      {/* Tabs Switcher */}
-      <div className="flex items-center gap-2 mb-6 border-b border-slate-200 dark:border-slate-800 flex-shrink-0">
-          <button 
-            onClick={() => setActiveTab('cloud')}
-            className={`px-4 py-3 text-sm font-bold flex items-center gap-2 border-b-2 transition-all ${activeTab === 'cloud' ? 'border-indigo-600 text-indigo-600' : 'border-transparent text-slate-400 hover:text-slate-600 dark:hover:text-slate-300'}`}
-          >
-              <Database className="w-4 h-4" /> Database & Cloud
-          </button>
-          <button 
-            onClick={() => setActiveTab('diagnostics')}
-            className={`px-4 py-3 text-sm font-bold flex items-center gap-2 border-b-2 transition-all ${activeTab === 'diagnostics' ? 'border-indigo-600 text-indigo-600' : 'border-transparent text-slate-400 hover:text-slate-600 dark:hover:text-slate-300'}`}
-          >
-              <Stethoscope className="w-4 h-4" /> Diagnostica
-          </button>
-          <button 
-            onClick={() => setActiveTab('maintenance')}
-            className={`px-4 py-3 text-sm font-bold flex items-center gap-2 border-b-2 transition-all ${activeTab === 'maintenance' ? 'border-indigo-600 text-indigo-600' : 'border-transparent text-slate-400 hover:text-slate-600 dark:hover:text-slate-300'}`}
-          >
-              <Eraser className="w-4 h-4" /> Manutenzione
-          </button>
-          <button 
-            onClick={() => setActiveTab('preferences')}
-            className={`px-4 py-3 text-sm font-bold flex items-center gap-2 border-b-2 transition-all ${activeTab === 'preferences' ? 'border-indigo-600 text-indigo-600' : 'border-transparent text-slate-400 hover:text-slate-600 dark:hover:text-slate-300'}`}
-          >
-              <MessageSquare className="w-4 h-4" /> Preferenze
-          </button>
+      {/* Tabs Switcher - Responsive with scroll */}
+      <div className="flex items-center gap-1 mb-6 border-b border-slate-200 dark:border-slate-800 flex-shrink-0 overflow-x-auto scrollbar-hide -mx-3 px-3">
+          {[
+              { id: 'cloud', icon: Database, label: 'Cloud' },
+              { id: 'diagnostics', icon: Stethoscope, label: 'Salute' },
+              { id: 'maintenance', icon: Eraser, label: 'Pulizia' },
+              { id: 'preferences', icon: MessageSquare, label: 'Template' }
+          ].map(tab => (
+            <button 
+                key={tab.id}
+                onClick={() => setActiveTab(tab.id as TabType)}
+                className={`px-4 py-3 text-xs md:text-sm font-bold flex items-center gap-2 border-b-2 transition-all whitespace-nowrap ${activeTab === tab.id ? 'border-indigo-600 text-indigo-600' : 'border-transparent text-slate-400 hover:text-slate-600'}`}
+            >
+                <tab.icon className="w-4 h-4" /> {tab.label}
+            </button>
+          ))}
       </div>
 
       {/* Tab Content Area */}
-      <div className="flex-1 overflow-y-auto pr-2 custom-scrollbar pb-10">
+      <div className="flex-1 overflow-y-auto pr-1 custom-scrollbar pb-20">
           
           {/* TAB: CLOUD & DATABASE */}
           {activeTab === 'cloud' && (
-              <div className="space-y-6 animate-in fade-in slide-in-from-bottom-4 duration-300">
-                  
-                  {/* API Credentials Card */}
-                  <div className="bg-white dark:bg-slate-800 rounded-2xl shadow-sm border border-slate-200 dark:border-slate-700 p-6">
+              <div className="space-y-6 animate-in fade-in slide-in-from-bottom-4">
+                  <div className="bg-white dark:bg-slate-800 rounded-2xl shadow-sm border border-slate-200 dark:border-slate-700 p-4 md:p-6">
                       <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-4 mb-6">
                           <div>
-                              <h3 className="text-lg font-bold text-slate-800 dark:text-white flex items-center gap-2"><Key className="w-5 h-5 text-indigo-500" /> Credenziali Supabase</h3>
-                              <p className="text-xs text-slate-500">Configura la connessione per abilitare la sincronizzazione.</p>
+                              <h3 className="text-lg font-bold text-slate-800 dark:text-white flex items-center gap-2"><Key className="w-5 h-5 text-indigo-500" /> Database</h3>
+                              <p className="text-[10px] md:text-xs text-slate-500">Configura la connessione Supabase.</p>
                           </div>
-                          <button onClick={handleGenerateShareLink} className="text-xs font-bold text-indigo-600 dark:text-indigo-400 bg-indigo-50 dark:bg-indigo-900/20 px-3 py-2 rounded-lg flex items-center gap-2 transition-colors hover:bg-indigo-100 dark:hover:bg-indigo-900/40">
+                          <button onClick={handleGenerateShareLink} className="text-[10px] font-bold text-indigo-600 bg-indigo-50 dark:bg-indigo-900/20 px-3 py-2 rounded-lg flex items-center gap-2 w-fit">
                               {shareLinkCopied ? <Check className="w-3.5 h-3.5" /> : <Link className="w-3.5 h-3.5" />} {shareLinkCopied ? 'Link Copiato' : 'Condividi Config'}
                           </button>
                       </div>
                       <div className="space-y-4">
                           <div>
-                              <label className="text-[10px] font-black uppercase text-slate-400 mb-1.5 block">Project URL</label>
-                              <input type="text" value={url} onChange={(e) => setUrl(e.target.value)} placeholder="https://..." className="w-full p-2.5 rounded-lg border border-slate-200 dark:border-slate-700 bg-slate-50 dark:bg-slate-900 text-sm focus:ring-2 focus:ring-indigo-500 outline-none transition-all font-mono" />
+                              <label className="text-[9px] font-black uppercase text-slate-400 mb-1 block">Project URL</label>
+                              <input type="text" value={url} onChange={(e) => setUrl(e.target.value)} className="w-full p-2.5 rounded-lg border border-slate-200 dark:border-slate-700 bg-slate-50 dark:bg-slate-900 text-xs focus:ring-1 focus:ring-indigo-500 outline-none font-mono" />
                           </div>
                           <div>
-                              <label className="text-[10px] font-black uppercase text-slate-400 mb-1.5 block">Anon Key</label>
-                              <input type="password" value={key} onChange={(e) => setKey(e.target.value)} placeholder="eyJ..." className="w-full p-2.5 rounded-lg border border-slate-200 dark:border-slate-700 bg-slate-50 dark:bg-slate-900 text-sm focus:ring-2 focus:ring-indigo-500 outline-none transition-all font-mono" />
+                              <label className="text-[9px] font-black uppercase text-slate-400 mb-1 block">Anon Key</label>
+                              <input type="password" value={key} onChange={(e) => setKey(e.target.value)} className="w-full p-2.5 rounded-lg border border-slate-200 dark:border-slate-700 bg-slate-50 dark:bg-slate-900 text-xs focus:ring-1 focus:ring-indigo-500 outline-none font-mono" />
                           </div>
-                          <div className="flex gap-2 pt-2">
-                            <button onClick={handleSaveConfig} className="px-6 py-2.5 bg-indigo-600 hover:bg-indigo-700 text-white rounded-xl text-sm font-bold shadow-md shadow-indigo-500/10 transition-all">Applica Credenziali</button>
-                          </div>
+                          <button onClick={handleSaveConfig} className="w-full sm:w-auto px-6 py-2.5 bg-indigo-600 text-white rounded-xl text-xs font-bold">Salva Credenziali</button>
                       </div>
                   </div>
 
-                  {/* Cloud Sync Section */}
-                  <div className="bg-white dark:bg-slate-800 rounded-2xl shadow-sm border border-slate-200 dark:border-slate-700 p-6">
+                  <div className="bg-white dark:bg-slate-800 rounded-2xl shadow-sm border border-slate-200 dark:border-slate-700 p-4 md:p-6">
                       <div className="flex items-center justify-between mb-6">
-                          <div>
-                              <h3 className="text-lg font-bold text-slate-800 dark:text-white flex items-center gap-2">
-                                  <Cloud className="w-5 h-5 text-indigo-500" /> I tuoi Progetti nel Cloud
-                              </h3>
-                              <p className="text-xs text-slate-500">Salva o scarica i tuoi flussi di lavoro dai server remoti.</p>
-                          </div>
+                          <h3 className="text-lg font-bold text-slate-800 dark:text-white flex items-center gap-2"><Cloud className="w-5 h-5 text-indigo-500" /> Cloud Sync</h3>
                           {session && (
-                              <button 
-                                onClick={handleCloudSave}
-                                disabled={isSaving}
-                                className={`flex items-center gap-2 px-5 py-2.5 rounded-xl text-sm font-black text-white transition-all shadow-lg ${saveStatus === 'success' ? 'bg-emerald-600 shadow-emerald-500/20' : 'bg-indigo-600 hover:bg-indigo-700 shadow-indigo-500/20'} disabled:opacity-50`}
-                              >
-                                  {isSaving ? <Loader2 className="w-4 h-4 animate-spin" /> : <Upload className="w-4 h-4" />}
-                                  {saveStatus === 'success' ? 'Progetto Sincronizzato!' : 'Salva su Cloud'}
+                              <button onClick={handleCloudSave} disabled={isSaving} className="flex items-center gap-2 px-4 py-2 rounded-xl text-xs font-black text-white bg-indigo-600 hover:bg-indigo-700 shadow-md">
+                                  {isSaving ? <Loader2 className="w-4 h-4 animate-spin" /> : <Upload className="w-4 h-4" />} Salva Ora
                               </button>
                           )}
                       </div>
@@ -357,45 +337,24 @@ const SettingsPanel: React.FC = () => {
                       {session ? (
                           <div className="space-y-4">
                               <div className="flex items-center justify-between">
-                                  <h4 className="text-[10px] font-black uppercase text-slate-400 tracking-wider">Remote Projects Archive</h4>
-                                  <button onClick={handleListProjects} disabled={isLoadingList} className="text-[10px] font-black uppercase text-indigo-600 hover:underline flex items-center gap-1">
-                                      {isLoadingList ? <Loader2 className="w-3 h-3 animate-spin" /> : <RefreshCw className="w-3 h-3" />} Aggiorna Lista
+                                  <h4 className="text-[10px] font-black uppercase text-slate-400">Progetti Remoti</h4>
+                                  <button onClick={handleListProjects} disabled={isLoadingList} className="text-[10px] text-indigo-600 flex items-center gap-1 font-bold">
+                                      {isLoadingList ? <Loader2 className="w-3 h-3 animate-spin" /> : <RefreshCw className="w-3 h-3" />} Aggiorna
                                   </button>
                               </div>
-
-                              <div className="grid grid-cols-1 md:grid-cols-2 gap-3 max-h-80 overflow-y-auto pr-1">
+                              <div className="grid grid-cols-1 gap-2">
                                   {remoteProjects.length === 0 ? (
-                                      <div className="col-span-full py-8 text-center bg-slate-50 dark:bg-slate-900/40 rounded-2xl border border-dashed border-slate-200 dark:border-slate-700">
-                                          <p className="text-sm text-slate-400 italic">Nessun progetto trovato nel tuo account cloud.</p>
-                                      </div>
+                                      <p className="text-xs text-slate-400 italic py-4 text-center">Nessun progetto nel cloud.</p>
                                   ) : (
                                       remoteProjects.map(proj => (
-                                          <div key={proj.id} className="group flex items-center justify-between p-4 rounded-xl border border-slate-100 dark:border-slate-700 bg-slate-50/50 dark:bg-slate-900/30 transition-all hover:bg-white dark:hover:bg-slate-800 hover:border-indigo-200">
-                                              <div className="flex flex-col min-w-0">
-                                                  <span className="text-sm font-black text-slate-700 dark:text-slate-200 truncate">{proj.name}</span>
-                                                  <span className="text-[10px] text-slate-400 font-bold flex items-center gap-1 uppercase"><Calendar className="w-2.5 h-2.5" /> {new Date(proj.created_at).toLocaleDateString()}</span>
+                                          <div key={proj.id} className="flex items-center justify-between p-3 rounded-xl border border-slate-100 dark:border-slate-700 bg-slate-50/50">
+                                              <div className="min-w-0 pr-2">
+                                                  <p className="text-xs font-black text-slate-700 dark:text-slate-200 truncate">{proj.name}</p>
+                                                  <p className="text-[9px] text-slate-400 font-bold uppercase">{new Date(proj.created_at).toLocaleDateString()}</p>
                                               </div>
-                                              <div className="flex items-center gap-1">
-                                                  <button 
-                                                    onClick={() => handleDownload(proj.id)}
-                                                    disabled={isDownloading}
-                                                    className="p-2.5 text-indigo-600 hover:bg-indigo-50 dark:hover:bg-indigo-900/20 rounded-xl transition-all"
-                                                    title="Scarica e sovrascrivi locale"
-                                                  >
-                                                      <Download className="w-5 h-5" />
-                                                  </button>
-                                                  <button 
-                                                    onClick={async () => {
-                                                        if(confirm(`Eliminare ${proj.name} dal cloud?`)) {
-                                                            await deleteProjectFromSupabase(proj.id);
-                                                            handleListProjects();
-                                                        }
-                                                    }}
-                                                    className="p-2.5 text-slate-300 hover:text-red-500 hover:bg-red-50 dark:hover:bg-red-900/20 rounded-xl transition-all"
-                                                    title="Elimina definitivo dal cloud"
-                                                  >
-                                                      <Trash2 className="w-5 h-5" />
-                                                  </button>
+                                              <div className="flex gap-1 shrink-0">
+                                                  <button onClick={() => handleDownload(proj.id)} className="p-2 text-indigo-600 hover:bg-indigo-50 rounded-lg"><Download className="w-4 h-4" /></button>
+                                                  <button onClick={() => {if(confirm(`Eliminare ${proj.name}?`)) deleteProjectFromSupabase(proj.id).then(handleListProjects)}} className="p-2 text-slate-300 hover:text-red-500"><Trash2 className="w-4 h-4" /></button>
                                               </div>
                                           </div>
                                       ))
@@ -403,52 +362,9 @@ const SettingsPanel: React.FC = () => {
                               </div>
                           </div>
                       ) : (
-                          <div className="p-10 text-center bg-slate-50 dark:bg-slate-900/50 border border-dashed border-slate-200 dark:border-slate-700 rounded-2xl flex flex-col items-center gap-3">
-                              <div className="w-12 h-12 bg-slate-100 dark:bg-slate-800 rounded-full flex items-center justify-center">
-                                  <WifiOff className="w-6 h-6 text-slate-300" />
-                              </div>
-                              <p className="text-sm font-medium text-slate-500">Connettiti per visualizzare i tuoi progetti nel cloud.</p>
-                          </div>
-                      )}
-                  </div>
-
-                  {/* SQL Setup Section */}
-                  <div className="bg-white dark:bg-slate-800 rounded-2xl shadow-sm border border-slate-200 dark:border-slate-700 p-6 overflow-hidden">
-                      <div className="flex items-center justify-between mb-4">
-                          <div>
-                              <h3 className="text-lg font-bold text-slate-800 dark:text-white flex items-center gap-2">
-                                  <Terminal className="w-5 h-5 text-slate-500" /> Configurazione Database (SQL)
-                              </h3>
-                              <p className="text-xs text-slate-500">Codice schema per lo SQL Editor di Supabase.</p>
-                          </div>
-                          <button 
-                            onClick={() => setShowSqlSchema(!showSqlSchema)} 
-                            className={`px-4 py-2 rounded-xl text-xs font-black uppercase transition-all ${showSqlSchema ? 'bg-slate-100 text-slate-600' : 'bg-indigo-50 text-indigo-600'}`}
-                          >
-                              {showSqlSchema ? 'Nascondi Codice' : 'Mostra Codice'}
-                          </button>
-                      </div>
-                      
-                      {showSqlSchema && (
-                          <div className="animate-in fade-in slide-in-from-top-4 duration-300">
-                              <div className="mb-4 p-4 bg-amber-50 dark:bg-amber-900/10 border border-amber-200 dark:border-amber-800 rounded-xl flex items-start gap-3">
-                                  <ShieldCheck className="w-5 h-5 text-amber-600 mt-0.5" />
-                                  <p className="text-xs text-amber-700 dark:text-amber-400 font-medium">
-                                      Assicurati di abilitare le tabelle e le policy di sicurezza (RLS) eseguendo questo script nel database per proteggere i tuoi dati.
-                                  </p>
-                              </div>
-                              <div className="relative group">
-                                  <pre className="p-6 bg-slate-900 text-indigo-300 rounded-2xl text-[11px] font-mono overflow-x-auto max-h-96 custom-scrollbar shadow-inner">
-                                      {SQL_SCHEMA}
-                                  </pre>
-                                  <button 
-                                    onClick={handleCopySql} 
-                                    className="absolute top-4 right-4 p-3 bg-slate-800 text-white rounded-xl hover:bg-slate-700 transition-all shadow-xl active:scale-95"
-                                    title="Copia negli appunti"
-                                  >
-                                      {copied ? <Check className="w-5 h-5 text-emerald-500" /> : <Copy className="w-5 h-5" />}
-                                  </button>
-                              </div>
+                          <div className="p-8 text-center bg-slate-50 dark:bg-slate-900/50 border border-dashed border-slate-200 rounded-2xl">
+                              <WifiOff className="w-6 h-6 text-slate-300 mx-auto mb-2" />
+                              <p className="text-xs font-medium text-slate-500">Accedi per usare il cloud.</p>
                           </div>
                       )}
                   </div>
@@ -457,157 +373,91 @@ const SettingsPanel: React.FC = () => {
 
           {/* TAB: DIAGNOSTICS */}
           {activeTab === 'diagnostics' && (
-              <div className="space-y-6 animate-in fade-in slide-in-from-bottom-4 duration-300">
-                  <div className="bg-white dark:bg-slate-800 rounded-2xl shadow-sm border border-slate-200 dark:border-slate-700 p-6">
-                      <div className="mb-8">
-                          <h3 className="text-xl font-bold text-slate-800 dark:text-white mb-1 flex items-center gap-2">
-                              <Stethoscope className="w-6 h-6 text-rose-500" />
-                              Salute & Diagnostica
+              <div className="space-y-6 animate-in fade-in slide-in-from-bottom-4">
+                  <div className="bg-white dark:bg-slate-800 rounded-2xl shadow-sm border border-slate-200 dark:border-slate-700 p-4 md:p-6">
+                      <div className="mb-6">
+                          <h3 className="text-lg font-bold text-slate-800 dark:text-white flex items-center gap-2">
+                              <Stethoscope className="w-6 h-6 text-rose-500" /> Diagnostica
                           </h3>
-                          <p className="text-sm text-slate-500">
-                              Controlla l'integrità del grafo del progetto e risolvi rami scollegati o ID radice errati.
-                          </p>
+                          <p className="text-xs text-slate-500">Risolvi problemi di rami isolati o radici legacy.</p>
                       </div>
 
                       {!healthReport ? (
-                           <button 
-                            onClick={handleRunAnalysis}
-                            disabled={isAnalyzing}
-                            className="w-full py-10 bg-slate-50 dark:bg-slate-900/50 border-2 border-dashed border-slate-200 dark:border-slate-700 rounded-3xl flex flex-col items-center justify-center gap-4 hover:bg-slate-100 dark:hover:bg-slate-800 hover:border-indigo-300 transition-all group"
-                          >
-                              <div className="w-16 h-16 bg-white dark:bg-slate-800 rounded-full shadow-lg flex items-center justify-center transition-transform group-hover:scale-110">
-                                {isAnalyzing ? <Loader2 className="w-8 h-8 animate-spin text-indigo-500" /> : <Search className="w-8 h-8 text-slate-400 group-hover:text-indigo-500" />}
-                              </div>
-                              <span className="font-black text-slate-500 dark:text-slate-400 uppercase tracking-widest">{isAnalyzing ? 'Analisi Strutturale...' : 'Avvia Check Integrità'}</span>
+                           <button onClick={handleRunAnalysis} disabled={isAnalyzing} className="w-full py-10 bg-slate-50 dark:bg-slate-900/50 border-2 border-dashed border-slate-200 rounded-2xl flex flex-col items-center justify-center gap-3">
+                              {isAnalyzing ? <Loader2 className="w-8 h-8 animate-spin text-indigo-500" /> : <Search className="w-8 h-8 text-slate-400" />}
+                              <span className="font-black text-slate-500 uppercase text-[10px] tracking-widest">{isAnalyzing ? 'Analisi...' : 'Avvia Check'}</span>
                           </button>
                       ) : (
-                          <div className="space-y-8 animate-in fade-in zoom-in-95 duration-200">
-                              {/* Phase 1: Critical Root Issues */}
-                              {(healthReport.legacyRootFound || healthReport.missingRootNode) ? (
-                                  <div className="p-6 bg-rose-50 dark:bg-rose-900/10 border border-rose-200 dark:border-rose-800 rounded-2xl">
-                                      <div className="flex items-start gap-4">
-                                          <div className="w-12 h-12 rounded-full bg-rose-100 dark:bg-rose-900/40 flex items-center justify-center shrink-0">
-                                              <AlertTriangle className="w-6 h-6 text-rose-600" />
-                                          </div>
-                                          <div className="flex-1">
-                                              <div className="flex items-center gap-2 mb-2">
-                                                  <span className="bg-rose-600 text-white text-[10px] font-black px-2 py-0.5 rounded shadow-sm">FASE 1</span>
-                                                  <p className="text-lg font-black text-rose-800 dark:text-rose-300">Problemi alla Radice</p>
-                                              </div>
-                                              <ul className="text-sm text-rose-700 dark:text-rose-400 list-disc ml-5 space-y-1 font-medium">
-                                                  {healthReport.legacyRootFound && <li>ID 'root' legacy individuato. Migrazione a UUID richiesta.</li>}
-                                                  {healthReport.missingRootNode && <li>Nodo di ingresso mancante o distrutto.</li>}
-                                              </ul>
-                                              <p className="text-xs mt-3 text-rose-600/80 dark:text-rose-400/80 italic font-bold">
-                                                  Esegui questo fix prima di procedere al ripristino degli orfani.
+                          <div className="space-y-8">
+                              {/* PHASE 1: ROOT REPAIR */}
+                              <div className={`p-4 rounded-2xl border transition-all ${ (healthReport.legacyRootFound || healthReport.missingRootNode) ? 'bg-rose-50 border-rose-200 dark:bg-rose-900/10 dark:border-rose-800' : 'bg-emerald-50 border-emerald-200 dark:bg-emerald-900/10 dark:border-emerald-800'}`}>
+                                  <div className="flex flex-col sm:flex-row items-start sm:items-center gap-4">
+                                      <div className={`w-10 h-10 rounded-full flex items-center justify-center shrink-0 ${ (healthReport.legacyRootFound || healthReport.missingRootNode) ? 'bg-rose-100 text-rose-600' : 'bg-emerald-100 text-emerald-600'}`}>
+                                          { (healthReport.legacyRootFound || healthReport.missingRootNode) ? <AlertTriangle className="w-5 h-5" /> : <Check className="w-5 h-5" />}
+                                      </div>
+                                      <div className="flex-1 min-w-0">
+                                          <div className="flex items-center gap-2 mb-1">
+                                              <span className={`text-[9px] font-black px-1.5 py-0.5 rounded text-white ${ (healthReport.legacyRootFound || healthReport.missingRootNode) ? 'bg-rose-600' : 'bg-emerald-600'}`}>FASE 1</span>
+                                              <p className={`text-sm font-bold ${ (healthReport.legacyRootFound || healthReport.missingRootNode) ? 'text-rose-800 dark:text-rose-300' : 'text-emerald-800 dark:text-emerald-300'}`}>
+                                                  { (healthReport.legacyRootFound || healthReport.missingRootNode) ? 'Riparazione Radice Richiesta' : 'Radice Integra'}
                                               </p>
                                           </div>
+                                          <p className="text-[10px] text-slate-500 dark:text-slate-400 font-medium leading-tight">
+                                              { (healthReport.legacyRootFound || healthReport.missingRootNode) 
+                                                ? "Il sistema ha rilevato errori strutturali critici. Esegui il Fix prima di recuperare i rami orfani." 
+                                                : "La struttura principale del progetto è corretta." }
+                                          </p>
+                                      </div>
+                                      {(healthReport.legacyRootFound || healthReport.missingRootNode) && (
                                           <button 
-                                            onClick={handleFixRootIssues}
-                                            disabled={isRepairing}
-                                            className="px-6 py-3 bg-rose-600 hover:bg-rose-700 text-white rounded-xl text-sm font-black shadow-lg shadow-rose-500/20 flex items-center gap-2 transition-all active:scale-95"
+                                            onClick={handleFixRootIssues} 
+                                            disabled={isRepairing} 
+                                            className="w-full sm:w-auto px-4 py-2 bg-rose-600 text-white rounded-xl text-xs font-black shadow-lg flex items-center justify-center gap-2"
                                           >
-                                              {isRepairing ? <Loader2 className="w-4 h-4 animate-spin" /> : <RefreshCw className="w-4 h-4" />}
-                                              Correggi Ora
+                                              {isRepairing ? <Loader2 className="w-3.5 h-3.5 animate-spin" /> : <Rocket className="w-3.5 h-3.5" />} FIX RADICE
                                           </button>
-                                      </div>
+                                      )}
                                   </div>
-                              ) : (
-                                  <div className="p-4 bg-emerald-50 dark:bg-emerald-900/10 border border-emerald-200 dark:border-emerald-800 rounded-2xl flex items-center gap-4">
-                                      <div className="w-10 h-10 rounded-full bg-emerald-100 dark:bg-emerald-900/40 flex items-center justify-center shrink-0">
-                                          <Check className="w-5 h-5 text-emerald-600" />
-                                      </div>
-                                      <div>
-                                          <p className="text-sm font-black text-emerald-800 dark:text-emerald-400 uppercase tracking-tight">Radice Progetto Integra</p>
-                                          <p className="text-xs text-emerald-600/80 dark:text-emerald-400/80">Il punto di ingresso del workflow è configurato correttamente.</p>
-                                      </div>
-                                  </div>
-                              )}
+                              </div>
 
-                              {/* Phase 2: Orphaned Branches */}
-                              <div>
+                              {/* PHASE 2: ORPHAN RECOVERY */}
+                              <div className={ (healthReport.legacyRootFound || healthReport.missingRootNode) ? 'opacity-40 grayscale pointer-events-none' : ''}>
                                   <div className="flex items-center justify-between mb-4">
                                       <div className="flex items-center gap-2">
-                                          {healthReport.orphanedBranches.length > 0 && !healthReport.legacyRootFound && !healthReport.missingRootNode && (
-                                              <span className="bg-indigo-600 text-white text-[10px] font-black px-2 py-0.5 rounded shadow-sm">FASE 2</span>
-                                          )}
-                                          <h4 className="text-sm font-black uppercase text-slate-400 tracking-widest">
-                                              Rami Isolati / Orfani ({healthReport.orphanedBranches.length})
-                                          </h4>
+                                          <span className="bg-indigo-600 text-white text-[9px] font-black px-1.5 py-0.5 rounded">FASE 2</span>
+                                          <h4 className="text-[10px] font-black uppercase text-slate-400 tracking-widest">Rami Orfani ({healthReport.orphanedBranches.length})</h4>
                                       </div>
-                                      {healthReport.orphanedBranches.length > 0 && (
-                                          <div className="flex gap-3">
-                                              <button onClick={() => setSelectedOrphans(healthReport.orphanedBranches.map(o => o.id))} className="text-[10px] font-black uppercase text-indigo-600 hover:text-indigo-700 underline underline-offset-2">Seleziona Tutti</button>
-                                              <button onClick={() => setSelectedOrphans([])} className="text-[10px] font-black uppercase text-slate-400 hover:text-slate-600 underline underline-offset-2">Pulisci Selezione</button>
-                                          </div>
-                                      )}
                                   </div>
 
                                   {healthReport.orphanedBranches.length === 0 ? (
-                                      <div className="p-8 text-center bg-slate-50 dark:bg-slate-900/40 rounded-2xl border border-slate-200 dark:border-slate-800">
-                                          <Check className="w-10 h-10 text-emerald-500 mx-auto mb-2" />
-                                          <p className="text-sm font-bold text-slate-600 dark:text-slate-400">Nessun ramo orfano. Struttura del grafo ottimale.</p>
+                                      <div className="p-6 text-center bg-slate-50 dark:bg-slate-900/40 rounded-2xl border border-slate-200 dark:border-slate-800">
+                                          <Check className="w-8 h-8 text-emerald-500 mx-auto mb-2" />
+                                          <p className="text-xs font-bold text-slate-500">Tutti i rami sono collegati correttamente.</p>
                                       </div>
                                   ) : (
-                                      <div className="space-y-2 max-h-96 overflow-y-auto pr-3 custom-scrollbar">
-                                          {healthReport.orphanedBranches.map((orphan: any) => {
-                                              const statusCfg = STATUS_CONFIG[orphan.status as keyof typeof STATUS_CONFIG];
-                                              const progressPct = orphan.taskCount > 0 ? (orphan.completedCount / orphan.taskCount) * 100 : 0;
-                                              const isSel = selectedOrphans.includes(orphan.id);
-                                              return (
-                                                  <div 
-                                                    key={orphan.id} 
-                                                    onClick={() => setSelectedOrphans(prev => isSel ? prev.filter(id => id !== orphan.id) : [...prev, orphan.id])}
-                                                    className={`flex items-center gap-4 p-4 rounded-xl border transition-all cursor-pointer ${isSel ? 'bg-indigo-50 border-indigo-300 dark:bg-indigo-900/20 dark:border-indigo-700 shadow-sm' : 'bg-white dark:bg-slate-900 border-slate-100 dark:border-slate-800 hover:border-slate-300 shadow-xs'}`}
-                                                  >
-                                                      {isSel ? <CheckSquare className="w-6 h-6 text-indigo-600 shrink-0" /> : <Square className="w-6 h-6 text-slate-200 shrink-0" />}
-                                                      <div className="min-w-0 flex-1">
-                                                          <div className="flex items-center gap-2 mb-1.5">
-                                                              {orphan.isLabel ? <Tag className="w-4 h-4 text-amber-500" /> : <GitBranch className="w-4 h-4 text-indigo-500" />}
-                                                              <span className="text-sm font-black text-slate-700 dark:text-slate-200 truncate">{orphan.title || '(Senza Titolo)'}</span>
-                                                              <span className={`text-[8px] font-black uppercase px-2 py-0.5 rounded-full border border-current leading-none ${statusCfg?.color || 'text-slate-400'}`}>
-                                                                  {orphan.status}
-                                                              </span>
-                                                          </div>
-                                                          <div className="flex items-center gap-4">
-                                                               <div className="flex flex-col gap-1 w-full max-w-[200px]">
-                                                                    <div className="flex justify-between text-[9px] font-black uppercase text-slate-400 tracking-tighter leading-none mb-0.5">
-                                                                        <span>Progresso Orfano</span>
-                                                                        <span>{orphan.completedCount}/{orphan.taskCount}</span>
-                                                                    </div>
-                                                                    <div className="h-1.5 w-full bg-slate-100 dark:bg-slate-800 rounded-full overflow-hidden">
-                                                                        <div className="h-full bg-indigo-500 transition-all duration-700" style={{ width: `${progressPct}%` }} />
-                                                                    </div>
-                                                               </div>
-                                                          </div>
-                                                      </div>
+                                      <div className="space-y-2 max-h-64 overflow-y-auto pr-1">
+                                          {healthReport.orphanedBranches.map((orphan: any) => (
+                                              <div key={orphan.id} onClick={() => setSelectedOrphans(prev => prev.includes(orphan.id) ? prev.filter(id => id !== orphan.id) : [...prev, orphan.id])} className={`flex items-center gap-3 p-3 rounded-xl border cursor-pointer transition-all ${selectedOrphans.includes(orphan.id) ? 'bg-indigo-50 border-indigo-300 dark:bg-indigo-900/20' : 'bg-white dark:bg-slate-900 border-slate-100'}`}>
+                                                  {selectedOrphans.includes(orphan.id) ? <CheckSquare className="w-4 h-4 text-indigo-600" /> : <Square className="w-4 h-4 text-slate-200" />}
+                                                  <div className="min-w-0 flex-1">
+                                                      <p className="text-xs font-bold text-slate-700 dark:text-slate-200 truncate">{orphan.title || '(Senza Titolo)'}</p>
+                                                      <p className="text-[9px] text-slate-400 font-bold uppercase">{orphan.status}</p>
                                                   </div>
-                                              );
-                                          })}
+                                              </div>
+                                          ))}
+                                      </div>
+                                  )}
+
+                                  {selectedOrphans.length > 0 && (
+                                      <div className="mt-4 flex gap-2">
+                                          <button onClick={handleRestoreSelectedOrphans} className="flex-1 py-3 bg-indigo-600 text-white rounded-xl text-[10px] font-black uppercase flex items-center justify-center gap-2">
+                                              <RefreshCw className="w-4 h-4" /> Ripristina Selezionati
+                                          </button>
                                       </div>
                                   )}
                               </div>
-
-                              {/* Orphan Actions */}
-                              {selectedOrphans.length > 0 && (
-                                  <div className={`flex flex-col sm:flex-row gap-4 p-5 bg-slate-50 dark:bg-slate-900 rounded-2xl border border-slate-200 dark:border-slate-700 animate-in slide-in-from-bottom-2 duration-300 ${(healthReport.legacyRootFound || healthReport.missingRootNode) ? 'opacity-50 grayscale pointer-events-none' : ''}`}>
-                                      <div className="flex-1">
-                                          <p className="text-sm font-black text-slate-800 dark:text-white uppercase tracking-tight">{selectedOrphans.length} rami pronti al rientro</p>
-                                          <p className="text-xs text-slate-500 font-medium">Verranno collegati automaticamente al nodo Radice del progetto.</p>
-                                      </div>
-                                      <div className="flex gap-2 shrink-0">
-                                          <button onClick={handleRestoreSelectedOrphans} className="flex-1 sm:flex-none px-6 py-3 bg-indigo-600 hover:bg-indigo-700 text-white rounded-xl text-xs font-black uppercase shadow-lg shadow-indigo-500/20 flex items-center justify-center gap-2 transition-all">
-                                              <RefreshCw className="w-4 h-4" /> Ripristina
-                                          </button>
-                                          <button onClick={() => { if(confirm(`Eliminare definitivamente ${selectedOrphans.length} rami?`)) resolveOrphans([], selectedOrphans); setHealthReport(null); }} className="flex-1 sm:flex-none px-6 py-3 bg-white dark:bg-slate-800 text-rose-600 hover:bg-rose-50 dark:hover:bg-rose-900/20 border border-rose-200 dark:border-rose-900 rounded-xl text-xs font-black uppercase transition-all">
-                                              Elimina
-                                          </button>
-                                      </div>
-                                  </div>
-                              )}
-                              
-                              <div className="flex justify-center pt-4">
-                                  <button onClick={() => setHealthReport(null)} className="text-[10px] font-black text-slate-400 hover:text-slate-600 uppercase tracking-widest transition-colors">Chiudi Report</button>
+                              <div className="flex justify-center pt-2">
+                                  <button onClick={() => setHealthReport(null)} className="text-[9px] font-black text-slate-400 uppercase tracking-widest">Chiudi Report</button>
                               </div>
                           </div>
                       )}
@@ -617,43 +467,25 @@ const SettingsPanel: React.FC = () => {
 
           {/* TAB: MAINTENANCE */}
           {activeTab === 'maintenance' && (
-              <div className="space-y-6 animate-in fade-in slide-in-from-bottom-4 duration-300">
-                  <div className="bg-white dark:bg-slate-800 rounded-2xl shadow-sm border border-slate-200 dark:border-slate-700 p-6">
-                      <div className="mb-8 text-center sm:text-left">
-                          <h3 className="text-xl font-bold text-slate-800 dark:text-white mb-1 flex items-center justify-center sm:justify-start gap-2">
-                              <Eraser className="w-6 h-6 text-amber-500" /> Manutenzione Task
-                          </h3>
-                          <p className="text-sm text-slate-500">Alleggerisci il progetto rimuovendo lo storico dei task completati da tempo.</p>
+              <div className="space-y-6 animate-in fade-in slide-in-from-bottom-4">
+                  <div className="bg-white dark:bg-slate-800 rounded-2xl shadow-sm border border-slate-200 dark:border-slate-700 p-4 md:p-6 text-center sm:text-left">
+                      <div className="mb-6">
+                          <h3 className="text-lg font-bold text-slate-800 dark:text-white flex items-center gap-2"><Eraser className="w-6 h-6 text-amber-500" /> Pulizia Task</h3>
+                          <p className="text-xs text-slate-500">Libera spazio eliminando i task vecchi.</p>
                       </div>
 
-                      <div className="bg-slate-50 dark:bg-slate-900/50 rounded-3xl border border-slate-100 dark:border-slate-800 p-8 flex flex-col md:flex-row items-center gap-10">
-                          <div className="flex-1 w-full space-y-6">
-                              <div className="flex justify-between items-end">
-                                  <div>
-                                      <label className="text-sm font-black text-slate-700 dark:text-slate-300 uppercase tracking-tight">Soglia di Anzianità</label>
-                                      <p className="text-xs text-slate-500">Task chiusi da almeno...</p>
-                                  </div>
-                                  <span className="bg-indigo-100 dark:bg-indigo-900 text-indigo-600 dark:text-indigo-400 px-4 py-1.5 rounded-full text-sm font-black">{cleanupMonths} Mesi</span>
+                      <div className="bg-slate-50 dark:bg-slate-900/50 rounded-3xl border border-slate-100 p-6 flex flex-col items-center gap-6">
+                          <div className="w-full">
+                              <div className="flex justify-between items-end mb-4">
+                                  <label className="text-[10px] font-black text-slate-400 uppercase">Anzianità</label>
+                                  <span className="bg-indigo-100 text-indigo-600 px-3 py-1 rounded-full text-xs font-black">{cleanupMonths} Mesi</span>
                               </div>
-                              <input type="range" min="1" max="24" value={cleanupMonths} onChange={(e) => setCleanupMonths(parseInt(e.target.value))} className="w-full h-3 bg-slate-200 dark:bg-slate-700 rounded-lg appearance-none cursor-pointer accent-indigo-600" />
-                              <div className="flex justify-between text-[10px] font-black text-slate-400 uppercase">
-                                  <span>1 Mese</span>
-                                  <span>2 Anni</span>
-                              </div>
+                              <input type="range" min="1" max="24" value={cleanupMonths} onChange={(e) => setCleanupMonths(parseInt(e.target.value))} className="w-full accent-indigo-600" />
                           </div>
-                          
-                          <div className="shrink-0 flex flex-col items-center gap-4 bg-white dark:bg-slate-800 p-6 rounded-3xl border border-slate-100 dark:border-slate-700 shadow-xl">
-                              <div className="text-center">
-                                  <span className="text-4xl font-black text-slate-800 dark:text-white leading-none">{cleanupStats}</span>
-                                  <p className="text-[10px] font-black uppercase text-slate-400 mt-1">Task Trovati</p>
-                              </div>
-                              <button 
-                                onClick={() => setShowCleanupConfirm(true)} 
-                                disabled={cleanupStats === 0} 
-                                className="px-8 py-4 bg-amber-600 hover:bg-amber-700 text-white rounded-2xl shadow-xl shadow-amber-500/20 font-black text-sm uppercase tracking-widest flex items-center justify-center gap-3 transition-all active:scale-95 disabled:opacity-50 disabled:grayscale"
-                              >
-                                  <Eraser className="w-5 h-5" /> Pulisci Database
-                              </button>
+                          <div className="bg-white dark:bg-slate-800 p-5 rounded-2xl border border-slate-100 shadow-xl w-full max-w-[240px]">
+                              <span className="text-3xl font-black text-slate-800 dark:text-white leading-none">{cleanupStats}</span>
+                              <p className="text-[9px] font-black uppercase text-slate-400 mt-1">Task Trovati</p>
+                              <button onClick={() => setShowCleanupConfirm(true)} disabled={cleanupStats === 0} className="w-full mt-4 py-3 bg-amber-600 text-white rounded-xl font-black text-[10px] uppercase disabled:opacity-30">Avvia Pulizia</button>
                           </div>
                       </div>
                   </div>
@@ -662,43 +494,20 @@ const SettingsPanel: React.FC = () => {
 
           {/* TAB: PREFERENCES */}
           {activeTab === 'preferences' && (
-              <div className="space-y-6 animate-in fade-in slide-in-from-bottom-4 duration-300">
-                  <div className="bg-white dark:bg-slate-800 rounded-2xl shadow-sm border border-slate-200 dark:border-slate-700 p-6">
-                      <h3 className="text-xl font-bold text-slate-800 dark:text-white mb-1 flex items-center gap-2">
-                          <MessageSquare className="w-6 h-6 text-indigo-500" /> Template Solleciti
-                      </h3>
-                      <p className="text-sm text-slate-500 mb-6">Personalizza i messaggi predefiniti inviati tramite WhatsApp ed Email.</p>
-                      
-                      <div className="space-y-6">
+              <div className="space-y-6 animate-in fade-in slide-in-from-bottom-4">
+                  <div className="bg-white dark:bg-slate-800 rounded-2xl shadow-sm border border-slate-200 dark:border-slate-700 p-4 md:p-6">
+                      <h3 className="text-lg font-bold text-slate-800 dark:text-white mb-1 flex items-center gap-2"><MessageSquare className="w-5 h-5 text-indigo-500" /> Template</h3>
+                      <p className="text-xs text-slate-500 mb-6">Personalizza i solleciti WhatsApp/Email.</p>
+                      <div className="space-y-5">
                           <div>
-                              <div className="flex items-center justify-between mb-2">
-                                  <label className="text-[10px] font-black uppercase text-slate-400 tracking-widest">Testo di Apertura</label>
-                                  <span className="text-[9px] font-medium text-indigo-500 bg-indigo-50 dark:bg-indigo-900/30 px-2 py-0.5 rounded">Usa {`{name}`} per il nome utente</span>
-                              </div>
-                              <textarea 
-                                value={msgOpening}
-                                onChange={(e) => setMsgOpening(e.target.value)}
-                                className="w-full p-4 rounded-xl border border-slate-200 dark:border-slate-700 bg-slate-50 dark:bg-slate-900 text-sm focus:ring-2 focus:ring-indigo-500 outline-none transition-all resize-none h-24"
-                                placeholder="Ciao {name}, come procede..."
-                              />
+                              <label className="text-[9px] font-black uppercase text-slate-400 mb-1.5 block">Testo Apertura</label>
+                              <textarea value={msgOpening} onChange={(e) => setMsgOpening(e.target.value)} className="w-full p-3 rounded-xl border border-slate-200 dark:border-slate-700 bg-slate-50 dark:bg-slate-900 text-xs focus:ring-1 focus:ring-indigo-500 outline-none h-24" />
                           </div>
                           <div>
-                              <label className="text-[10px] font-black uppercase text-slate-400 mb-2 block tracking-widest">Saluti di Chiusura</label>
-                              <textarea 
-                                value={msgClosing}
-                                onChange={(e) => setMsgClosing(e.target.value)}
-                                className="w-full p-4 rounded-xl border border-slate-200 dark:border-slate-700 bg-slate-50 dark:bg-slate-900 text-sm focus:ring-2 focus:ring-indigo-500 outline-none transition-all resize-none h-24"
-                                placeholder="Fammi sapere se hai bisogno di aiuto!"
-                              />
+                              <label className="text-[9px] font-black uppercase text-slate-400 mb-1.5 block">Testo Chiusura</label>
+                              <textarea value={msgClosing} onChange={(e) => setMsgClosing(e.target.value)} className="w-full p-3 rounded-xl border border-slate-200 dark:border-slate-700 bg-slate-50 dark:bg-slate-900 text-xs focus:ring-1 focus:ring-indigo-500 outline-none h-24" />
                           </div>
-                          <div className="pt-2">
-                              <button 
-                                onClick={handleSaveTemplates}
-                                className="px-8 py-3 bg-indigo-600 hover:bg-indigo-700 text-white rounded-xl text-sm font-black shadow-lg shadow-indigo-500/20 transition-all active:scale-95 flex items-center gap-2"
-                              >
-                                  <Save className="w-4 h-4" /> Salva Template
-                              </button>
-                          </div>
+                          <button onClick={handleSaveTemplates} className="w-full sm:w-auto px-8 py-2.5 bg-indigo-600 text-white rounded-xl text-xs font-black">Salva Template</button>
                       </div>
                   </div>
               </div>
@@ -707,32 +516,14 @@ const SettingsPanel: React.FC = () => {
 
       {/* Cleanup Modal */}
       {showCleanupConfirm && (
-          <div className="fixed inset-0 z-[200] flex items-center justify-center p-4 bg-black/70 backdrop-blur-md animate-in fade-in duration-300">
-              <div className="bg-white dark:bg-slate-800 w-full max-w-md rounded-3xl shadow-2xl border border-gray-200 dark:border-slate-700 p-8 text-center animate-in zoom-in-95">
-                  <div className="w-20 h-20 bg-amber-100 dark:bg-amber-900/40 rounded-full flex items-center justify-center text-amber-600 mx-auto mb-6 shadow-inner">
-                      <AlertTriangle className="w-10 h-10" />
-                  </div>
-                  <h3 className="text-2xl font-black text-slate-900 dark:text-white uppercase tracking-tight">Conferma Pulizia</h3>
-                  <p className="text-sm text-slate-500 dark:text-slate-400 mt-4 leading-relaxed">
-                      Stai per eliminare definitivamente <strong>{cleanupStats} task</strong> chiusi da oltre {cleanupMonths} mesi. 
-                      <br/><br/>
-                      <span className="font-bold text-rose-500">Questa azione non può essere annullata.</span>
-                  </p>
-                  <div className="flex flex-col sm:flex-row gap-3 mt-8">
-                      <button 
-                        onClick={() => setShowCleanupConfirm(false)}
-                        className="flex-1 py-3.5 bg-slate-100 dark:bg-slate-700 text-slate-700 dark:text-slate-300 rounded-2xl font-black text-xs uppercase tracking-widest transition-all hover:bg-slate-200"
-                      >
-                          Annulla
-                      </button>
-                      <button 
-                        onClick={handleRunCleanup}
-                        disabled={isCleaning}
-                        className="flex-1 py-3.5 bg-rose-600 hover:bg-rose-700 text-white rounded-2xl font-black text-xs uppercase tracking-widest shadow-lg shadow-rose-500/30 flex items-center justify-center gap-2 transition-all active:scale-95 disabled:opacity-50"
-                      >
-                          {isCleaning ? <Loader2 className="w-4 h-4 animate-spin" /> : <Trash2 className="w-4 h-4" />}
-                          Elimina Ora
-                      </button>
+          <div className="fixed inset-0 z-[200] flex items-center justify-center p-4 bg-black/70 backdrop-blur-md animate-in fade-in">
+              <div className="bg-white dark:bg-slate-800 w-full max-w-sm rounded-3xl p-6 text-center animate-in zoom-in-95">
+                  <AlertTriangle className="w-12 h-12 text-amber-600 mx-auto mb-4" />
+                  <h3 className="text-xl font-black uppercase">Conferma Pulizia</h3>
+                  <p className="text-xs text-slate-500 mt-2">Questa azione eliminerà {cleanupStats} task chiusi e non potrà essere annullata.</p>
+                  <div className="flex gap-2 mt-6">
+                      <button onClick={() => setShowCleanupConfirm(false)} className="flex-1 py-3 bg-slate-100 rounded-xl text-[10px] font-black uppercase">Annulla</button>
+                      <button onClick={handleRunCleanup} disabled={isCleaning} className="flex-1 py-3 bg-rose-600 text-white rounded-xl text-[10px] font-black uppercase">Conferma</button>
                   </div>
               </div>
           </div>
