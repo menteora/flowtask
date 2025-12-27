@@ -1,27 +1,40 @@
+
 import { BranchStatus, ProjectState, Person } from './types';
 import { Users, AlertCircle, CheckCircle2, XCircle, Clock, Map } from 'lucide-react';
 import React from 'react';
 
 export const INITIAL_PEOPLE: Person[] = [];
 
-export const INITIAL_STATE: ProjectState = {
-  id: 'default-project',
-  name: 'Nuovo Progetto',
-  rootBranchId: 'root',
-  people: [],
-  branches: {
-    'root': {
-      id: 'root',
-      title: 'Inizio Progetto',
-      description: 'Punto di partenza del flusso',
-      status: BranchStatus.PLANNED,
-      isLabel: true, // Default to Label for root
-      tasks: [],
-      childrenIds: [],
-      parentIds: [],
+/**
+ * Genera uno stato di progetto iniziale con ID univoci.
+ * Il primo ramo (root) riceve un ID generato casualmente invece di 'root'.
+ */
+export const createInitialProjectState = (name: string = 'Nuovo Progetto'): ProjectState => {
+  const projectId = crypto.randomUUID();
+  const rootBranchId = crypto.randomUUID();
+  
+  return {
+    id: projectId,
+    name: name,
+    rootBranchId: rootBranchId,
+    people: [],
+    branches: {
+      [rootBranchId]: {
+        id: rootBranchId,
+        title: 'Inizio Progetto',
+        description: 'Punto di partenza del flusso',
+        status: BranchStatus.PLANNED,
+        isLabel: true, // Il root parte solitamente come etichetta
+        tasks: [],
+        childrenIds: [],
+        parentIds: [],
+      }
     }
-  }
+  };
 };
+
+// INITIAL_STATE viene ora usato come riferimento, ma l'app userà la factory per i nuovi progetti
+export const INITIAL_STATE: ProjectState = createInitialProjectState();
 
 export const STATUS_CONFIG = {
   [BranchStatus.PLANNED]: { color: 'text-slate-600 bg-slate-100 dark:bg-slate-800 dark:text-slate-400', icon: <Map className="w-4 h-4" />, label: 'Pianificato' },
