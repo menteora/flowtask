@@ -67,7 +67,7 @@ interface ProjectContextType {
   cleanupOldTasks: (months: number) => Promise<{ count: number; backup: any[] }>;
 
   checkProjectHealth: () => ProjectHealthReport;
-  repairProjectStructure: () => void;
+  repairProjectStructure: () => Promise<void>;
   resolveOrphans: (idsToFix: string[], idsToDelete: string[]) => void;
 
   addPerson: (name: string, email?: string, phone?: string) => void;
@@ -997,61 +997,87 @@ export const ProjectProvider: React.FC<{ children: React.ReactNode }> = ({ child
       return report;
   }, [activeProject]);
 
-  const repairProjectStructure = useCallback(() => {
+  const repairProjectStructure = useCallback(async () => {
+      let finalRootId = activeProject.rootBranchId;
+      let finalBranches = { ...activeProject.branches };
+
+      // 1. Identifica se c'è un problema di ID radice legacy o mancante
+      if (finalBranches['root'] || finalRootId === 'root') {
+          const oldRoot = finalBranches['root'] || finalBranches[finalRootId];
+          const newRootId = crypto.randomUUID();
+          
+          if (oldRoot) {
+              finalBranches[newRootId] = { 
+                  ...oldRoot, 
+                  id: newRootId,
+                  parentIds: [] 
+              };
+              
+              // Sposta i figli al nuovo ID radice
+              if (oldRoot.childrenIds) {
+                  oldRoot.childrenIds.forEach(cid => {
+                      if (finalBranches[cid]) {
+                          finalBranches[cid] = {
+                              ...finalBranches[cid],
+                              parentIds: (finalBranches[cid].parentIds || []).map(pid => pid === oldRoot.id || pid === 'root' ? newRootId : pid)
+                          };
+                      }
+                  });
+              }
+              
+              delete finalBranches['root'];
+              if (finalRootId !== 'root') delete finalBranches[finalRootId];
+              finalRootId = newRootId;
+          }
+      }
+
+      // 2. Se ancora manca il nodo radice, crealo
+      if (!finalBranches[finalRootId]) {
+          finalBranches[finalRootId] = {
+              id: finalRootId,
+              title: 'Inizio Progetto (Ripristinato)',
+              status: BranchStatus.PLANNED,
+              isLabel: true,
+              tasks: [],
+              childrenIds: [],
+              parentIds: [],
+          };
+      }
+
+      // 3. Applica i cambiamenti locali
       setProjects(prev => prev.map(p => {
           if (p.id !== activeProjectId) return p;
-          
-          let updatedBranches = { ...p.branches };
-          let updatedRootId = p.rootBranchId;
-
-          if (updatedBranches['root'] || updatedRootId === 'root') {
-              const oldRoot = updatedBranches['root'] || updatedBranches[updatedRootId];
-              const newRootId = crypto.randomUUID();
-              
-              if (oldRoot) {
-                  updatedBranches[newRootId] = { 
-                      ...oldRoot, 
-                      id: newRootId,
-                      parentIds: [] 
-                  };
-                  
-                  if (oldRoot.childrenIds) {
-                      oldRoot.childrenIds.forEach(cid => {
-                          if (updatedBranches[cid]) {
-                              updatedBranches[cid] = {
-                                  ...updatedBranches[cid],
-                                  parentIds: (updatedBranches[cid].parentIds || []).map(pid => pid === oldRoot.id || pid === 'root' ? newRootId : pid)
-                              };
-                          }
-                      });
-                  }
-                  
-                  delete updatedBranches['root'];
-                  if (updatedRootId !== 'root') delete updatedBranches[updatedRootId];
-                  updatedRootId = newRootId;
-              }
-          }
-
-          if (!updatedBranches[updatedRootId]) {
-              updatedBranches[updatedRootId] = {
-                  id: updatedRootId,
-                  title: 'Inizio Progetto (Ripristinato)',
-                  status: BranchStatus.PLANNED,
-                  isLabel: true,
-                  tasks: [],
-                  childrenIds: [],
-                  parentIds: [],
-              };
-          }
-
           return { 
               ...p, 
-              rootBranchId: updatedRootId, 
-              branches: updatedBranches 
+              rootBranchId: finalRootId, 
+              branches: finalBranches 
           };
       }));
+
+      // 4. Se connesso al cloud, sincronizza immediatamente la radice per evitare discrepanze
+      if (session && !isOfflineMode && supabaseClient) {
+          try {
+              setAutoSaveStatus('saving');
+              const { error } = await supabaseClient
+                  .from('flowtask_projects')
+                  .update({ root_branch_id: finalRootId })
+                  .eq('id', activeProjectId);
+              
+              if (error) throw error;
+              
+              // Carica i rami modificati (specialmente se l'ID è cambiato)
+              await uploadProjectToSupabase(); 
+              setAutoSaveStatus('saved');
+              setTimeout(() => setAutoSaveStatus('idle'), 2000);
+          } catch (e: any) {
+              console.error("Remote root update error", e);
+              setAutoSaveStatus('error');
+              showNotification("Errore sincronizzazione radice remota.", 'error');
+          }
+      }
+
       showNotification("Integrità radice ripristinata.", 'success');
-  }, [activeProjectId, showNotification]);
+  }, [activeProjectId, activeProject, session, isOfflineMode, supabaseClient, uploadProjectToSupabase, showNotification]);
 
   const resolveOrphans = useCallback((idsToFix: string[], idsToDelete: string[]) => {
       setProjects(prev => prev.map(p => {
