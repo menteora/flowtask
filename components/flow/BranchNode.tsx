@@ -15,11 +15,9 @@ const BranchNode: React.FC<BranchNodeProps> = ({ branchId }) => {
   const [isTasksExpanded, setIsTasksExpanded] = useState(false);
   const branch = state.branches[branchId];
   
-  // Logic for compacted view on inactive branches
   const isInactive = branch?.status === BranchStatus.CLOSED || branch?.status === BranchStatus.CANCELLED;
   const [isDetailsOpen, setIsDetailsOpen] = useState(!isInactive);
 
-  // Sync details visibility when status changes
   useEffect(() => {
       if (branch) {
         const inactive = branch.status === BranchStatus.CLOSED || branch.status === BranchStatus.CANCELLED;
@@ -27,7 +25,6 @@ const BranchNode: React.FC<BranchNodeProps> = ({ branchId }) => {
       }
   }, [branch?.status]);
 
-  // Sort tasks: Open first, Completed last, filter by showOnlyOpen
   const sortedTasks = useMemo(() => {
     if (!branch) return [];
     let list = [...branch.tasks];
@@ -43,13 +40,10 @@ const BranchNode: React.FC<BranchNodeProps> = ({ branchId }) => {
   if (!branch) return null;
 
   const isSelected = selectedBranchId === branchId;
-
-  // Stats
   const totalTasks = branch.tasks.length;
   const completedTasks = branch.tasks.filter(t => t.completed).length;
   const progress = totalTasks > 0 ? (completedTasks / totalTasks) * 100 : 0;
 
-  // Check movement possibilities (simplified to first parent)
   let canMoveLeft = false;
   let canMoveRight = false;
   
@@ -64,16 +58,12 @@ const BranchNode: React.FC<BranchNodeProps> = ({ branchId }) => {
 
   const hasDescription = branch.description && branch.description.trim().length > 0;
   const hasChildren = branch.childrenIds.length > 0;
-  
-  // Indicators
   const isMultiParent = branch.parentIds.length > 1;
   const isImported = branch.title.includes('(Importato)');
 
-  // Determine tasks to show
   const visibleTasks = isTasksExpanded ? sortedTasks : sortedTasks.slice(0, 3);
   const hiddenTasksCount = sortedTasks.length > 3 ? sortedTasks.length - 3 : 0;
 
-  // --- LABEL VIEW ---
   if (branch.isLabel) {
       return (
         <div className="flex flex-col items-center group/node">
@@ -91,7 +81,6 @@ const BranchNode: React.FC<BranchNodeProps> = ({ branchId }) => {
                   selectBranch(branchId);
                 }}
             >
-                {/* Compact Header */}
                 <div className="p-2 flex items-center justify-between gap-2">
                     <div className="flex items-center gap-2 min-w-0">
                         <Tag className={`w-4 h-4 shrink-0 ${isSelected ? 'text-amber-600 dark:text-amber-400' : 'text-slate-400'}`} />
@@ -101,7 +90,6 @@ const BranchNode: React.FC<BranchNodeProps> = ({ branchId }) => {
                     </div>
                 </div>
 
-                {/* Optional: Description Indicator if present */}
                 {hasDescription && (
                     <div className="px-2 pb-1 flex justify-end">
                          <button
@@ -116,7 +104,6 @@ const BranchNode: React.FC<BranchNodeProps> = ({ branchId }) => {
                     </div>
                 )}
 
-                {/* Move Arrows (On Hover) */}
                 {(canMoveLeft || canMoveRight) && (
                     <div className="absolute -top-3 right-0 left-0 flex justify-center opacity-0 group-hover/node:opacity-100 transition-opacity pointer-events-none">
                         <div className="bg-white dark:bg-slate-800 rounded-full border border-slate-200 dark:border-slate-600 shadow-sm flex pointer-events-auto">
@@ -126,7 +113,6 @@ const BranchNode: React.FC<BranchNodeProps> = ({ branchId }) => {
                     </div>
                 )}
 
-                {/* Collapse Button */}
                 {hasChildren && (
                     <div className="absolute -bottom-2.5 left-1/2 -translate-x-1/2 z-20">
                         <button
@@ -142,7 +128,6 @@ const BranchNode: React.FC<BranchNodeProps> = ({ branchId }) => {
                 )}
             </div>
 
-            {/* Connectors */}
             <div className="h-6 w-px bg-slate-300 dark:bg-slate-600"></div>
             
             <button 
@@ -164,7 +149,6 @@ const BranchNode: React.FC<BranchNodeProps> = ({ branchId }) => {
       );
   }
 
-  // --- STANDARD BRANCH VIEW ---
   const statusConfig = STATUS_CONFIG[branch.status];
 
   return (
@@ -183,9 +167,7 @@ const BranchNode: React.FC<BranchNodeProps> = ({ branchId }) => {
           selectBranch(branchId);
         }}
       >
-        {/* Header */}
         <div className={`p-3 border-b border-slate-100 dark:border-slate-700 flex justify-between items-start ${branch.archived ? 'bg-slate-50 dark:bg-slate-800' : ''} relative`}>
-          
           <div className="flex flex-col gap-1 overflow-hidden flex-1 min-w-0 pr-1">
              <h3 className="font-bold text-slate-800 dark:text-slate-100 truncate text-sm flex items-center gap-2" title={branch.title}>
               {branch.title}
@@ -199,27 +181,14 @@ const BranchNode: React.FC<BranchNodeProps> = ({ branchId }) => {
                 </span>
                 
                 {isMultiParent && (
-                    <span 
-                        className="inline-flex items-center justify-center w-5 h-5 rounded-full bg-amber-100 text-amber-700 dark:bg-amber-900/30 dark:text-amber-400 border border-amber-200 dark:border-amber-800" 
-                        title={`Multi-Link: Questo ramo ha ${branch.parentIds.length} genitori nel grafico.`}
-                    >
+                    <span className="inline-flex items-center justify-center w-5 h-5 rounded-full bg-amber-100 text-amber-700 dark:bg-amber-900/30 dark:text-amber-400 border border-amber-200 dark:border-amber-800" title={`Multi-Link`}>
                         <GitMerge className="w-3 h-3" />
-                    </span>
-                )}
-                
-                {isImported && (
-                    <span 
-                        className="inline-flex items-center justify-center w-5 h-5 rounded-full bg-blue-100 text-blue-700 dark:bg-blue-900/30 dark:text-blue-400 border border-blue-200 dark:border-blue-800" 
-                        title="Ramo importato (Esterno)"
-                    >
-                        <Globe className="w-3 h-3" />
                     </span>
                 )}
             </div>
           </div>
 
           <div className="flex items-center gap-1 shrink-0">
-             {/* Description Reader Icon */}
              {hasDescription && (
                  <button
                     onClick={(e) => {
@@ -227,55 +196,23 @@ const BranchNode: React.FC<BranchNodeProps> = ({ branchId }) => {
                         setReadingDescriptionId(branchId);
                     }}
                     className="p-1 rounded hover:bg-indigo-50 dark:hover:bg-indigo-900/30 text-indigo-500 dark:text-indigo-400 transition-colors"
-                    title="Leggi descrizione"
                  >
                      <FileText className="w-4 h-4" />
                  </button>
              )}
-
-             {/* Left Arrow */}
-             {canMoveLeft && (
-                 <button 
-                    onClick={(e) => {
-                        e.stopPropagation();
-                        moveBranch(branchId, 'left');
-                    }}
-                    className="p-1 rounded hover:bg-slate-200 dark:hover:bg-slate-600 text-slate-400 dark:text-slate-500 opacity-0 group-hover/node:opacity-100 transition-opacity"
-                    title="Sposta a sinistra"
-                 >
-                     <ChevronLeft className="w-4 h-4" />
-                 </button>
-             )}
-             
-             {/* Right Arrow */}
-             {canMoveRight && (
-                 <button 
-                    onClick={(e) => {
-                        e.stopPropagation();
-                        moveBranch(branchId, 'right');
-                    }}
-                    className="p-1 rounded hover:bg-slate-200 dark:hover:bg-slate-600 text-slate-400 dark:text-slate-500 opacity-0 group-hover/node:opacity-100 transition-opacity"
-                    title="Sposta a destra"
-                 >
-                     <ChevronRight className="w-4 h-4" />
-                 </button>
-             )}
-             
-             {branch.parentIds.length > 0 && (
-                <div className="text-slate-400 pl-1">
-                    <MoreHorizontal className="w-4 h-4" />
+             {(canMoveLeft || canMoveRight) && (
+                <div className="flex bg-slate-50 dark:bg-slate-900/50 rounded-lg p-0.5 opacity-0 group-hover/node:opacity-100 transition-opacity">
+                    <button onClick={(e) => { e.stopPropagation(); moveBranch(branchId, 'left'); }} disabled={!canMoveLeft} className="p-0.5 hover:bg-white dark:hover:bg-slate-800 rounded disabled:opacity-20"><ChevronLeft className="w-3.5 h-3.5" /></button>
+                    <button onClick={(e) => { e.stopPropagation(); moveBranch(branchId, 'right'); }} disabled={!canMoveRight} className="p-0.5 hover:bg-white dark:hover:bg-slate-800 rounded disabled:opacity-20"><ChevronRight className="w-3.5 h-3.5" /></button>
                 </div>
-            )}
+             )}
           </div>
-
         </div>
 
-        {/* Body (Collapsible based on status) */}
         {isDetailsOpen ? (
             <div className="p-3 space-y-2 animate-in fade-in zoom-in-95 duration-200">
-                {/* Progress Bar */}
-                <div className="flex items-center justify-between text-xs text-slate-500 dark:text-slate-400 mb-1">
-                    <span>Tasks</span>
+                <div className="flex items-center justify-between text-[10px] text-slate-500 dark:text-slate-400 mb-1 font-bold uppercase tracking-tighter">
+                    <span>Progressi</span>
                     <span>{completedTasks}/{totalTasks}</span>
                 </div>
                 <div className="h-1.5 w-full bg-slate-100 dark:bg-slate-700 rounded-full overflow-hidden">
@@ -285,114 +222,65 @@ const BranchNode: React.FC<BranchNodeProps> = ({ branchId }) => {
                     />
                 </div>
                 
-                {/* Quick Task Preview (Top 3 or All) */}
-                <ul className="mt-2 space-y-2">
+                <ul className="mt-2 space-y-1.5">
                     {visibleTasks.map(task => {
                         const assignee = task.assigneeId ? state.people.find(p => p.id === task.assigneeId) : null;
                         return (
-                            <li key={task.id} className="text-xs flex items-center justify-between gap-2">
+                            <li key={task.id} className="text-[11px] flex items-center justify-between gap-2 py-0.5">
                                 <div className="flex items-center gap-1.5 flex-1 min-w-0">
                                     <div className={`flex-shrink-0 w-1.5 h-1.5 rounded-full ${task.completed ? 'bg-green-400' : 'bg-slate-300 dark:bg-slate-600'}`} />
                                     <span className={`truncate text-slate-600 dark:text-slate-300 ${task.completed ? 'line-through opacity-60' : ''}`}>
                                         {task.title}
                                     </span>
-                                    {task.description && task.description.trim() !== '' && (
-                                        <button 
-                                            onClick={(e) => {
-                                                e.stopPropagation();
-                                                setReadingTask({ branchId: branchId, taskId: task.id });
-                                            }}
-                                            className="text-slate-400 hover:text-indigo-500 p-0.5 rounded shrink-0"
-                                            title="Leggi descrizione task"
-                                        >
-                                            <FileText className="w-3 h-3" />
-                                        </button>
-                                    )}
                                 </div>
 
-                                <div className="flex flex-col items-end gap-0.5 flex-shrink-0 text-[9px] text-slate-400">
-                                    {task.dueDate && (
-                                        <div className="flex items-center gap-0.5" title={`Scadenza: ${task.dueDate}`}>
+                                <div className="flex items-center gap-1.5 flex-shrink-0">
+                                    {task.completed && task.completedAt ? (
+                                        <div className="flex items-center text-green-500" title={`Chiuso il: ${new Date(task.completedAt).toLocaleDateString()}`}>
+                                            <CheckCircle2 className="w-3 h-3" />
+                                        </div>
+                                    ) : task.dueDate ? (
+                                        <div className={`flex items-center gap-0.5 px-1 rounded-sm text-[8px] font-black ${new Date(task.dueDate) < new Date() ? 'bg-red-100 text-red-600' : 'bg-amber-100 text-amber-700'}`}>
                                             <Calendar className="w-2.5 h-2.5" />
                                             <span>{new Date(task.dueDate).getDate()}/{new Date(task.dueDate).getMonth() + 1}</span>
                                         </div>
-                                    )}
-                                    {task.completed && task.completedAt && (
-                                        <div className="flex items-center gap-0.5 text-green-500 font-medium" title={`Completato il: ${new Date(task.completedAt).toLocaleString()}`}>
-                                            <CheckCircle2 className="w-2.5 h-2.5" />
-                                            <span>{new Date(task.completedAt).getDate()}/{new Date(task.completedAt).getMonth() + 1}</span>
-                                        </div>
-                                    )}
-                                    {assignee && (
-                                        <Avatar person={assignee} size="sm" className="w-4 h-4 text-[8px] mt-0.5" />
-                                    )}
+                                    ) : null}
+                                    {assignee && <Avatar person={assignee} size="sm" className="w-4 h-4 text-[7px]" />}
                                 </div>
                             </li>
                         );
                     })}
                     
-                    {/* Expand / Collapse Controls */}
                     {!isTasksExpanded && hiddenTasksCount > 0 && (
                         <li 
-                            className="text-[10px] text-indigo-500 hover:text-indigo-600 dark:text-indigo-400 dark:hover:text-indigo-300 pl-3 cursor-pointer underline decoration-dotted"
-                            onClick={(e) => {
-                                e.stopPropagation();
-                                setIsTasksExpanded(true);
-                            }}
+                            className="text-[10px] text-indigo-500 hover:text-indigo-600 font-medium pl-3 cursor-pointer"
+                            onClick={(e) => { e.stopPropagation(); setIsTasksExpanded(true); }}
                         >
-                            + altri {hiddenTasksCount} tasks
-                        </li>
-                    )}
-                    
-                    {isTasksExpanded && sortedTasks.length > 3 && (
-                        <li 
-                            className="text-[10px] text-slate-400 hover:text-slate-500 pl-3 cursor-pointer underline decoration-dotted"
-                            onClick={(e) => {
-                                e.stopPropagation();
-                                setIsTasksExpanded(false);
-                            }}
-                        >
-                            Mostra meno
-                        </li>
-                    )}
-
-                    {sortedTasks.length === 0 && (
-                        <li className="text-[10px] text-slate-400 italic pl-1">
-                            {showOnlyOpen ? 'Nessun task aperto' : 'Nessun task'}
+                            + altri {hiddenTasksCount} task
                         </li>
                     )}
                 </ul>
 
-                {/* Hide toggle for inactive branches */}
                 {isInactive && (
                     <button 
-                        onClick={(e) => {
-                            e.stopPropagation();
-                            setIsDetailsOpen(false);
-                        }}
-                        className="w-full text-[10px] text-center text-slate-400 hover:text-slate-600 dark:hover:text-slate-300 py-1 hover:bg-slate-50 dark:hover:bg-slate-700/50 rounded flex items-center justify-center gap-1 transition-colors"
+                        onClick={(e) => { e.stopPropagation(); setIsDetailsOpen(false); }}
+                        className="w-full text-[10px] text-center text-slate-400 hover:text-slate-600 dark:hover:text-slate-300 py-1 hover:bg-slate-50 dark:hover:bg-slate-700/50 rounded flex items-center justify-center gap-1 transition-colors mt-2"
                     >
-                        <EyeOff className="w-3 h-3" /> Nascondi dettagli
+                        <EyeOff className="w-3 h-3" /> Nascondi
                     </button>
                 )}
             </div>
         ) : (
-            // Compact View for Inactive Branches
             <div 
                 className="p-2 flex items-center justify-center cursor-pointer hover:bg-slate-50 dark:hover:bg-slate-700/30 transition-colors"
-                onClick={(e) => {
-                    e.stopPropagation();
-                    setIsDetailsOpen(true);
-                }}
+                onClick={(e) => { e.stopPropagation(); setIsDetailsOpen(true); }}
             >
                 <div className="text-[10px] text-slate-400 flex items-center gap-1.5 font-medium">
-                    <Eye className="w-3 h-3" />
-                    Mostra {branch.tasks.length} task & progressi...
+                    <Eye className="w-3 h-3" /> Mostra {branch.tasks.length} task...
                 </div>
             </div>
         )}
 
-        {/* Collapse Toggle Button (Bottom of card) */}
         {hasChildren && (
             <div className="absolute -bottom-3 left-1/2 -translate-x-1/2 z-20">
                  <button
@@ -401,7 +289,6 @@ const BranchNode: React.FC<BranchNodeProps> = ({ branchId }) => {
                         updateBranch(branchId, { collapsed: !branch.collapsed });
                     }}
                     className="w-6 h-6 rounded-full bg-white dark:bg-slate-700 border border-slate-200 dark:border-slate-600 shadow-sm flex items-center justify-center hover:bg-slate-50 dark:hover:bg-slate-600 text-slate-500 dark:text-slate-300 transition-colors"
-                    title={branch.collapsed ? "Espandi" : "Comprimi"}
                  >
                      {branch.collapsed ? <ChevronDown className="w-3.5 h-3.5" /> : <ChevronUp className="w-3.5 h-3.5" />}
                  </button>
@@ -409,7 +296,6 @@ const BranchNode: React.FC<BranchNodeProps> = ({ branchId }) => {
         )}
       </div>
 
-      {/* Add Child Button (Visual connector) */}
       <div className="h-8 w-px bg-slate-300 dark:bg-slate-600"></div>
       
       <button 
@@ -419,7 +305,6 @@ const BranchNode: React.FC<BranchNodeProps> = ({ branchId }) => {
             addBranch(branchId);
         }}
         className="w-6 h-6 rounded-full bg-white dark:bg-slate-700 border border-slate-300 dark:border-slate-500 flex items-center justify-center hover:bg-indigo-50 dark:hover:bg-slate-600 text-slate-500 dark:text-slate-300 transition-colors z-10"
-        title="Aggiungi sotto-ramo"
       >
         <Plus className="w-3.5 h-3.5" />
       </button>

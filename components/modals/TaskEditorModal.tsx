@@ -16,19 +16,15 @@ const TaskEditorModal: React.FC = () => {
   const [completedAt, setCompletedAt] = useState('');
   const [pinned, setPinned] = useState(false);
   
-  // Description/Preview Mode
   const [isPreviewMode, setIsPreviewMode] = useState(false);
   
-  // Editor Popup State
   const [popupMode, setPopupMode] = useState<'link' | 'email' | null>(null);
   const [popupInput, setPopupInput] = useState('');
   const popupInputRef = useRef<HTMLInputElement>(null);
   const textareaRef = useRef<HTMLTextAreaElement>(null);
 
-  // Move to Branch State
   const [targetBranchId, setTargetBranchId] = useState('');
 
-  // Sync state when editingTask changes
   useEffect(() => {
     if (editingTask) {
         const branch = state.branches[editingTask.branchId];
@@ -45,7 +41,6 @@ const TaskEditorModal: React.FC = () => {
             setIsPreviewMode(false); 
             setPopupMode(null);
 
-            // Handle datetime conversion for HTML input (ISO -> YYYY-MM-DDTHH:mm)
             if (task.completedAt) {
                 const date = new Date(task.completedAt);
                 const year = date.getFullYear();
@@ -82,7 +77,6 @@ const TaskEditorModal: React.FC = () => {
   const handleSave = () => {
       if (!editingTask || !title.trim()) return;
       
-      // Convert completedAt back to ISO if set
       let finalCompletedAt = undefined;
       if (completed) {
           finalCompletedAt = completedAt ? new Date(completedAt).toISOString() : new Date().toISOString();
@@ -119,7 +113,6 @@ const TaskEditorModal: React.FC = () => {
       if (e.key === 'Escape') handleClose();
   };
 
-  // --- EDITOR LOGIC ---
   const insertFormat = (prefix: string, suffix: string, selectionOverride?: string) => {
     if (!textareaRef.current) return;
     const start = textareaRef.current.selectionStart;
@@ -220,7 +213,6 @@ const TaskEditorModal: React.FC = () => {
         </div>
 
         <div className="p-4 space-y-4 overflow-y-auto">
-            {/* Title & Check */}
             <div className="flex flex-col gap-3">
                 <div className="flex gap-3">
                     <button 
@@ -240,7 +232,6 @@ const TaskEditorModal: React.FC = () => {
                     />
                 </div>
                 
-                {/* Manual Completion Date Override */}
                 {completed && (
                     <div className="ml-9 animate-in slide-in-from-left-2 duration-200">
                         <label className="block text-[10px] font-bold text-green-600 dark:text-green-400 uppercase tracking-widest mb-1 flex items-center gap-1">
@@ -256,7 +247,6 @@ const TaskEditorModal: React.FC = () => {
                 )}
             </div>
 
-            {/* Description Editor */}
             <div>
                 <div className="flex items-center justify-between mb-1.5">
                     <label className="text-xs font-semibold text-slate-500 dark:text-slate-400 uppercase tracking-wider">Descrizione</label>
@@ -275,7 +265,6 @@ const TaskEditorModal: React.FC = () => {
                     </div>
                 ) : (
                     <div className="border border-slate-200 dark:border-slate-700 rounded-lg overflow-hidden relative focus-within:ring-2 focus-within:ring-indigo-500/50 focus-within:border-indigo-500 transition-all">
-                        {/* Toolbar */}
                         <div className="flex items-center gap-1 p-1 bg-slate-50 dark:bg-slate-800 border-b border-slate-200 dark:border-slate-700">
                             <button onClick={() => handleToolbarAction('bold')} className="p-1 rounded hover:bg-slate-200 dark:hover:bg-slate-700 text-slate-600 dark:text-slate-300" title="Grassetto"><Bold className="w-3.5 h-3.5" /></button>
                             <button onClick={() => handleToolbarAction('italic')} className="p-1 rounded hover:bg-slate-200 dark:hover:bg-slate-700 text-slate-600 dark:text-slate-300" title="Corsivo"><Italic className="w-3.5 h-3.5" /></button>
@@ -285,7 +274,6 @@ const TaskEditorModal: React.FC = () => {
                             <button onClick={() => handleToolbarAction('today-date')} className="p-1 rounded hover:bg-slate-200 dark:hover:bg-slate-700 text-slate-600 dark:text-slate-300" title="Data Odierna"><CalendarDays className="w-3.5 h-3.5" /></button>
                         </div>
 
-                        {/* Editor Popup */}
                         {popupMode && (
                             <div className="absolute top-[40px] left-2 right-2 z-10 bg-white dark:bg-slate-900 border border-indigo-200 dark:border-indigo-800 shadow-lg rounded-lg p-2 flex gap-2 animate-in fade-in zoom-in-95 duration-150">
                                 <input 
@@ -316,7 +304,6 @@ const TaskEditorModal: React.FC = () => {
                 )}
             </div>
 
-            {/* Assignee */}
             <div>
                 <label className="block text-xs font-semibold text-slate-500 dark:text-slate-400 mb-1.5 uppercase tracking-wider">Assegnatario</label>
                 <div className="grid grid-cols-1 sm:grid-cols-2 gap-2">
@@ -340,30 +327,28 @@ const TaskEditorModal: React.FC = () => {
                 </div>
             </div>
 
-            {/* Due Date */}
             <div>
                  <label className="block text-xs font-semibold text-slate-500 dark:text-slate-400 mb-1.5 uppercase tracking-wider">Scadenza</label>
-                 <div className="relative group">
+                 <div className="relative group flex items-center">
                     <input 
                         type="date"
                         value={dueDate}
                         onChange={(e) => setDueDate(e.target.value)}
                         className="w-full text-sm bg-white dark:bg-slate-900 border border-slate-200 dark:border-slate-600 rounded-lg p-2.5 pr-10 text-slate-700 dark:text-slate-200 focus:ring-2 focus:ring-indigo-500 outline-none"
                     />
-                    <div className="absolute right-3 top-1/2 -translate-y-1/2 pointer-events-none text-slate-400">
+                    <div className="absolute right-3 top-1/2 -translate-y-1/2 text-slate-400 pointer-events-none">
                         <Calendar className="w-4 h-4" />
                     </div>
                 </div>
             </div>
             
-            {/* Move to Branch */}
             <div className="pt-2 border-t border-slate-100 dark:border-slate-800">
                  <label className="block text-xs font-semibold text-slate-500 dark:text-slate-400 mb-2 uppercase tracking-wider">Sposta in un altro ramo</label>
                  <div className="flex gap-2">
                      <select
                         value={targetBranchId}
                         onChange={(e) => setTargetBranchId(e.target.value)}
-                        className="flex-1 text-sm bg-white dark:bg-slate-800 border border-slate-200 dark:border-slate-600 rounded-lg p-2 text-slate-700 dark:text-slate-200 focus:ring-2 focus:ring-indigo-500 outline-none"
+                        className="flex-1 text-sm bg-white dark:bg-slate-900 border border-slate-200 dark:border-slate-600 rounded-lg p-2 text-slate-700 dark:text-slate-200 focus:ring-2 focus:ring-indigo-500 outline-none"
                      >
                          <option value="">Seleziona ramo...</option>
                          {(Object.values(state.branches) as Branch[]).filter(b => b.id !== editingTask?.branchId).map(b => (

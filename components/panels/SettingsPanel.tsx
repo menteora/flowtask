@@ -2,7 +2,8 @@
 import React, { useState, useEffect, useRef, useMemo } from 'react';
 import { useProject } from '../../context/ProjectContext';
 import { Branch } from '../../types';
-import { Database, Save, Download, Key, ShieldCheck, Check, Copy, Terminal, Cloud, CloudRain, Loader2, AlertCircle, Upload, User, LogOut, LogIn, WifiOff, X, Share2, Link, Trash2, MessageSquare, Eraser, Archive, AlertTriangle, Stethoscope, Wrench, Search, Info, Square, CheckSquare, RefreshCw } from 'lucide-react';
+import { STATUS_CONFIG } from '../../constants';
+import { Database, Save, Download, Key, ShieldCheck, Check, Copy, Terminal, Cloud, CloudRain, Loader2, AlertCircle, Upload, User, LogOut, LogIn, WifiOff, X, Share2, Link, Trash2, MessageSquare, Eraser, Archive, AlertTriangle, Stethoscope, Wrench, Search, Info, Square, CheckSquare, RefreshCw, Tag, GitBranch } from 'lucide-react';
 
 const SQL_SCHEMA = `
 -- CANCELLAZIONE VECCHIE TABELLE (Se esistono)
@@ -228,7 +229,6 @@ const SettingsPanel: React.FC = () => {
 
   const handleFixRootIssues = () => {
       repairProjectStructure();
-      // Re-analyze after root fix to see remaining orphans
       const report = checkProjectHealth();
       setHealthReport(report);
       setSelectedOrphans(report.orphanedBranches.map(o => o.id));
@@ -251,7 +251,6 @@ const SettingsPanel: React.FC = () => {
 
   return (
     <div className="w-full max-w-4xl mx-auto h-full flex flex-col p-3 md:p-8 overflow-y-auto overflow-x-hidden pb-4 md:pb-8 relative">
-      {/* Modals placeholders... */}
       <input type="file" ref={fileInputRef} onChange={handleImportConfigFile} accept=".json" className="hidden" />
 
       <div className="mb-6 flex flex-col md:flex-row md:justify-between md:items-start gap-4">
@@ -343,23 +342,45 @@ const SettingsPanel: React.FC = () => {
                                   <span className="text-sm font-medium text-emerald-800 dark:text-emerald-400">Nessun ramo orfano trovato. Il progetto è integro.</span>
                               </div>
                           ) : (
-                              <div className="space-y-2 max-h-60 overflow-y-auto pr-2 custom-scrollbar">
-                                  {healthReport.orphanedBranches.map((orphan: any) => (
-                                      <div 
-                                        key={orphan.id} 
-                                        onClick={() => toggleOrphanSelection(orphan.id)}
-                                        className={`flex items-center justify-between p-3 rounded-lg border transition-all cursor-pointer ${selectedOrphans.includes(orphan.id) ? 'bg-indigo-50 border-indigo-300 dark:bg-indigo-900/20 dark:border-indigo-700' : 'bg-white dark:bg-slate-900 border-slate-200 dark:border-slate-800 hover:border-slate-300'}`}
-                                      >
-                                          <div className="flex items-center gap-3">
-                                              {selectedOrphans.includes(orphan.id) ? <CheckSquare className="w-4 h-4 text-indigo-600" /> : <Square className="w-4 h-4 text-slate-300" />}
-                                              <div>
-                                                  <p className="text-sm font-bold text-slate-800 dark:text-slate-200">{orphan.title || '(Senza Titolo)'}</p>
-                                                  <p className="text-[10px] text-slate-500 uppercase font-black">{orphan.taskCount} task contenuti</p>
+                              <div className="space-y-2 max-h-80 overflow-y-auto pr-2 custom-scrollbar">
+                                  {healthReport.orphanedBranches.map((orphan: any) => {
+                                      const statusCfg = STATUS_CONFIG[orphan.status as keyof typeof STATUS_CONFIG];
+                                      const progressPct = orphan.taskCount > 0 ? (orphan.completedCount / orphan.taskCount) * 100 : 0;
+                                      
+                                      return (
+                                          <div 
+                                            key={orphan.id} 
+                                            onClick={() => toggleOrphanSelection(orphan.id)}
+                                            className={`flex items-start justify-between p-3 rounded-lg border transition-all cursor-pointer ${selectedOrphans.includes(orphan.id) ? 'bg-indigo-50 border-indigo-300 dark:bg-indigo-900/20 dark:border-indigo-700' : 'bg-white dark:bg-slate-900 border-slate-200 dark:border-slate-800 hover:border-slate-300'}`}
+                                          >
+                                              <div className="flex items-start gap-3 min-w-0 flex-1">
+                                                  {selectedOrphans.includes(orphan.id) ? <CheckSquare className="w-5 h-5 text-indigo-600 shrink-0 mt-0.5" /> : <Square className="w-5 h-5 text-slate-300 shrink-0 mt-0.5" />}
+                                                  <div className="min-w-0 flex-1">
+                                                      <div className="flex items-center gap-2 mb-1">
+                                                          {orphan.isLabel ? <Tag className="w-3.5 h-3.5 text-amber-500" /> : <GitBranch className="w-3.5 h-3.5 text-indigo-500" />}
+                                                          <p className="text-sm font-bold text-slate-800 dark:text-slate-200 truncate">{orphan.title || '(Senza Titolo)'}</p>
+                                                          <span className={`text-[9px] font-black uppercase px-1.5 py-0.5 rounded-full border border-current ${statusCfg?.color || 'text-slate-400'}`}>
+                                                              {orphan.status}
+                                                          </span>
+                                                      </div>
+                                                      
+                                                      <div className="flex items-center gap-4 text-[10px]">
+                                                           <div className="flex flex-col gap-1 w-32">
+                                                                <div className="flex justify-between text-slate-500 font-bold uppercase tracking-tighter">
+                                                                    <span>Progressi</span>
+                                                                    <span>{orphan.completedCount}/{orphan.taskCount}</span>
+                                                                </div>
+                                                                <div className="h-1.5 w-full bg-slate-100 dark:bg-slate-800 rounded-full overflow-hidden">
+                                                                    <div className="h-full bg-indigo-500 transition-all" style={{ width: `${progressPct}%` }} />
+                                                                </div>
+                                                           </div>
+                                                           <div className="text-slate-400 font-mono">ID: {orphan.id.slice(0,8)}...</div>
+                                                      </div>
+                                                  </div>
                                               </div>
                                           </div>
-                                          <span className="text-[10px] font-mono text-slate-400">ID: {orphan.id.slice(0,8)}...</span>
-                                      </div>
-                                  ))}
+                                      );
+                                  })}
                               </div>
                           )}
                       </div>
@@ -369,7 +390,7 @@ const SettingsPanel: React.FC = () => {
                           <div className="flex flex-col sm:flex-row gap-3 p-4 bg-slate-50 dark:bg-slate-900 rounded-xl border border-slate-200 dark:border-slate-700 animate-in slide-in-from-bottom-2">
                               <div className="flex-1">
                                   <p className="text-sm font-bold text-slate-800 dark:text-white">{selectedOrphans.length} rami selezionati</p>
-                                  <p className="text-[10px] text-slate-500">Scegli se collegarli alla radice per visualizzarli nel grafico o eliminarli.</p>
+                                  <p className="text-[10px] text-slate-500">I rami ripristinati verranno collegati al nodo radice del progetto.</p>
                               </div>
                               <div className="flex gap-2 shrink-0">
                                   <button 
@@ -415,7 +436,6 @@ const SettingsPanel: React.FC = () => {
               </div>
           </div>
 
-          {/* Other settings sections (Sync, Credentials, etc.) continue... */}
           <div className="bg-white dark:bg-slate-800 rounded-xl shadow-sm border border-slate-200 dark:border-slate-700 p-4 md:p-6">
               <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-4 mb-4">
                   <h3 className="text-lg font-semibold text-slate-800 dark:text-white flex items-center gap-2"><Key className="w-5 h-5 text-indigo-500" /> Credenziali API</h3>

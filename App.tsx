@@ -592,6 +592,13 @@ const App: React.FC = () => {
             <GanttChart className="w-6 h-6" />
             <span className="text-[10px] mt-1 font-medium">Time</span>
         </button>
+        <button 
+            onClick={() => setCurrentView('team')}
+            className={`flex flex-col items-center p-2 rounded-md ${currentView === 'team' ? 'text-indigo-600 dark:text-indigo-400' : 'text-slate-500'}`}
+        >
+            <Users className="w-6 h-6" />
+            <span className="text-[10px] mt-1 font-medium">Team</span>
+        </button>
       </div>
     </div>
   );
