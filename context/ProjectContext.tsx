@@ -386,12 +386,10 @@ export const ProjectProvider: React.FC<{ children: React.ReactNode }> = ({ child
     }
   }, [supabaseConfig]);
 
-  // CRITICO: Effetto di download iniziale rimosso dalle dipendenze 'projects' per evitare cicli infiniti e sovrascritture durante gli upload.
   useEffect(() => {
       const activeProject = projects.find(p => p.id === activeProjectId);
-      // Solo se cambiamo progetto o non abbiamo mai sincronizzato questo specifico ID progetto in questa sessione.
       if (session && !isOfflineMode && activeProjectId && activeProject && !activeProject.id.includes('default') && lastSyncedProjectIdRef.current !== activeProjectId) {
-          setRemoteDataLoaded(false); // Reset per forzare l'attesa del download prima di abilitare l'autosave
+          setRemoteDataLoaded(false); 
           downloadProjectFromSupabase(activeProjectId, false, false)
              .then(() => setRemoteDataLoaded(true))
              .catch(err => console.error("Initial fetch failed", err));
@@ -442,7 +440,6 @@ export const ProjectProvider: React.FC<{ children: React.ReactNode }> = ({ child
 
   useEffect(() => {
       if (!session || isOfflineMode || isInitializing) return;
-      // IMPORTANTE: Se i dati remoti non sono ancora stati caricati per il progetto attivo, non avviare l'autosave per non piallare il DB.
       if (session && !remoteDataLoaded) return;
       
       if (autoSaveTimerRef.current) {
@@ -487,8 +484,88 @@ export const ProjectProvider: React.FC<{ children: React.ReactNode }> = ({ child
   }, [supabaseClient]);
 
   const moveLocalBranchToRemoteProject = useCallback(async (branchId: string, targetProjectId: string, targetParentId: string) => {
-      console.warn("Cross-project move not fully implemented in this version.");
-  }, []);
+      const sourceProject = projects.find(p => p.id === activeProjectId);
+      const targetProject = projects.find(p => p.id === targetProjectId);
+      if (!sourceProject || !targetProject) return;
+
+      const branchToMove = sourceProject.branches[branchId];
+      if (!branchToMove) return;
+
+      // 1. Raccogli tutti i discendenti
+      const descendantIds = new Set<string>();
+      const queue = [branchId];
+      while (queue.length > 0) {
+          const cid = queue.shift()!;
+          descendantIds.add(cid);
+          sourceProject.branches[cid]?.childrenIds.forEach(id => queue.push(id));
+      }
+
+      // 2. Crea le strutture dati per il trasferimento
+      const movedBranches: Record<string, Branch> = {};
+      descendantIds.forEach(id => {
+          const b = sourceProject.branches[id];
+          if (b) {
+              const movedB = { ...b };
+              if (id === branchId) {
+                  movedB.parentIds = [targetParentId];
+              }
+              movedBranches[id] = movedB;
+          }
+      });
+
+      // 3. Aggiorna lo stato locale
+      setProjects(prev => prev.map(p => {
+          if (p.id === activeProjectId) {
+              const newBranches = { ...p.branches };
+              // Rimuovi dai genitori originali
+              branchToMove.parentIds.forEach(pid => {
+                  if (newBranches[pid]) {
+                      newBranches[pid] = { ...newBranches[pid], childrenIds: newBranches[pid].childrenIds.filter(id => id !== branchId) };
+                  }
+              });
+              // Elimina rami
+              descendantIds.forEach(id => delete newBranches[id]);
+              return { ...p, branches: newBranches };
+          }
+          if (p.id === targetProjectId) {
+              const newBranches = { ...p.branches, ...movedBranches };
+              // Aggiungi al nuovo genitore
+              if (newBranches[targetParentId]) {
+                  newBranches[targetParentId] = { ...newBranches[targetParentId], childrenIds: [...newBranches[targetParentId].childrenIds, branchId] };
+              }
+              return { ...p, branches: newBranches };
+          }
+          return p;
+      }));
+
+      // 4. Sincronizzazione Supabase se attiva
+      if (session && !isOfflineMode && supabaseClient) {
+          try {
+              // Sposta fisicamente i rami nel database aggiornando il project_id
+              const { error } = await supabaseClient
+                  .from('flowtask_branches')
+                  .update({ project_id: targetProjectId })
+                  .in('id', Array.from(descendantIds));
+              
+              if (error) throw error;
+
+              // Aggiorna la gerarchia del ramo radice dello spostamento
+              await supabaseClient
+                  .from('flowtask_branches')
+                  .update({ parent_ids: [targetParentId] })
+                  .eq('id', branchId);
+
+              showNotification("Spostamento completato con successo!", 'success');
+          } catch (e: any) {
+              console.error("Remote move error", e);
+              showNotification("Errore durante lo spostamento remoto: " + e.message, 'error');
+          }
+      } else {
+          showNotification("Spostamento locale completato.", 'success');
+      }
+
+      if (selectedBranchId === branchId) setSelectedBranchId(null);
+  }, [activeProjectId, projects, session, isOfflineMode, supabaseClient, selectedBranchId, showNotification]);
 
   const toggleShowArchived = useCallback(() => {
     setShowArchived(prev => !prev);
