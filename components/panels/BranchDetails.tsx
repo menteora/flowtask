@@ -5,6 +5,7 @@ import { BranchStatus, Branch } from '../../types';
 import { STATUS_CONFIG } from '../../constants';
 import { X, Save, Trash2, CheckSquare, Square, ArrowUpLeft, Calendar, Plus, Link as LinkIcon, Unlink, PlayCircle, StopCircle, Clock, AlertCircle, Archive, RefreshCw, Bold, Italic, List, Eye, Edit2, FileText, ChevronUp, ChevronDown, DownloadCloud, Loader2, GitMerge, ArrowRight, UploadCloud, Tag, Mail, Check, AlignLeft, Pin, Move, CalendarDays, AlertTriangle, CheckCircle2, UserPlus } from 'lucide-react';
 import Avatar from '../ui/Avatar';
+import DatePicker from '../ui/DatePicker';
 
 const BranchDetails: React.FC = () => {
   const { state, selectedBranchId, selectBranch, updateBranch, deleteBranch, linkBranch, unlinkBranch, addTask, updateTask, deleteTask, moveTask, bulkUpdateTasks, bulkMoveTasks, toggleBranchArchive, listProjectsFromSupabase, getProjectBranchesFromSupabase, moveLocalBranchToRemoteProject, session, showNotification, setEditingTask, setReadingTask, showOnlyOpen } = useProject();
@@ -312,25 +313,20 @@ const BranchDetails: React.FC = () => {
 
                                                     <span className="w-px h-3 bg-slate-100 dark:bg-slate-700" />
 
-                                                    <div className="flex items-center gap-1.5 relative group/date-trigger">
+                                                    <div className="flex items-center gap-1.5 relative">
                                                         {task.completed && task.completedAt ? (
                                                             <div className="flex items-center gap-1 text-[9px] font-black text-green-600 dark:text-green-500 bg-green-50 dark:bg-green-900/20 px-1.5 py-0.5 rounded" title={`Chiuso il ${new Date(task.completedAt).toLocaleString()}`}>
                                                                 <CheckCircle2 className="w-2.5 h-2.5" />
                                                                 <span>{new Date(task.completedAt).toLocaleDateString(undefined, {day: '2-digit', month: '2-digit'})}</span>
                                                             </div>
                                                         ) : (
-                                                            <div className="relative flex items-center">
-                                                                <div className={`flex items-center gap-1 text-[9px] font-black px-1.5 py-0.5 rounded border transition-colors ${task.dueDate ? (new Date(task.dueDate) < new Date() ? 'bg-red-50 text-red-600 border-red-200' : 'bg-amber-50 text-amber-600 border-amber-200') : 'text-slate-300 hover:text-indigo-500'}`}>
-                                                                    <Calendar className="w-2.5 h-2.5" />
-                                                                    <span>{task.dueDate ? new Date(task.dueDate).toLocaleDateString(undefined, {day: '2-digit', month: '2-digit'}) : 'Scadenza'}</span>
-                                                                </div>
-                                                                <input 
-                                                                    type="date" 
-                                                                    value={task.dueDate || ''} 
-                                                                    onChange={(e) => updateTask(branch.id, task.id, { dueDate: e.target.value })} 
-                                                                    className="absolute inset-0 w-full h-full opacity-0 cursor-pointer z-10" 
-                                                                />
-                                                            </div>
+                                                            <DatePicker 
+                                                                value={task.dueDate}
+                                                                onChange={(val) => updateTask(branch.id, task.id, { dueDate: val })}
+                                                                placeholder="Scadenza"
+                                                                className={`px-2 py-0.5 rounded border transition-colors min-h-[28px] min-w-[90px] ${task.dueDate ? (new Date(task.dueDate) < new Date() ? 'bg-red-50 text-red-600 border-red-200' : 'bg-amber-50 text-amber-600 border-amber-200') : 'text-slate-400 dark:text-slate-500 border-slate-200 dark:border-slate-700'}`}
+                                                                icon={<Calendar className={`w-3 h-3 ${task.dueDate ? (new Date(task.dueDate) < new Date() ? 'text-red-500' : 'text-amber-500') : 'text-slate-400'}`} />}
+                                                            />
                                                         )}
                                                     </div>
 
@@ -359,17 +355,23 @@ const BranchDetails: React.FC = () => {
         {!branch.isLabel && (
             <div className="space-y-3 p-3 bg-slate-50 dark:bg-slate-800/50 rounded-lg border border-slate-100 dark:border-slate-700">
                 <h4 className="text-xs font-semibold text-gray-500 dark:text-gray-400 uppercase tracking-wider">Timeline</h4>
-                <div className="relative group/timeline-start">
-                    <label className="text-[10px] font-medium text-gray-400 mb-1 flex items-center gap-1"><PlayCircle className="w-3 h-3" /> Data Inizio</label>
-                    <div className="relative">
-                        <input type="date" value={branch.startDate || ''} onChange={(e) => updateBranch(branch.id, { startDate: e.target.value })} className="w-full text-xs bg-white dark:bg-slate-800 border border-gray-200 dark:border-slate-600 rounded p-1.5 focus:ring-1 focus:ring-indigo-500" />
-                    </div>
+                <div>
+                    <label className="text-[10px] font-medium text-gray-400 mb-1 flex items-center gap-1 pointer-events-none"><PlayCircle className="w-3 h-3" /> Data Inizio</label>
+                    <DatePicker 
+                        value={branch.startDate}
+                        onChange={(val) => updateBranch(branch.id, { startDate: val })}
+                        placeholder="Inizio progetto"
+                        className="w-full bg-white dark:bg-slate-800 border border-gray-200 dark:border-slate-600 rounded p-2 min-h-[36px]"
+                    />
                 </div>
-                <div className="relative group/timeline-due">
-                     <label className="text-[10px] font-medium text-gray-400 mb-1 flex items-center gap-1"><Clock className="w-3 h-3" /> Scadenza</label>
-                     <div className="relative">
-                        <input type="date" value={branch.dueDate || ''} onChange={(e) => updateBranch(branch.id, { dueDate: e.target.value })} className="w-full text-xs bg-white dark:bg-slate-800 border border-gray-200 dark:border-slate-600 rounded p-1.5 focus:ring-1 focus:ring-indigo-500" />
-                     </div>
+                <div>
+                     <label className="text-[10px] font-medium text-gray-400 mb-1 flex items-center gap-1 pointer-events-none"><Clock className="w-3 h-3" /> Scadenza Ramo</label>
+                     <DatePicker 
+                        value={branch.dueDate}
+                        onChange={(val) => updateBranch(branch.id, { dueDate: val })}
+                        placeholder="Fine progetto"
+                        className="w-full bg-white dark:bg-slate-800 border border-gray-200 dark:border-slate-600 rounded p-2 min-h-[36px]"
+                    />
                 </div>
             </div>
         )}

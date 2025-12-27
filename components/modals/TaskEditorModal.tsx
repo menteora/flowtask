@@ -4,6 +4,7 @@ import { useProject } from '../../context/ProjectContext';
 import { X, Calendar, User, Trash2, CheckSquare, Square, Save, ArrowRight, Bold, Italic, List, Link as LinkIcon, Mail, Check, Eye, Edit2, Pin, CalendarDays, CheckCircle2 } from 'lucide-react';
 import Avatar from '../ui/Avatar';
 import { Branch } from '../../types';
+import DatePicker from '../ui/DatePicker';
 
 const TaskEditorModal: React.FC = () => {
   const { editingTask, setEditingTask, state, updateTask, deleteTask, moveTaskToBranch } = useProject();
@@ -237,11 +238,12 @@ const TaskEditorModal: React.FC = () => {
                         <label className="block text-[10px] font-bold text-green-600 dark:text-green-400 uppercase tracking-widest mb-1 flex items-center gap-1">
                             <CheckCircle2 className="w-3 h-3" /> Data Chiusura (Manuale)
                         </label>
-                        <input 
+                        <DatePicker 
                             type="datetime-local"
                             value={completedAt}
-                            onChange={(e) => setCompletedAt(e.target.value)}
-                            className="text-xs bg-green-50 dark:bg-green-900/20 border border-green-200 dark:border-green-800 rounded px-2 py-1 text-slate-700 dark:text-slate-200 outline-none focus:ring-1 focus:ring-green-500 w-fit"
+                            onChange={(val) => setCompletedAt(val)}
+                            placeholder="Data chiusura"
+                            className="text-xs bg-green-50 dark:bg-green-900/20 border border-green-200 dark:border-green-800 rounded px-2 py-1 text-slate-700 dark:text-slate-200 w-fit"
                         />
                     </div>
                 )}
@@ -329,17 +331,13 @@ const TaskEditorModal: React.FC = () => {
 
             <div>
                  <label className="block text-xs font-semibold text-slate-500 dark:text-slate-400 mb-1.5 uppercase tracking-wider">Scadenza</label>
-                 <div className="relative group flex items-center">
-                    <input 
-                        type="date"
-                        value={dueDate}
-                        onChange={(e) => setDueDate(e.target.value)}
-                        className="w-full text-sm bg-white dark:bg-slate-900 border border-slate-200 dark:border-slate-600 rounded-lg p-2.5 pr-10 text-slate-700 dark:text-slate-200 focus:ring-2 focus:ring-indigo-500 outline-none"
-                    />
-                    <div className="absolute right-3 top-1/2 -translate-y-1/2 text-slate-400 pointer-events-none">
-                        <Calendar className="w-4 h-4" />
-                    </div>
-                </div>
+                 <DatePicker 
+                    value={dueDate}
+                    onChange={(val) => setDueDate(val)}
+                    placeholder="Seleziona scadenza"
+                    className="w-full text-sm bg-white dark:bg-slate-900 border border-slate-200 dark:border-slate-600 rounded-lg p-2.5 outline-none focus:ring-2 focus:ring-indigo-500"
+                    icon={<Calendar className="w-4 h-4 text-slate-400" />}
+                />
             </div>
             
             <div className="pt-2 border-t border-slate-100 dark:border-slate-800">
@@ -348,7 +346,7 @@ const TaskEditorModal: React.FC = () => {
                      <select
                         value={targetBranchId}
                         onChange={(e) => setTargetBranchId(e.target.value)}
-                        className="flex-1 text-sm bg-white dark:bg-slate-900 border border-slate-200 dark:border-slate-600 rounded-lg p-2 text-slate-700 dark:text-slate-200 focus:ring-2 focus:ring-indigo-500 outline-none"
+                        className="flex-1 text-sm bg-white dark:bg-slate-900 border border-slate-200 dark:border-slate-600 rounded-lg p-2 text-slate-900 dark:text-white focus:ring-2 focus:ring-indigo-500 outline-none"
                      >
                          <option value="">Seleziona ramo...</option>
                          {(Object.values(state.branches) as Branch[]).filter(b => b.id !== editingTask?.branchId).map(b => (
