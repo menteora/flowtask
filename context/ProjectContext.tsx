@@ -1058,12 +1058,33 @@ export const ProjectProvider: React.FC<{ children: React.ReactNode }> = ({ child
       if (session && !isOfflineMode && supabaseClient) {
           try {
               setAutoSaveStatus('saving');
-              const { error } = await supabaseClient
+              
+              // Inserimento del nodo radice se mancante
+              const rootBranch = finalBranches[finalRootId];
+              const { error: branchErr } = await supabaseClient
+                  .from('flowtask_branches')
+                  .upsert({
+                      id: rootBranch.id,
+                      project_id: activeProjectId,
+                      title: rootBranch.title,
+                      description: rootBranch.description,
+                      status: rootBranch.status,
+                      is_label: rootBranch.isLabel,
+                      parent_ids: [],
+                      children_ids: rootBranch.childrenIds,
+                      archived: false,
+                      collapsed: false,
+                      position: 0
+                  });
+              
+              if (branchErr) throw branchErr;
+
+              const { error: projErr } = await supabaseClient
                   .from('flowtask_projects')
                   .update({ root_branch_id: finalRootId })
                   .eq('id', activeProjectId);
               
-              if (error) throw error;
+              if (projErr) throw projErr;
               
               // Forza caricamento completo per assicurarsi che i rami orfani siano salvati prima del loro recupero
               await uploadProjectToSupabase(); 
