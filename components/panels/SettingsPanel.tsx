@@ -1,5 +1,4 @@
 
-
 import React, { useState, useEffect, useRef, useMemo } from 'react';
 import { useProject } from '../../context/ProjectContext';
 import { Branch } from '../../types';
@@ -211,18 +210,24 @@ const SettingsPanel: React.FC = () => {
       }
   };
 
-  const handleProcessOrphans = async (action: 'restore' | 'delete') => {
-      if (selectedOrphans.length === 0) return;
-      if (action === 'delete' && !confirm(`Stai per eliminare DEFINITIVAMENTE ${selectedOrphans.length} rami. Procedere?`)) return;
+  const handleProcessOrphans = async (action: 'restore' | 'delete', specificId?: string) => {
+      const idsToProcess = specificId ? [specificId] : selectedOrphans;
+      if (idsToProcess.length === 0) return;
+
+      if (action === 'delete' && !confirm(`Stai per eliminare DEFINITIVAMENTE ${idsToProcess.length} rami. Questa azione non è reversibile. Procedere?`)) return;
 
       setIsRepairing(true);
       try {
-          const toFix = action === 'restore' ? selectedOrphans : [];
-          const toDelete = action === 'delete' ? selectedOrphans : [];
+          const toFix = action === 'restore' ? idsToProcess : [];
+          const toDelete = action === 'delete' ? idsToProcess : [];
           await resolveOrphans(toFix, toDelete);
           
-          setHealthReport(null);
-          showNotification(action === 'restore' ? "Rami ripristinati." : "Rami eliminati.", 'success');
+          // Rifai analisi per pulire la vista
+          const updatedReport = checkProjectHealth();
+          setHealthReport(updatedReport);
+          setSelectedOrphans(updatedReport.orphanedBranches.map(o => o.id));
+
+          showNotification(action === 'restore' ? "Rami ripristinati correttamente." : "Rami eliminati dal server.", 'success');
       } finally {
           setIsRepairing(false);
       }
@@ -300,7 +305,7 @@ const SettingsPanel: React.FC = () => {
                       </div>
                       <div className="space-y-4">
                           <input type="text" value={url} onChange={(e) => setUrl(e.target.value)} placeholder="Project URL" className="w-full p-2.5 rounded-lg border border-slate-200 dark:border-slate-700 bg-slate-50 dark:bg-slate-900 text-xs focus:ring-1 focus:ring-indigo-500 font-mono" />
-                          <input type="password" value={key} onChange={(e) => setKey(e.target.value)} placeholder="Anon Key" className="w-full p-2.5 rounded-lg border border-slate-200 dark:border-slate-700 bg-slate-50 dark:bg-slate-900 text-xs focus:ring-1 focus:ring-indigo-500 font-mono" />
+                          <input type="password" value={key} onChange={(e) => setKey(e.target.value)} placeholder="Anon Key" className="w-full p-2.5 rounded-lg border border-slate-300 dark:border-slate-700 bg-white dark:bg-slate-800 focus:ring-1 focus:ring-indigo-500 font-mono" />
                           <button onClick={handleSaveConfig} className="px-6 py-2 bg-indigo-600 text-white rounded-xl text-xs font-bold">Salva</button>
                       </div>
                   </div>
@@ -413,9 +418,14 @@ const SettingsPanel: React.FC = () => {
                                                           <p className="text-xs font-black text-slate-700 dark:text-slate-200 truncate">{orphan.title || '(Senza Titolo)'}</p>
                                                           <p className="text-[10px] text-slate-400 font-bold uppercase">{orphan.status}</p>
                                                       </div>
-                                                      <button onClick={() => setExpandedOrphanId(expandedOrphanId === orphan.id ? null : orphan.id)} className="p-1.5 text-slate-400 hover:bg-slate-100 rounded-lg">
-                                                          {expandedOrphanId === orphan.id ? <EyeOff className="w-4 h-4" /> : <Eye className="w-4 h-4" />}
-                                                      </button>
+                                                      <div className="flex items-center gap-1">
+                                                          <button onClick={() => setExpandedOrphanId(expandedOrphanId === orphan.id ? null : orphan.id)} className="p-1.5 text-slate-400 hover:bg-slate-100 rounded-lg" title="Dettagli">
+                                                              {expandedOrphanId === orphan.id ? <EyeOff className="w-4 h-4" /> : <Eye className="w-4 h-4" />}
+                                                          </button>
+                                                          <button onClick={(e) => { e.stopPropagation(); handleProcessOrphans('delete', orphan.id); }} className="p-1.5 text-slate-300 hover:text-red-500 hover:bg-red-50 rounded-lg" title="Elimina definitvamente">
+                                                              <Trash2 className="w-4 h-4" />
+                                                          </button>
+                                                      </div>
                                                   </div>
                                                   {expandedOrphanId === orphan.id && (
                                                       <div className="px-10 pb-4 pt-1 animate-in slide-in-from-top-1">
@@ -434,7 +444,7 @@ const SettingsPanel: React.FC = () => {
                                                   <RefreshCw className={`w-4 h-4 ${isRepairing ? 'animate-spin' : ''}`} /> Collega a Radice
                                               </button>
                                               <button onClick={() => handleProcessOrphans('delete')} disabled={selectedOrphans.length === 0 || isRepairing} className="flex-1 py-3 bg-white dark:bg-slate-800 border-2 border-rose-500 text-rose-500 rounded-xl text-[10px] font-black uppercase flex items-center justify-center gap-2 hover:bg-rose-50 transition-colors disabled:opacity-50">
-                                                  <Trash2 className="w-4 h-4" /> Elimina Definitivamente
+                                                  <Trash2 className="w-4 h-4" /> Elimina Selezionati
                                               </button>
                                           </div>
                                       </div>
@@ -491,7 +501,7 @@ const SettingsPanel: React.FC = () => {
 
       {showCleanupConfirm && (
           <div className="fixed inset-0 z-[200] flex items-center justify-center p-4 bg-black/70 backdrop-blur-md animate-in fade-in">
-              <div className="bg-white dark:bg-slate-800 w-full max-w-sm rounded-3xl p-6 text-center shadow-2xl">
+              <div className="bg-white dark:bg-slate-800 w-full max-sm rounded-3xl p-6 text-center shadow-2xl">
                   <AlertTriangle className="w-12 h-12 text-rose-600 mx-auto mb-4" />
                   <h3 className="text-xl font-black uppercase">Conferma Pulizia</h3>
                   <p className="text-xs text-slate-500 mt-2 font-medium leading-relaxed">Questa azione eliminerà DEFINITIVAMENTE {cleanupStats} task completati. Non potrai tornare indietro.</p>

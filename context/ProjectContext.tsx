@@ -1,5 +1,4 @@
 
-
 import React, { createContext, useContext, useState, useEffect, useCallback, useRef } from 'react';
 import { createClient, SupabaseClient, Session } from '@supabase/supabase-js';
 import { ProjectState, Branch, Task, Person, BranchStatus } from '../types';
@@ -294,7 +293,6 @@ export const ProjectProvider: React.FC<{ children: React.ReactNode }> = ({ child
             due_date: b.dueDate,
             archived: b.archived,
             collapsed: b.collapsed,
-            // Fixed typo: was b.is_label, which does not exist on type Branch
             is_label: b.isLabel,
             parent_ids: b.parentIds,
             children_ids: b.childrenIds,
@@ -631,7 +629,8 @@ export const ProjectProvider: React.FC<{ children: React.ReactNode }> = ({ child
 
   const deleteBranch = useCallback(async (branchId: string) => {
       if (session && !isOfflineMode && supabaseClient) {
-          await supabaseClient.from('flowtask_branches').delete().eq('id', branchId);
+          const { error } = await supabaseClient.from('flowtask_branches').delete().eq('id', branchId);
+          if (error) console.error("Error deleting branch remote", error);
       }
 
       setProjects(prev => prev.map(p => {
@@ -796,7 +795,8 @@ export const ProjectProvider: React.FC<{ children: React.ReactNode }> = ({ child
 
   const deleteTask = useCallback(async (branchId: string, taskId: string) => {
       if (session && !isOfflineMode && supabaseClient) {
-          await supabaseClient.from('flowtask_tasks').delete().eq('id', taskId);
+          const { error } = await supabaseClient.from('flowtask_tasks').delete().eq('id', taskId);
+          if (error) console.error("Error deleting task remote", error);
       }
 
       setProjects(prev => prev.map(p => {
@@ -936,7 +936,8 @@ export const ProjectProvider: React.FC<{ children: React.ReactNode }> = ({ child
       }));
 
       if (idsToDelete.length > 0 && supabaseClient && session && !isOfflineMode) {
-          await supabaseClient.from('flowtask_tasks').delete().in('id', idsToDelete);
+          const { error } = await supabaseClient.from('flowtask_tasks').delete().in('id', idsToDelete);
+          if (error) console.error("Remote cleanup error", error);
       }
 
       return { count: idsToDelete.length, backup };
@@ -1046,11 +1047,12 @@ export const ProjectProvider: React.FC<{ children: React.ReactNode }> = ({ child
               
               // 1. ELIMINA FISICAMENTE record legacy prima di caricare il nuovo
               if (legacyIdToDelete) {
-                  await supabaseClient
+                  const { error: delErr } = await supabaseClient
                       .from('flowtask_branches')
                       .delete()
                       .eq('id', legacyIdToDelete)
                       .eq('project_id', activeProjectId);
+                  if (delErr) throw delErr;
               }
 
               // 2. Upsert nuovo nodo radice
@@ -1070,7 +1072,6 @@ export const ProjectProvider: React.FC<{ children: React.ReactNode }> = ({ child
                       collapsed: false,
                       position: 0
                   });
-              
               if (branchErr) throw branchErr;
 
               // 3. Aggiorna ID progetto
@@ -1078,10 +1079,9 @@ export const ProjectProvider: React.FC<{ children: React.ReactNode }> = ({ child
                   .from('flowtask_projects')
                   .update({ root_branch_id: finalRootId })
                   .eq('id', activeProjectId);
-              
               if (projErr) throw projErr;
               
-              // 4. Salva tutto il resto
+              // 4. Salva tutto il resto e aggiorna stato locale
               setProjects(prev => prev.map(p => p.id === activeProjectId ? updatedProject : p));
               await uploadProjectToSupabase(); 
               
@@ -1090,6 +1090,7 @@ export const ProjectProvider: React.FC<{ children: React.ReactNode }> = ({ child
               showNotification("Integrità radice ripristinata in remoto.", 'success');
               return updatedProject;
           } catch (e: any) {
+              console.error("Repair remote error:", e);
               setAutoSaveStatus('error');
               showNotification("Errore sincronizzazione radice.", 'error');
               return null;
@@ -1130,7 +1131,8 @@ export const ProjectProvider: React.FC<{ children: React.ReactNode }> = ({ child
       if (session && !isOfflineMode && supabaseClient) {
           try {
               if (idsToDelete.length > 0) {
-                  await supabaseClient.from('flowtask_branches').delete().in('id', idsToDelete);
+                  const { error } = await supabaseClient.from('flowtask_branches').delete().in('id', idsToDelete);
+                  if (error) throw error;
               }
               await uploadProjectToSupabase();
           } catch (e) {
@@ -1165,7 +1167,8 @@ export const ProjectProvider: React.FC<{ children: React.ReactNode }> = ({ child
 
   const removePerson = useCallback(async (id: string) => {
       if (session && !isOfflineMode && supabaseClient) {
-          await supabaseClient.from('flowtask_people').delete().eq('id', id);
+          const { error } = await supabaseClient.from('flowtask_people').delete().eq('id', id);
+          if (error) console.error("Remote delete person error", error);
       }
 
       setProjects(prev => prev.map(p => {
