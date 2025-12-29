@@ -34,8 +34,8 @@ export interface Branch {
   description?: string;
   status: BranchStatus;
   isLabel?: boolean; 
-  isSprint?: boolean; // New field for Sprint logic
-  sprintCounter?: number; // Counter for auto-naming children
+  isSprint?: boolean; // Nuovo campo per la logica Sprint
+  sprintCounter?: number; // Contatore per l'auto-naming dei figli
   startDate?: string; 
   endDate?: string;   
   dueDate?: string;   
