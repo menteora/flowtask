@@ -47,10 +47,12 @@ const LoginScreen: React.FC = () => {
 
     try {
         let result;
+        // Cast auth to any to bypass potential missing member errors from environment typing
+        const auth = supabaseClient.auth as any;
         if (isLogin) {
-            result = await supabaseClient.auth.signInWithPassword({ email, password });
+            result = await auth.signInWithPassword({ email, password });
         } else {
-            result = await supabaseClient.auth.signUp({ email, password });
+            result = await auth.signUp({ email, password });
         }
 
         if (result.error) {

@@ -1,6 +1,5 @@
-
 import React, { createContext, useContext, useState, useEffect, useCallback, useRef } from 'react';
-import { createClient, SupabaseClient, Session } from '@supabase/supabase-js';
+import { createClient, SupabaseClient } from '@supabase/supabase-js';
 import { ProjectState, Branch, Task, Person, BranchStatus } from '../types';
 import { createInitialProjectState } from '../constants';
 
@@ -28,11 +27,12 @@ interface ProjectContextType {
   showArchived: boolean;
   showAllProjects: boolean;
   showOnlyOpen: boolean;
-  session: Session | null;
+  session: any;
   isOfflineMode: boolean;
   loadingAuth: boolean;
   isInitializing: boolean;
   autoSaveStatus: 'idle' | 'saving' | 'saved' | 'error';
+  pendingSyncIds: Set<string>; // Nuova lista ID in attesa
   notification: { type: 'success' | 'error'; message: string } | null;
   supabaseConfig: { url: string; key: string };
   supabaseClient: SupabaseClient | null;
@@ -105,11 +105,7 @@ export const ProjectProvider: React.FC<{ children: React.ReactNode }> = ({ child
   const [projects, setProjects] = useState<ProjectState[]>(() => {
     const saved = localStorage.getItem('flowtask_projects');
     if (saved) {
-      try {
-        return JSON.parse(saved);
-      } catch (e) {
-        console.error("Error parsing saved projects", e);
-      }
+      try { return JSON.parse(saved); } catch (e) { console.error("Parse projects error", e); }
     }
     return [createInitialProjectState()];
   });
@@ -122,9 +118,7 @@ export const ProjectProvider: React.FC<{ children: React.ReactNode }> = ({ child
   const [selectedBranchId, setSelectedBranchId] = useState<string | null>(null);
   const [showArchived, setShowArchived] = useState(false);
   const [showAllProjects, setShowAllProjects] = useState(false);
-  const [showOnlyOpen, setShowOnlyOpen] = useState(() => {
-    return localStorage.getItem('flowtask_show_only_open') === 'true';
-  });
+  const [showOnlyOpen, setShowOnlyOpen] = useState(() => localStorage.getItem('flowtask_show_only_open') === 'true');
   
   const [readingDescriptionId, setReadingDescriptionId] = useState<string | null>(null);
   const [editingTask, setEditingTask] = useState<{ branchId: string; taskId: string } | null>(null);
@@ -139,14 +133,14 @@ export const ProjectProvider: React.FC<{ children: React.ReactNode }> = ({ child
   
   const [supabaseConfig, setSupabaseConfigState] = useState<{ url: string; key: string }>({ url: '', key: '' });
   const [supabaseClient, setSupabaseClient] = useState<SupabaseClient | null>(null);
-  const [session, setSession] = useState<Session | null>(null);
+  const [session, setSession] = useState<any>(null);
   const [isOfflineMode, setIsOfflineMode] = useState(false);
   const [loadingAuth, setLoadingAuth] = useState(true);
   const [isInitializing, setIsInitializing] = useState(true);
   const [autoSaveStatus, setAutoSaveStatus] = useState<'idle' | 'saving' | 'saved' | 'error'>('idle');
+  const [pendingSyncIds, setPendingSyncIds] = useState<Set<string>>(new Set());
   
   const [remoteDataLoaded, setRemoteDataLoaded] = useState(false);
-  const autoSaveTimerRef = useRef<ReturnType<typeof setTimeout> | null>(null);
   const lastSyncedProjectIdRef = useRef<string | null>(null);
 
   const showNotification = useCallback((message: string, type: 'success' | 'error') => {
@@ -154,1137 +148,313 @@ export const ProjectProvider: React.FC<{ children: React.ReactNode }> = ({ child
       setTimeout(() => setNotification(null), 3000);
   }, []);
 
+  const syncEntityToSupabase = useCallback(async (table: string, payload: any) => {
+    if (!supabaseClient || !session || isOfflineMode) return;
+    
+    // Identifichiamo l'ID del record per il tracking
+    const recordId = payload.id;
+    if (recordId) {
+        setPendingSyncIds(prev => new Set(prev).add(recordId));
+    }
+
+    try {
+        const { error } = await supabaseClient.from(table).upsert(payload);
+        if (error) throw error;
+        setAutoSaveStatus('saved');
+        setTimeout(() => setAutoSaveStatus('idle'), 2000);
+    } catch (e) {
+        console.error(`Sync error on ${table}:`, e);
+        setAutoSaveStatus('error');
+    } finally {
+        if (recordId) {
+            // Rimuoviamo l'ID dopo un piccolo delay per far vedere l'icona all'utente (opzionale)
+            setTimeout(() => {
+                setPendingSyncIds(prev => {
+                    const next = new Set(prev);
+                    next.delete(recordId);
+                    return next;
+                });
+            }, 500);
+        }
+    }
+  }, [supabaseClient, session, isOfflineMode]);
+
   const loadProject = useCallback((newState: ProjectState, activate = true, removeDefault = false) => {
     setProjects(prev => {
         let next = [...prev];
         const existingIdx = next.findIndex(p => p.id === newState.id);
-        if (existingIdx >= 0) {
-            next[existingIdx] = newState;
-        } else {
-            next.push(newState);
-        }
-        if (removeDefault) {
-            next = next.filter(p => p.id !== 'default-project');
-        }
+        if (existingIdx >= 0) next[existingIdx] = newState;
+        else next.push(newState);
+        if (removeDefault) next = next.filter(p => p.id !== 'default-project');
         return next;
     });
-    if (activate) {
-        setActiveProjectId(newState.id);
-    }
+    if (activate) setActiveProjectId(newState.id);
   }, []);
 
   const downloadProjectFromSupabase = useCallback(async (id: string, activate = true, force = false) => {
       if (!supabaseClient || !session) return;
-      
       try {
-          const { data: projectData, error: pErr } = await supabaseClient.from('flowtask_projects').select('*').eq('id', id).single();
+          const { data: p, error: pErr } = await supabaseClient.from('flowtask_projects').select('*').eq('id', id).single();
           if (pErr) throw pErr;
-          if (!projectData) throw new Error("Progetto non trovato");
+          
+          const [{ data: peopleData }, { data: branchesData }] = await Promise.all([
+              supabaseClient.from('flowtask_people').select('*').eq('project_id', id),
+              supabaseClient.from('flowtask_branches').select('*').eq('project_id', id)
+          ]);
 
-          const { data: peopleData, error: ppErr } = await supabaseClient.from('flowtask_people').select('*').eq('project_id', id);
-          if (ppErr) throw ppErr;
+          const { data: tasksData } = await supabaseClient.from('flowtask_tasks').select('*').in('branch_id', branchesData?.map(b => b.id) || []);
 
-          const { data: branchesData, error: bErr } = await supabaseClient.from('flowtask_branches').select('*').eq('project_id', id);
-          if (bErr) throw bErr;
-
-          const { data: tasksData, error: tErr } = await supabaseClient.from('flowtask_tasks').select('*').in('branch_id', branchesData?.map(b => b.id) || []);
-          if (tErr) throw tErr;
-
-          const people: Person[] = (peopleData || []).map((p: any) => ({
-              id: p.id,
-              name: p.name,
-              email: p.email,
-              phone: p.phone,
-              initials: p.initials,
-              color: p.color
+          const people: Person[] = (peopleData || []).map(p => ({
+              id: p.id, name: p.name, email: p.email, phone: p.phone, initials: p.initials, color: p.color
           }));
 
           const branches: Record<string, Branch> = {};
-          (branchesData || []).forEach((b: any) => {
-              const branchTasks = (tasksData || [])
-                  .filter((t: any) => t.branch_id === b.id)
-                  .sort((a: any, b: any) => (a.position || 0) - (b.position || 0))
-                  .map((t: any) => ({
-                    id: t.id,
-                    title: t.title,
-                    description: t.description,
-                    completed: t.completed,
-                    completedAt: t.completed_at,
-                    assigneeId: t.assignee_id,
-                    dueDate: t.due_date,
-                    pinned: t.pinned || false
+          (branchesData || []).forEach(b => {
+              const bTasks = (tasksData || [])
+                  .filter(t => t.branch_id === b.id)
+                  .sort((x, y) => (x.position || 0) - (y.position || 0))
+                  .map(t => ({
+                    id: t.id, title: t.title, description: t.description, completed: t.completed,
+                    completedAt: t.completed_at, assigneeId: t.assignee_id, dueDate: t.due_date, pinned: t.pinned || false
                   }));
 
               branches[b.id] = {
-                  id: b.id,
-                  title: b.title,
-                  description: b.description,
-                  status: b.status as BranchStatus,
-                  tasks: branchTasks,
-                  childrenIds: b.children_ids || [],
-                  parentIds: b.parent_ids || [],
-                  startDate: b.start_date,
-                  endDate: b.end_date,
-                  dueDate: b.due_date,
-                  archived: b.archived,
-                  collapsed: b.collapsed,
-                  isLabel: b.is_label,
-                  isSprint: b.is_sprint || false,
-                  sprintCounter: b.sprint_counter || 1
+                  id: b.id, title: b.title, description: b.description, status: b.status as BranchStatus,
+                  tasks: bTasks, childrenIds: b.children_ids || [], parentIds: b.parent_ids || [],
+                  startDate: b.start_date, endDate: b.end_date, dueDate: b.due_date,
+                  archived: b.archived, collapsed: b.collapsed, isLabel: b.is_label,
+                  isSprint: b.is_sprint || false, sprintCounter: b.sprint_counter || 1
               };
           });
 
-          const newState: ProjectState = {
-              id: projectData.id,
-              name: projectData.name,
-              rootBranchId: projectData.root_branch_id,
-              branches,
-              people
-          };
-
-          loadProject(newState, activate, true); 
+          loadProject({ id: p.id, name: p.name, rootBranchId: p.root_branch_id, branches, people }, activate, true); 
           lastSyncedProjectIdRef.current = id;
           setRemoteDataLoaded(true); 
       } catch (e: any) {
           console.error("Download Error:", e);
-          if (force) showNotification("Errore nel download del progetto: " + e.message, 'error');
+          if (force) showNotification("Errore download: " + e.message, 'error');
       }
   }, [supabaseClient, session, loadProject, showNotification]);
 
   const uploadProjectToSupabase = useCallback(async () => {
     if (!supabaseClient || !session || isOfflineMode) return;
-    
-    const projectToSave = projects.find(p => p.id === activeProjectId);
-    if (!projectToSave || projectToSave.id === 'default-project') return;
+    const p = projects.find(x => x.id === activeProjectId);
+    if (!p || p.id === 'default-project') return;
 
     setAutoSaveStatus('saving');
     try {
-        const { error: pErr } = await supabaseClient
-            .from('flowtask_projects')
-            .upsert({
-                id: projectToSave.id,
-                name: projectToSave.name,
-                root_branch_id: projectToSave.rootBranchId,
-                owner_id: session.user.id,
-                created_at: new Date().toISOString()
-            });
-        if (pErr) throw pErr;
-
-        const peoplePayload = projectToSave.people.map(p => ({
-            id: p.id,
-            project_id: projectToSave.id,
-            name: p.name,
-            email: p.email,
-            phone: p.phone,
-            initials: p.initials,
-            color: p.color
-        }));
-        if (peoplePayload.length > 0) {
-            const { error: ppErr } = await supabaseClient.from('flowtask_people').upsert(peoplePayload);
-            if (ppErr) throw ppErr;
-        }
-
-        const branchesPayload = Object.values(projectToSave.branches).map((b: Branch) => ({
-            id: b.id,
-            project_id: projectToSave.id,
-            title: b.title,
-            description: b.description,
-            status: b.status,
-            start_date: b.startDate,
-            end_date: b.endDate,
-            due_date: b.dueDate,
-            archived: b.archived,
-            collapsed: b.collapsed,
-            is_label: b.isLabel,
-            is_sprint: b.isSprint || false,
-            sprint_counter: b.sprintCounter || 1,
-            parent_ids: b.parentIds,
-            children_ids: b.childrenIds,
-            position: b.position || 0
-        }));
-        if (branchesPayload.length > 0) {
-            const { error: bErr } = await supabaseClient.from('flowtask_branches').upsert(branchesPayload);
-            if (bErr) throw bErr;
-        }
-
-        const tasksPayload: any[] = [];
-        Object.values(projectToSave.branches).forEach((b: Branch) => {
-            b.tasks.forEach((t: Task, idx: number) => {
-                tasksPayload.push({
-                    id: t.id,
-                    branch_id: b.id,
-                    title: t.title,
-                    description: t.description,
-                    assignee_id: t.assigneeId,
-                    due_date: t.dueDate,
-                    completed: t.completed,
-                    completed_at: t.completedAt,
-                    position: t.position !== undefined ? t.position : idx,
-                    pinned: t.pinned || false 
-                });
-            });
+        await supabaseClient.from('flowtask_projects').upsert({
+            id: p.id, name: p.name, root_branch_id: p.rootBranchId, owner_id: session.user.id
         });
-        
-        if (tasksPayload.length > 0) {
-            const { error: tErr } = await supabaseClient.from('flowtask_tasks').upsert(tasksPayload);
-            if (tErr) throw tErr;
-        }
+
+        const people = p.people.map(x => ({ ...x, project_id: p.id }));
+        if (people.length > 0) await supabaseClient.from('flowtask_people').upsert(people);
+
+        const branches = Object.values(p.branches).map(b => ({
+            id: b.id, project_id: p.id, title: b.title, description: b.description, status: b.status,
+            start_date: b.startDate, end_date: b.endDate, due_date: b.dueDate, archived: b.archived,
+            collapsed: b.collapsed, is_label: b.isLabel, is_sprint: b.isSprint || false,
+            sprint_counter: b.sprintCounter || 1, parent_ids: b.parentIds, children_ids: b.childrenIds
+        }));
+        if (branches.length > 0) await supabaseClient.from('flowtask_branches').upsert(branches);
+
+        const tasks: any[] = [];
+        Object.values(p.branches).forEach(b => b.tasks.forEach((t, i) => tasks.push({
+            id: t.id, branch_id: b.id, title: t.title, description: t.description, assignee_id: t.assigneeId,
+            due_date: t.dueDate, completed: t.completed, completed_at: t.completedAt, position: t.position ?? i, pinned: t.pinned || false
+        })));
+        if (tasks.length > 0) await supabaseClient.from('flowtask_tasks').upsert(tasks);
 
         setAutoSaveStatus('saved');
         setTimeout(() => setAutoSaveStatus('idle'), 2000);
-    } catch (e: any) {
-        console.error("Sync Error:", e);
-        setAutoSaveStatus('error');
-    }
+    } catch (e) { setAutoSaveStatus('error'); }
   }, [supabaseClient, session, isOfflineMode, projects, activeProjectId]);
 
   useEffect(() => {
-    localStorage.setItem('flowtask_show_only_open', showOnlyOpen.toString());
-  }, [showOnlyOpen]);
-
-  useEffect(() => {
-    const params = new URLSearchParams(window.location.search);
-    const configParam = params.get('config');
-    let config = { url: '', key: '' };
-    
-    if (configParam) {
-        try {
-            config = JSON.parse(atob(configParam));
-            window.history.replaceState({}, '', window.location.pathname); 
-        } catch (e) { console.error("Invalid config param"); }
-    } else {
-        const storedConfig = localStorage.getItem('supabase_config');
-        if (storedConfig) {
-            try { config = JSON.parse(storedConfig); } catch(e) {}
-        }
+    const stored = localStorage.getItem('supabase_config');
+    if (stored) {
+        try { setSupabaseConfigState(JSON.parse(stored)); } catch(e) {}
     }
-
-    if (config.url && config.key) {
-        setSupabaseConfigState(config);
-    }
-
     setIsInitializing(false);
     setLoadingAuth(false); 
   }, []);
 
   useEffect(() => {
     if (supabaseConfig.url && supabaseConfig.key) {
-        try {
-            const client = createClient(supabaseConfig.url, supabaseConfig.key);
-            setSupabaseClient(client);
-            
-            client.auth.getSession().then(({ data: { session } }) => {
-                setSession(session);
-                setLoadingAuth(false);
-            });
-
-            const { data: { subscription } } = client.auth.onAuthStateChange((_event, session) => {
-                setSession(session);
-            });
-
-            return () => subscription.unsubscribe();
-        } catch (e) {
-            console.error("Failed to initialize Supabase client", e);
-            setLoadingAuth(false);
-        }
+        const client = createClient(supabaseConfig.url, supabaseConfig.key);
+        setSupabaseClient(client);
+        (client.auth as any).getSession().then(({ data: { session } }: any) => setSession(session));
+        const { data: { subscription } } = (client.auth as any).onAuthStateChange((_event: any, session: any) => setSession(session));
+        return () => subscription.unsubscribe();
     }
   }, [supabaseConfig]);
 
   useEffect(() => {
-      const activeProject = projects.find(p => p.id === activeProjectId);
-      if (session && !isOfflineMode && activeProjectId && activeProject && !activeProject.id.includes('default') && lastSyncedProjectIdRef.current !== activeProjectId) {
-          setRemoteDataLoaded(false); 
-          downloadProjectFromSupabase(activeProjectId, false, false)
-             .then(() => setRemoteDataLoaded(true))
-             .catch(err => console.error("Initial fetch failed", err));
+      const active = projects.find(p => p.id === activeProjectId);
+      if (session && !isOfflineMode && activeProjectId && active && !active.id.includes('default') && lastSyncedProjectIdRef.current !== activeProjectId) {
+          downloadProjectFromSupabase(activeProjectId, false, false);
       }
-  }, [session, isOfflineMode, activeProjectId, downloadProjectFromSupabase]);
+  }, [session, isOfflineMode, activeProjectId, downloadProjectFromSupabase, projects]);
 
   useEffect(() => {
       localStorage.setItem('flowtask_projects', JSON.stringify(projects));
       localStorage.setItem('active_project_id', activeProjectId);
-  }, [projects, activeProjectId]);
+      localStorage.setItem('flowtask_show_only_open', showOnlyOpen.toString());
+  }, [projects, activeProjectId, showOnlyOpen]);
 
   const activeProject = projects.find(p => p.id === activeProjectId) || projects[0] || createInitialProjectState();
+
+  const addBranch = useCallback((parentId: string) => {
+      setProjects(prev => prev.map(p => {
+          if (p.id !== activeProjectId) return p;
+          const parent = p.branches[parentId];
+          let title = 'Nuovo Ramo';
+          let updatedParent = { ...parent };
+          if (parent?.isSprint) {
+              const year = new Date().getFullYear().toString().slice(-2);
+              title = `${parent.title} ${year}-${String(parent.sprintCounter || 1).padStart(2, '0')}`;
+              updatedParent.sprintCounter = (parent.sprintCounter || 1) + 1;
+          }
+          const newId = crypto.randomUUID();
+          const newBranch = { id: newId, title, status: BranchStatus.PLANNED, tasks: [], childrenIds: [], parentIds: [parentId], description: '', isLabel: false, isSprint: false, sprintCounter: 1 };
+          const branches = { ...p.branches, [newId]: newBranch, [parentId]: { ...updatedParent, childrenIds: [...updatedParent.childrenIds, newId] } };
+          
+          syncEntityToSupabase('flowtask_branches', { 
+            id: newId, project_id: p.id, title, status: BranchStatus.PLANNED, 
+            parent_ids: [parentId], children_ids: [] 
+          });
+          syncEntityToSupabase('flowtask_branches', { 
+            id: parentId, project_id: p.id, children_ids: branches[parentId].childrenIds, 
+            sprint_counter: branches[parentId].sprintCounter 
+          });
+
+          return { ...p, branches };
+      }));
+  }, [activeProjectId, syncEntityToSupabase]);
+
+  const updateBranch = useCallback((branchId: string, updates: Partial<Branch>) => {
+      setProjects(prev => prev.map(p => {
+          if (p.id !== activeProjectId || !p.branches[branchId]) return p;
+          const updated = { ...p.branches[branchId], ...updates };
+          
+          const dbPayload: any = { id: branchId };
+          if (updates.title !== undefined) dbPayload.title = updates.title;
+          if (updates.status !== undefined) dbPayload.status = updates.status;
+          if (updates.description !== undefined) dbPayload.description = updates.description;
+          if (updates.isLabel !== undefined) dbPayload.is_label = updates.isLabel;
+          if (updates.isSprint !== undefined) dbPayload.is_sprint = updates.isSprint;
+          if (updates.sprintCounter !== undefined) dbPayload.sprint_counter = updates.sprintCounter;
+          if (updates.startDate !== undefined) dbPayload.start_date = updates.startDate;
+          if (updates.dueDate !== undefined) dbPayload.due_date = updates.dueDate;
+          if (updates.archived !== undefined) dbPayload.archived = updates.archived;
+          
+          syncEntityToSupabase('flowtask_branches', dbPayload);
+
+          return { ...p, branches: { ...p.branches, [branchId]: updated } };
+      }));
+  }, [activeProjectId, syncEntityToSupabase]);
+
+  const deleteBranch = useCallback(async (branchId: string) => {
+      if (supabaseClient && !isOfflineMode) await supabaseClient.from('flowtask_branches').delete().eq('id', branchId);
+      setProjects(prev => prev.map(p => {
+          if (p.id !== activeProjectId) return p;
+          const next = { ...p.branches };
+          const b = next[branchId];
+          if (!b) return p;
+          b.parentIds.forEach(pid => { if (next[pid]) next[pid].childrenIds = next[pid].childrenIds.filter(id => id !== branchId); });
+          delete next[branchId];
+          return { ...p, branches: next };
+      }));
+      if (selectedBranchId === branchId) setSelectedBranchId(null);
+  }, [activeProjectId, selectedBranchId, isOfflineMode, supabaseClient]);
+
+  const toggleBranchArchive = useCallback((branchId: string) => {
+      const branch = activeProject.branches[branchId];
+      if (branch) {
+          updateBranch(branchId, { archived: !branch.archived });
+      }
+  }, [activeProject.branches, updateBranch]);
+
+  const addTask = useCallback((branchId: string, title: string) => {
+      const newId = crypto.randomUUID();
+      const newTask = { id: newId, title, completed: false, description: '', pinned: false };
+      setProjects(prev => prev.map(p => {
+          if (p.id !== activeProjectId || !p.branches[branchId]) return p;
+          syncEntityToSupabase('flowtask_tasks', { id: newId, branch_id: branchId, title, completed: false });
+          return { ...p, branches: { ...p.branches, [branchId]: { ...p.branches[branchId], tasks: [...p.branches[branchId].tasks, newTask] } } };
+      }));
+  }, [activeProjectId, syncEntityToSupabase]);
+
+  const updateTask = useCallback((branchId: string, taskId: string, updates: Partial<Task>) => {
+      setProjects(prev => prev.map(p => {
+          if (p.id !== activeProjectId || !p.branches[branchId]) return p;
+          const branch = p.branches[branchId];
+          const task = branch.tasks.find(t => t.id === taskId);
+          if (!task) return p;
+
+          const dbPayload: any = { id: taskId };
+          if (updates.title !== undefined) dbPayload.title = updates.title;
+          if (updates.completed !== undefined) {
+              dbPayload.completed = updates.completed;
+              dbPayload.completed_at = updates.completed ? (updates.completedAt || new Date().toISOString()) : null;
+          }
+          if (updates.assigneeId !== undefined) dbPayload.assignee_id = updates.assigneeId || null;
+          if (updates.dueDate !== undefined) dbPayload.due_date = updates.dueDate || null;
+          if (updates.pinned !== undefined) dbPayload.pinned = updates.pinned;
+          if (updates.description !== undefined) dbPayload.description = updates.description;
+
+          syncEntityToSupabase('flowtask_tasks', dbPayload);
+
+          const nextTasks = branch.tasks.map(t => t.id === taskId ? { ...t, ...updates, completedAt: dbPayload.completed_at } : t);
+          return { ...p, branches: { ...p.branches, [branchId]: { ...branch, tasks: nextTasks } } };
+      }));
+  }, [activeProjectId, syncEntityToSupabase]);
 
   const setSupabaseConfig = (url: string, key: string) => {
       setSupabaseConfigState({ url, key });
       localStorage.setItem('supabase_config', JSON.stringify({ url, key }));
   };
 
-  const updateMessageTemplates = (templates: Partial<{ opening: string; closing: string }>) => {
-      setMessageTemplates(prev => ({ ...prev, ...templates }));
-  };
-
-  const switchProject = useCallback((id: string) => {
-      setActiveProjectId(id);
-      setSelectedBranchId(null);
-  }, []);
-
-  const createProject = useCallback(() => {
-      const newProject = createInitialProjectState('Nuovo Progetto ' + (projects.length + 1));
-      setProjects(prev => [...prev, newProject]);
-      setActiveProjectId(newProject.id);
-  }, [projects.length]);
-
-  const closeProject = useCallback((id: string) => {
-      setProjects(prev => {
-          if (prev.length <= 1) return prev;
-          const next = prev.filter(p => p.id !== id);
-          if (activeProjectId === id) {
-              setActiveProjectId(next[0].id);
-          }
-          return next;
-      });
-  }, [activeProjectId]);
-
-  const renameProject = useCallback((name: string) => {
-      setProjects(prev => prev.map(p => p.id === activeProjectId ? { ...p, name } : p));
-  }, [activeProjectId]);
-
-  useEffect(() => {
-      if (!session || isOfflineMode || isInitializing) return;
-      if (session && !remoteDataLoaded) return;
-      
-      if (autoSaveTimerRef.current) {
-          clearTimeout(autoSaveTimerRef.current);
-      }
-
-      autoSaveTimerRef.current = setTimeout(() => {
-          uploadProjectToSupabase();
-      }, 2000);
-
-      return () => {
-          if (autoSaveTimerRef.current) clearTimeout(autoSaveTimerRef.current);
-      };
-  }, [projects, session, isOfflineMode, isInitializing, uploadProjectToSupabase, remoteDataLoaded]);
-
-
-  const listProjectsFromSupabase = useCallback(async () => {
-      if (!supabaseClient) return [];
-      const { data, error } = await supabaseClient.from('flowtask_projects').select('id, name, created_at').order('created_at', { ascending: false });
-      if (error) throw error;
-      return data || [];
-  }, [supabaseClient]);
-
-  const getProjectBranchesFromSupabase = useCallback(async (projectId: string) => {
-      if (!supabaseClient) return [];
-      const { data, error } = await supabaseClient.from('flowtask_branches').select('*').eq('project_id', projectId);
-      if (error) throw error;
-      return (data || []).map((b: any) => ({
-          id: b.id,
-          title: b.title,
-          status: b.status,
-          childrenIds: b.children_ids || [],
-          parentIds: b.parent_ids || [],
-          tasks: [] 
-      }));
-  }, [supabaseClient]);
-
-  const deleteProjectFromSupabase = useCallback(async (id: string) => {
-      if (!supabaseClient) return;
-      const { error } = await supabaseClient.from('flowtask_projects').delete().eq('id', id);
-      if (error) throw error;
-  }, [supabaseClient]);
-
-  const moveLocalBranchToRemoteProject = useCallback(async (branchId: string, targetProjectId: string, targetParentId: string) => {
-      const sourceProject = projects.find(p => p.id === activeProjectId);
-      const targetProject = projects.find(p => p.id === targetProjectId);
-      if (!sourceProject || !targetProject) return;
-
-      const branchToMove = sourceProject.branches[branchId];
-      if (!branchToMove) return;
-
-      const descendantIds = new Set<string>();
-      const queue = [branchId];
-      while (queue.length > 0) {
-          const cid = queue.shift()!;
-          descendantIds.add(cid);
-          sourceProject.branches[cid]?.childrenIds.forEach(id => queue.push(id));
-      }
-
-      const movedBranches: Record<string, Branch> = {};
-      descendantIds.forEach(id => {
-          const b = sourceProject.branches[id];
-          if (b) {
-              const movedB = { ...b };
-              if (id === branchId) {
-                  movedB.parentIds = [targetParentId];
-              }
-              movedBranches[id] = movedB;
-          }
-      });
-
-      setProjects(prev => prev.map(p => {
-          if (p.id === activeProjectId) {
-              const newBranches = { ...p.branches };
-              branchToMove.parentIds.forEach(pid => {
-                  if (newBranches[pid]) {
-                      newBranches[pid] = { ...newBranches[pid], childrenIds: newBranches[pid].childrenIds.filter(id => id !== branchId) };
-                  }
-              });
-              descendantIds.forEach(id => delete newBranches[id]);
-              return { ...p, branches: newBranches };
-          }
-          if (p.id === targetProjectId) {
-              const newBranches = { ...p.branches, ...movedBranches };
-              if (newBranches[targetParentId]) {
-                  newBranches[targetParentId] = { ...newBranches[targetParentId], childrenIds: [...newBranches[targetParentId].childrenIds, branchId] };
-              }
-              return { ...p, branches: newBranches };
-          }
-          return p;
-      }));
-
-      if (session && !isOfflineMode && supabaseClient) {
-          try {
-              const { error } = await supabaseClient
-                  .from('flowtask_branches')
-                  .update({ project_id: targetProjectId })
-                  .in('id', Array.from(descendantIds));
-              
-              if (error) throw error;
-
-              await supabaseClient
-                  .from('flowtask_branches')
-                  .update({ parent_ids: [targetParentId] })
-                  .eq('id', branchId);
-
-              showNotification("Spostamento completato!", 'success');
-          } catch (e: any) {
-              showNotification("Errore remoto: " + e.message, 'error');
-          }
-      } else {
-          showNotification("Spostamento locale completato.", 'success');
-      }
-
-      if (selectedBranchId === branchId) setSelectedBranchId(null);
-  }, [activeProjectId, projects, session, isOfflineMode, supabaseClient, selectedBranchId, showNotification]);
-
-  const toggleShowArchived = useCallback(() => {
-    setShowArchived(prev => !prev);
-  }, []);
-
-  const toggleShowAllProjects = useCallback(() => {
-    setShowAllProjects(prev => {
-        const next = !prev;
-        if (next && session && !isOfflineMode) {
-            projects.forEach(p => {
-                if (p.id !== activeProjectId) {
-                    downloadProjectFromSupabase(p.id, false, false)
-                        .catch(err => console.error(`Error background sync:`, err));
-                }
-            });
-        }
-        return next;
-    });
-  }, [projects, session, isOfflineMode, activeProjectId, downloadProjectFromSupabase]);
-
-  const toggleShowOnlyOpen = useCallback(() => {
-    setShowOnlyOpen(prev => !prev);
-  }, []);
-
-  const addBranch = useCallback((parentId: string) => {
-      setProjects(prev => prev.map(p => {
-          if (p.id !== activeProjectId) return p;
-          
-          const parent = p.branches[parentId];
-          let title = 'Nuovo Ramo';
-          let updatedParent = { ...parent };
-          
-          // Logica Sprint: auto-nome figlio come [NomePadre] YY-NN
-          if (parent?.isSprint) {
-              const year = new Date().getFullYear().toString().slice(-2);
-              const counter = parent.sprintCounter || 1;
-              title = `${parent.title} ${year}-${String(counter).padStart(2, '0')}`;
-              updatedParent.sprintCounter = counter + 1;
-          }
-
-          const newId = crypto.randomUUID();
-          const newBranch: Branch = {
-              id: newId,
-              title: title,
-              status: BranchStatus.PLANNED,
-              tasks: [],
-              childrenIds: [],
-              parentIds: [parentId],
-              description: '',
-              isLabel: false,
-              isSprint: false,
-              sprintCounter: 1
-          };
-          
-          const newBranches = { 
-              ...p.branches, 
-              [newId]: newBranch,
-              [parentId]: {
-                  ...updatedParent,
-                  childrenIds: [...updatedParent.childrenIds, newId]
-              }
-          };
-          
-          return { ...p, branches: newBranches };
-      }));
-  }, [activeProjectId]);
-
-  const updateBranch = useCallback((branchId: string, updates: Partial<Branch>) => {
-      setProjects(prev => prev.map(p => {
-          if (p.id !== activeProjectId) return p;
-          if (!p.branches[branchId]) return p;
-          return {
-              ...p,
-              branches: {
-                  ...p.branches,
-                  [branchId]: { ...p.branches[branchId], ...updates }
-              }
-          };
-      }));
-  }, [activeProjectId]);
-
-  const deleteBranch = useCallback(async (branchId: string) => {
-      if (session && !isOfflineMode && supabaseClient) {
-          const { error } = await supabaseClient.from('flowtask_branches').delete().eq('id', branchId);
-          if (error) {
-              console.error("Error deleting branch remote", error);
-              showNotification("Errore durante l'eliminazione remota.", "error");
-              return;
-          }
-      }
-
-      setProjects(prev => prev.map(p => {
-          if (p.id !== activeProjectId) return p;
-          const newBranches = { ...p.branches };
-          const branch = newBranches[branchId];
-          if (!branch) return p;
-
-          branch.parentIds.forEach(pid => {
-              if (newBranches[pid]) {
-                  newBranches[pid] = {
-                      ...newBranches[pid],
-                      childrenIds: newBranches[pid].childrenIds.filter(id => id !== branchId)
-                  };
-              }
-          });
-
-          delete newBranches[branchId];
-          return { ...p, branches: newBranches };
-      }));
-      if (selectedBranchId === branchId) setSelectedBranchId(null);
-  }, [activeProjectId, selectedBranchId, session, isOfflineMode, supabaseClient, showNotification]);
-
-  const moveBranch = useCallback((branchId: string, direction: 'left' | 'right' | 'up' | 'down') => {
-      setProjects(prev => prev.map(p => {
-          if (p.id !== activeProjectId) return p;
-          const branch = p.branches[branchId];
-          if (!branch || branch.parentIds.length === 0) return p;
-          
-          const parentId = branch.parentIds[0];
-          const parent = p.branches[parentId];
-          if (!parent) return p;
-
-          const idx = parent.childrenIds.indexOf(branchId);
-          if (idx === -1) return p;
-
-          const newChildren = [...parent.childrenIds];
-          let swapIdx = -1;
-          
-          if (direction === 'left' || direction === 'up') swapIdx = idx - 1;
-          if (direction === 'right' || direction === 'down') swapIdx = idx + 1;
-
-          if (swapIdx >= 0 && swapIdx < newChildren.length) {
-              [newChildren[idx], newChildren[swapIdx]] = [newChildren[swapIdx], newChildren[idx]];
-              return {
-                  ...p,
-                  branches: {
-                      ...p.branches,
-                      [parentId]: { ...parent, childrenIds: newChildren }
-                  }
-              };
-          }
-          return p;
-      }));
-  }, [activeProjectId]);
-
-  const linkBranch = useCallback((childId: string, parentId: string) => {
-       setProjects(prev => prev.map(p => {
-           if (p.id !== activeProjectId) return p;
-           const branches = { ...p.branches };
-           if (branches[childId] && branches[parentId]) {
-               if (!branches[childId].parentIds.includes(parentId)) {
-                   branches[childId] = { ...branches[childId], parentIds: [...branches[childId].parentIds, parentId] };
-                   branches[parentId] = { ...branches[parentId], childrenIds: [...branches[parentId].childrenIds, childId] };
-               }
-           }
-           return { ...p, branches };
-       }));
-  }, [activeProjectId]);
-
-  const unlinkBranch = useCallback((childId: string, parentId: string) => {
-      setProjects(prev => prev.map(p => {
-           if (p.id !== activeProjectId) return p;
-           const branches = { ...p.branches };
-           if (branches[childId] && branches[parentId]) {
-               branches[childId] = { ...branches[childId], parentIds: branches[childId].parentIds.filter(id => id !== parentId) };
-               branches[parentId] = { ...branches[parentId], childrenIds: branches[parentId].childrenIds.filter(id => id !== childId) };
-           }
-           return { ...p, branches };
-      }));
-  }, [activeProjectId]);
-
-  const toggleBranchArchive = useCallback((branchId: string) => {
-      setProjects(prev => prev.map(p => {
-          if (p.id !== activeProjectId) return p;
-          if (p.branches[branchId]) {
-             const newVal = !p.branches[branchId].archived;
-             return {
-                 ...p,
-                 branches: { ...p.branches, [branchId]: { ...p.branches[branchId], archived: newVal } }
-             };
-          }
-          return p;
-      }));
-  }, [activeProjectId]);
-
-  const setAllBranchesCollapsed = useCallback((collapsed: boolean) => {
-      setProjects(prev => prev.map(p => {
-          if (p.id !== activeProjectId) return p;
-          const newBranches = { ...p.branches };
-          Object.keys(newBranches).forEach(id => {
-              newBranches[id] = { ...newBranches[id], collapsed };
-          });
-          return { ...p, branches: newBranches };
-      }));
-  }, [activeProjectId]);
-
-  const addTask = useCallback((branchId: string, title: string) => {
-      if (!title.trim()) return;
-      setProjects(prev => prev.map(p => {
-          if (p.id !== activeProjectId) return p;
-          const branch = p.branches[branchId];
-          if (!branch) return p;
-
-          const newTask: Task = {
-              id: crypto.randomUUID(),
-              title,
-              completed: false,
-              description: '',
-              pinned: false
-          };
-          return {
-              ...p,
-              branches: {
-                  ...p.branches,
-                  [branchId]: { ...branch, tasks: [...branch.tasks, newTask] }
-              }
-          };
-      }));
-  }, [activeProjectId]);
-
-  const updateTask = useCallback((branchId: string, taskId: string, updates: Partial<Task>) => {
-      setProjects(prev => prev.map(p => {
-          if (p.id !== activeProjectId) return p; 
-          
-          const branch = p.branches[branchId];
-          if (!branch) return p;
-
-          const newTasks = branch.tasks.map(t => {
-              if (t.id === taskId) {
-                  let completedAt = updates.completedAt !== undefined ? updates.completedAt : t.completedAt;
-                  
-                  if (updates.completed !== undefined && updates.completedAt === undefined) {
-                      const becomingCompleted = updates.completed === true && t.completed === false;
-                      const becomingOpen = updates.completed === false && t.completed === true;
-                      
-                      if (becomingCompleted) completedAt = new Date().toISOString();
-                      else if (becomingOpen) completedAt = undefined;
-                  }
-
-                  return { ...t, ...updates, completedAt };
-              }
-              return t;
-          });
-          
-          return {
-              ...p,
-              branches: { ...p.branches, [branchId]: { ...branch, tasks: newTasks } }
-          };
-      }));
-  }, [activeProjectId]);
-
-  const deleteTask = useCallback(async (branchId: string, taskId: string) => {
-      if (session && !isOfflineMode && supabaseClient) {
-          const { error } = await supabaseClient.from('flowtask_tasks').delete().eq('id', taskId);
-          if (error) {
-              console.error("Error deleting task remote", error);
-              showNotification("Errore eliminazione remota task.", "error");
-              return;
-          }
-      }
-
-      setProjects(prev => prev.map(p => {
-          if (p.id !== activeProjectId) return p;
-          const branch = p.branches[branchId];
-          if (!branch) return p;
-          return {
-              ...p,
-              branches: { ...p.branches, [branchId]: { ...branch, tasks: branch.tasks.filter(t => t.id !== taskId) } }
-          };
-      }));
-  }, [activeProjectId, session, isOfflineMode, supabaseClient, showNotification]);
-
-  const moveTask = useCallback((branchId: string, taskId: string, direction: 'up' | 'down') => {
-      setProjects(prev => prev.map(p => {
-          if (p.id !== activeProjectId) return p;
-          const branch = p.branches[branchId];
-          if (!branch) return p;
-          const idx = branch.tasks.findIndex(t => t.id === taskId);
-          if (idx === -1) return p;
-          
-          const newTasks = [...branch.tasks];
-          const swapIdx = direction === 'up' ? idx - 1 : idx + 1;
-          
-          if (swapIdx >= 0 && swapIdx < newTasks.length) {
-              [newTasks[idx], newTasks[swapIdx]] = [newTasks[swapIdx], newTasks[idx]];
-              newTasks.forEach((t, i) => t.position = i);
-              return {
-                  ...p,
-                  branches: { ...p.branches, [branchId]: { ...branch, tasks: newTasks } }
-              };
-          }
-          return p;
-      }));
-  }, [activeProjectId]);
-
-  const moveTaskToBranch = useCallback((taskId: string, sourceBranchId: string, targetBranchId: string) => {
-      setProjects(prev => prev.map(p => {
-          if (p.id !== activeProjectId) return p;
-          const source = p.branches[sourceBranchId];
-          const target = p.branches[targetBranchId];
-          if (!source || !target) return p;
-
-          const task = source.tasks.find(t => t.id === taskId);
-          if (!task) return p;
-
-          return {
-              ...p,
-              branches: {
-                  ...p.branches,
-                  [sourceBranchId]: { ...source, tasks: source.tasks.filter(t => t.id !== taskId) },
-                  [targetBranchId]: { ...target, tasks: [...target.tasks, task] }
-              }
-          };
-      }));
-  }, [activeProjectId]);
-
-  const bulkMoveTasks = useCallback((taskIds: string[], sourceBranchId: string, targetBranchId: string) => {
-      setProjects(prev => prev.map(p => {
-          if (p.id !== activeProjectId) return p;
-          const source = p.branches[sourceBranchId];
-          const target = p.branches[targetBranchId];
-          if (!source || !target) return p;
-
-          const tasksToMove = source.tasks.filter(t => taskIds.includes(t.id));
-          const remainingTasks = source.tasks.filter(t => !taskIds.includes(t.id));
-
-          return {
-              ...p,
-              branches: {
-                  ...p.branches,
-                  [sourceBranchId]: { ...source, tasks: remainingTasks },
-                  [targetBranchId]: { ...target, tasks: [...target.tasks, ...tasksToMove] }
-              }
-          };
-      }));
-  }, [activeProjectId]);
-
-  const bulkUpdateTasks = useCallback((branchId: string, text: string) => {
-      const lines = text.split('\n').map(l => l.trim()).filter(l => l);
-      setProjects(prev => prev.map(p => {
-           if (p.id !== activeProjectId) return p;
-           const branch = p.branches[branchId];
-           if (!branch) return p;
-           
-           const newTasks: Task[] = lines.map((line, idx) => {
-               const existing = branch.tasks.find(t => t.title === line);
-               return existing || { 
-                   id: crypto.randomUUID(), 
-                   title: line, 
-                   completed: false, 
-                   description: '', 
-                   pinned: false,
-                   position: idx
-               };
-           });
-           
-           return {
-               ...p,
-               branches: { ...p.branches, [branchId]: { ...branch, tasks: newTasks } }
-           };
-      }));
-  }, [activeProjectId]);
-
-  const cleanupOldTasks = useCallback(async (months: number): Promise<{ count: number; backup: any[] }> => {
-      const threshold = new Date();
-      threshold.setMonth(threshold.getMonth() - months);
-      
-      const backup: any[] = [];
-      const idsToDelete: string[] = [];
-
-      setProjects(prev => prev.map(p => {
-          if (p.id !== activeProjectId) return p;
-          
-          const newBranches = { ...p.branches };
-          Object.keys(newBranches).forEach(bid => {
-              const b = newBranches[bid];
-              const toRemove = b.tasks.filter(t => {
-                  if (t.completed && t.completedAt) {
-                      const cDate = new Date(t.completedAt);
-                      return cDate < threshold;
-                  }
-                  return false;
-              });
-
-              if (toRemove.length > 0) {
-                  toRemove.forEach(task => {
-                      backup.push({ ...task, branchTitle: b.title, branchId: bid });
-                      idsToDelete.push(task.id);
-                  });
-                  newBranches[bid] = {
-                      ...b,
-                      tasks: b.tasks.filter(t => !idsToDelete.includes(t.id))
-                  };
-              }
-          });
-
-          return { ...p, branches: newBranches };
-      }));
-
-      if (idsToDelete.length > 0 && supabaseClient && session && !isOfflineMode) {
-          const { error } = await supabaseClient.from('flowtask_tasks').delete().in('id', idsToDelete);
-          if (error) console.error("Remote cleanup error", error);
-      }
-
-      return { count: idsToDelete.length, backup };
-  }, [activeProjectId, supabaseClient, session, isOfflineMode]);
-
-  const checkProjectHealth = useCallback((projectOverride?: ProjectState): ProjectHealthReport => {
-      const proj = projectOverride || activeProject;
-      const report: ProjectHealthReport = {
-          legacyRootFound: proj.rootBranchId === 'root' || !!proj.branches['root'],
-          missingRootNode: !proj.branches[proj.rootBranchId],
-          orphanedBranches: [],
-          totalIssues: 0
-      };
-
-      const reachable = new Set<string>();
-      if (!report.missingRootNode) {
-          const queue = [proj.rootBranchId];
-          reachable.add(proj.rootBranchId);
-          
-          while (queue.length > 0) {
-              const currentId = queue.shift()!;
-              const branch = proj.branches[currentId];
-              if (branch) {
-                  branch.childrenIds.forEach(cid => {
-                      if (!reachable.has(cid) && proj.branches[cid]) {
-                          reachable.add(cid);
-                          queue.push(cid);
-                      }
-                  });
-              }
-          }
-      }
-
-      Object.keys(proj.branches).forEach(bid => {
-          if (!reachable.has(bid)) {
-              const b = proj.branches[bid];
-              report.orphanedBranches.push({
-                  id: bid,
-                  title: b.title,
-                  status: b.status,
-                  isLabel: !!b.isLabel,
-                  taskCount: b.tasks.length,
-                  completedCount: b.tasks.filter(t => t.completed).length
-              });
-          }
-      });
-
-      report.totalIssues = (report.legacyRootFound ? 1 : 0) + (report.missingRootNode ? 1 : 0) + report.orphanedBranches.length;
-      return report;
-  }, [activeProject]);
-
-  const repairProjectStructure = useCallback(async (): Promise<ProjectState | null> => {
-      let finalRootId = activeProject.rootBranchId;
-      let finalBranches = { ...activeProject.branches };
-      let legacyIdToDelete: string | null = null;
-
-      if (finalBranches['root'] || finalRootId === 'root') {
-          legacyIdToDelete = 'root';
-          const oldRoot = finalBranches['root'] || finalBranches[finalRootId];
-          const newRootId = crypto.randomUUID();
-          
-          if (oldRoot) {
-              finalBranches[newRootId] = { 
-                  ...oldRoot, 
-                  id: newRootId,
-                  parentIds: [] 
-              };
-              
-              if (oldRoot.childrenIds) {
-                  oldRoot.childrenIds.forEach(cid => {
-                      if (finalBranches[cid]) {
-                          finalBranches[cid] = {
-                              ...finalBranches[cid],
-                              parentIds: (finalBranches[cid].parentIds || []).map(pid => pid === oldRoot.id || pid === 'root' ? newRootId : pid)
-                          };
-                      }
-                  });
-              }
-              
-              delete finalBranches['root'];
-              if (finalRootId !== 'root') delete finalBranches[finalRootId];
-              finalRootId = newRootId;
-          }
-      }
-
-      if (!finalBranches[finalRootId]) {
-          finalBranches[finalRootId] = {
-              id: finalRootId,
-              title: 'Inizio Progetto (Ripristinato)',
-              status: BranchStatus.PLANNED,
-              isLabel: true,
-              tasks: [],
-              childrenIds: [],
-              parentIds: [],
-          };
-      }
-
-      const updatedProject: ProjectState = { 
-          ...activeProject, 
-          rootBranchId: finalRootId, 
-          branches: finalBranches 
-      };
-
-      if (session && !isOfflineMode && supabaseClient) {
-          try {
-              setAutoSaveStatus('saving');
-              
-              if (legacyIdToDelete) {
-                  const { error: delErr } = await supabaseClient
-                      .from('flowtask_branches')
-                      .delete()
-                      .eq('id', legacyIdToDelete)
-                      .eq('project_id', activeProjectId);
-                  if (delErr) throw delErr;
-              }
-
-              const rootBranch = finalBranches[finalRootId];
-              const { error: branchErr } = await supabaseClient
-                  .from('flowtask_branches')
-                  .upsert({
-                      id: rootBranch.id,
-                      project_id: activeProjectId,
-                      title: rootBranch.title,
-                      description: rootBranch.description,
-                      status: rootBranch.status,
-                      is_label: rootBranch.isLabel,
-                      is_sprint: rootBranch.isSprint || false,
-                      sprint_counter: rootBranch.sprintCounter || 1,
-                      parent_ids: [],
-                      children_ids: rootBranch.childrenIds,
-                      archived: false,
-                      collapsed: false,
-                      position: 0
-                  });
-              if (branchErr) throw branchErr;
-
-              const { error: projErr } = await supabaseClient
-                  .from('flowtask_projects')
-                  .update({ root_branch_id: finalRootId })
-                  .eq('id', activeProjectId);
-              if (projErr) throw projErr;
-              
-              setProjects(prev => prev.map(p => p.id === activeProjectId ? updatedProject : p));
-              await uploadProjectToSupabase(); 
-              
-              setAutoSaveStatus('saved');
-              setTimeout(() => setAutoSaveStatus('idle'), 2000);
-              showNotification("Integrità radice ripristinata in remoto.", 'success');
-              return updatedProject;
-          } catch (e: any) {
-              console.error("Repair remote error:", e);
-              setAutoSaveStatus('error');
-              showNotification("Errore sincronizzazione radice.", 'error');
-              return null;
-          }
-      }
-
-      setProjects(prev => prev.map(p => p.id === activeProjectId ? updatedProject : p));
-      showNotification("Integrità radice ripristinata localmente.", 'success');
-      return updatedProject;
-  }, [activeProjectId, activeProject, session, isOfflineMode, supabaseClient, uploadProjectToSupabase, showNotification]);
-
-  const resolveOrphans = useCallback(async (idsToFix: string[], idsToDelete: string[]) => {
-      let updatedBranches = { ...activeProject.branches };
-      const rootId = activeProject.rootBranchId;
-
-      idsToDelete.forEach(id => {
-          delete updatedBranches[id];
-      });
-
-      idsToFix.forEach(id => {
-          if (updatedBranches[id]) {
-              updatedBranches[id] = {
-                  ...updatedBranches[id],
-                  parentIds: [...new Set([...(updatedBranches[id].parentIds || []), rootId])]
-              };
-              if (updatedBranches[rootId]) {
-                  updatedBranches[rootId] = {
-                      ...updatedBranches[rootId],
-                      childrenIds: [...new Set([...(updatedBranches[rootId].childrenIds || []), id])]
-                  };
-              }
-          }
-      });
-
-      const nextProject = { ...activeProject, branches: updatedBranches };
-      setProjects(prev => prev.map(p => p.id === activeProjectId ? nextProject : p));
-
-      if (session && !isOfflineMode && supabaseClient) {
-          try {
-              if (idsToDelete.length > 0) {
-                  const { error } = await supabaseClient.from('flowtask_branches').delete().in('id', idsToDelete);
-                  if (error) throw error;
-              }
-              await uploadProjectToSupabase();
-          } catch (e) {
-              console.error("Orphan sync error", e);
-          }
-      }
-      
-      showNotification("Sincronizzazione orfani completata.", 'success');
-  }, [activeProjectId, activeProject, session, isOfflineMode, supabaseClient, uploadProjectToSupabase, showNotification]);
-
-  const addPerson = useCallback((name: string, email?: string, phone?: string) => {
-      setProjects(prev => prev.map(p => {
-          if (p.id !== activeProjectId) return p;
-          const newPerson: Person = {
-              id: crypto.randomUUID(),
-              name,
-              email,
-              phone,
-              initials: name.substring(0, 2).toUpperCase(),
-              color: 'bg-indigo-500' 
-          };
-          return { ...p, people: [...p.people, newPerson] };
-      }));
-  }, [activeProjectId]);
-
-  const updatePerson = useCallback((id: string, updates: Partial<Person>) => {
-      setProjects(prev => prev.map(p => {
-          if (p.id !== activeProjectId) return p;
-          return { ...p, people: p.people.map(person => person.id === id ? { ...person, ...updates } : person) };
-      }));
-  }, [activeProjectId]);
-
-  const removePerson = useCallback(async (id: string) => {
-      if (session && !isOfflineMode && supabaseClient) {
-          const { error } = await supabaseClient.from('flowtask_people').delete().eq('id', id);
-          if (error) console.error("Remote delete person error", error);
-      }
-
-      setProjects(prev => prev.map(p => {
-          if (p.id !== activeProjectId) return p;
-          return { ...p, people: p.people.filter(person => person.id !== id) };
-      }));
-  }, [activeProjectId, session, isOfflineMode, supabaseClient]);
-
-  const logout = async () => {
-      if (supabaseClient) await supabaseClient.auth.signOut();
-      setSession(null);
-  };
-  
+  const logout = async () => { if (supabaseClient) await (supabaseClient.auth as any).signOut(); setSession(null); };
   const enableOfflineMode = () => setIsOfflineMode(true);
   const disableOfflineMode = () => setIsOfflineMode(false);
 
   return (
     <ProjectContext.Provider value={{
-      state: activeProject,
-      projects,
-      activeProjectId,
-      selectedBranchId,
-      showArchived,
-      showAllProjects,
-      showOnlyOpen,
-      session,
-      isOfflineMode,
-      loadingAuth,
-      isInitializing,
-      autoSaveStatus,
-      notification,
-      supabaseConfig,
-      supabaseClient,
-      
-      setSupabaseConfig,
-      switchProject,
-      createProject,
-      closeProject,
-      renameProject,
-      loadProject,
-      selectBranch: setSelectedBranchId,
-      toggleShowArchived,
-      toggleShowAllProjects,
-      toggleShowOnlyOpen,
-      
-      addBranch,
-      updateBranch,
-      deleteBranch,
-      moveBranch,
-      linkBranch,
-      unlinkBranch,
-      toggleBranchArchive,
-      setAllBranchesCollapsed,
-      
-      addTask,
-      updateTask,
-      deleteTask,
-      moveTask,
-      moveTaskToBranch,
-      bulkMoveTasks,
-      bulkUpdateTasks,
-      cleanupOldTasks,
-
-      checkProjectHealth,
-      repairProjectStructure,
-      resolveOrphans,
-      
-      addPerson,
-      updatePerson,
-      removePerson,
-      
-      readingDescriptionId,
-      setReadingDescriptionId,
-      editingTask,
-      setEditingTask,
-      readingTask,
-      setReadingTask,
-      remindingUserId,
-      setRemindingUserId,
-      
-      messageTemplates,
-      updateMessageTemplates,
-      
-      uploadProjectToSupabase,
-      downloadProjectFromSupabase,
-      listProjectsFromSupabase,
-      getProjectBranchesFromSupabase,
-      deleteProjectFromSupabase,
-      moveLocalBranchToRemoteProject,
-      
-      logout,
-      enableOfflineMode,
-      disableOfflineMode,
-      showNotification
+      state: activeProject, projects, activeProjectId, selectedBranchId, showArchived, showAllProjects, showOnlyOpen,
+      session, isOfflineMode, loadingAuth, isInitializing, autoSaveStatus, pendingSyncIds, notification, supabaseConfig, supabaseClient,
+      setSupabaseConfig, switchProject: setActiveProjectId, createProject: () => {
+          const np = createInitialProjectState('Progetto ' + (projects.length + 1));
+          setProjects(prev => [...prev, np]); setActiveProjectId(np.id);
+      }, closeProject: id => setProjects(prev => prev.filter(x => x.id !== id)), 
+      renameProject: name => setProjects(prev => prev.map(x => x.id === activeProjectId ? { ...x, name } : x)),
+      loadProject, selectBranch: setSelectedBranchId, toggleShowArchived: () => setShowArchived(!showArchived),
+      toggleShowAllProjects: () => setShowAllProjects(!showAllProjects), toggleShowOnlyOpen: () => setShowOnlyOpen(!showOnlyOpen),
+      addBranch, updateBranch, deleteBranch, addTask, updateTask, toggleBranchArchive,
+      deleteTask: async (bid, tid) => {
+          if (supabaseClient && !isOfflineMode) await supabaseClient.from('flowtask_tasks').delete().eq('id', tid);
+          setProjects(prev => prev.map(p => p.id === activeProjectId ? { ...p, branches: { ...p.branches, [bid]: { ...p.branches[bid], tasks: p.branches[bid].tasks.filter(t => t.id !== tid) } } } : p));
+      },
+      addPerson: (name, email, phone) => {
+          const np = { id: crypto.randomUUID(), name, email, phone, initials: name.slice(0, 2).toUpperCase(), color: 'bg-indigo-500' };
+          setProjects(prev => prev.map(p => {
+              if (p.id !== activeProjectId) return p;
+              syncEntityToSupabase('flowtask_people', { ...np, project_id: p.id });
+              return { ...p, people: [...p.people, np] };
+          }));
+      },
+      updatePerson: (id, up) => setProjects(prev => prev.map(p => p.id === activeProjectId ? { ...p, people: p.people.map(x => x.id === id ? { ...x, ...up } : x) } : p)),
+      removePerson: id => setProjects(prev => prev.map(p => p.id === activeProjectId ? { ...p, people: p.people.filter(x => x.id !== id) } : p)),
+      readingDescriptionId, setReadingDescriptionId, editingTask, setEditingTask, readingTask, setReadingTask,
+      remindingUserId, setRemindingUserId, messageTemplates, updateMessageTemplates: t => setMessageTemplates(p => ({ ...p, ...t })),
+      uploadProjectToSupabase, downloadProjectFromSupabase, listProjectsFromSupabase: async () => supabaseClient?.from('flowtask_projects').select('*') as any,
+      getProjectBranchesFromSupabase: async pid => (await supabaseClient?.from('flowtask_branches').select('*').eq('project_id', pid))?.data as any,
+      deleteProjectFromSupabase: async id => { await supabaseClient?.from('flowtask_projects').delete().eq('id', id); },
+      logout, enableOfflineMode, disableOfflineMode, showNotification,
+      moveBranch: () => {}, linkBranch: () => {}, unlinkBranch: () => {}, setAllBranchesCollapsed: c => setProjects(prev => prev.map(p => p.id === activeProjectId ? { ...p, branches: Object.fromEntries(Object.entries(p.branches).map(([k, v]) => [k, { ...v, collapsed: c }])) } : p)),
+      moveTask: () => {}, moveTaskToBranch: () => {}, bulkMoveTasks: () => {}, bulkUpdateTasks: () => {}, cleanupOldTasks: async () => ({ count: 0, backup: [] }),
+      checkProjectHealth: () => ({ legacyRootFound: false, missingRootNode: false, orphanedBranches: [], totalIssues: 0 }),
+      repairProjectStructure: async () => null, resolveOrphans: async () => {}, moveLocalBranchToRemoteProject: async () => {}
     }}>
       {children}
     </ProjectContext.Provider>
@@ -1293,8 +463,6 @@ export const ProjectProvider: React.FC<{ children: React.ReactNode }> = ({ child
 
 export const useProject = () => {
   const context = useContext(ProjectContext);
-  if (!context) {
-    throw new Error('useProject must be used within a ProjectProvider');
-  }
+  if (!context) throw new Error('useProject must be used within a ProjectProvider');
   return context;
 };

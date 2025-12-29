@@ -1,12 +1,11 @@
 import React, { useState, useEffect, useRef, useMemo } from 'react';
 import { useProject } from '../../context/ProjectContext';
 import { Branch } from '../../types';
-import { STATUS_CONFIG } from '../../constants';
 import { 
-  Database, Save, Download, Key, Check, Copy, Terminal, Cloud, Loader2, Upload, 
-  User, LogOut, WifiOff, X, Link, Trash2, Eraser, AlertTriangle, Stethoscope, 
-  Search, Square, CheckSquare, RefreshCw, Tag, GitBranch, Calendar, Info, 
-  MessageSquare, Settings as SettingsIcon, ShieldCheck, Rocket, ChevronRight, Eye, EyeOff, CheckCircle2, Code
+  Database, Save, Download, Key, Check, Copy, Cloud, Loader2, Upload, 
+  User, LogOut, X, Trash2, Eraser, AlertTriangle, Stethoscope, 
+  Search, Square, CheckSquare, RefreshCw, MessageSquare, 
+  Settings as SettingsIcon, ShieldCheck, Rocket, Eye, EyeOff, CheckCircle2, Code
 } from 'lucide-react';
 
 const SQL_SCHEMA = `-- SCHEMA SQL FLOWTASK AGGIORNATO
@@ -95,7 +94,6 @@ const SettingsPanel: React.FC = () => {
   const [msgClosing, setMsgClosing] = useState(messageTemplates.closing);
 
   // UI States
-  const [shareLinkCopied, setShareLinkCopied] = useState(false);
   const [isSaving, setIsSaving] = useState(false);
   const [isLoadingList, setIsLoadingList] = useState(false);
   const [remoteProjects, setRemoteProjects] = useState<any[]>([]);
@@ -113,7 +111,7 @@ const SettingsPanel: React.FC = () => {
     const threshold = new Date();
     threshold.setMonth(threshold.getMonth() - cleanupMonths);
     let count = 0;
-    (Object.values(state.branches) as Branch[]).forEach(b => {
+    Object.values(state.branches).forEach(b => {
         b.tasks.forEach(t => {
             if (t.completed && t.completedAt) {
                 const cDate = new Date(t.completedAt);
@@ -140,16 +138,6 @@ const SettingsPanel: React.FC = () => {
   const handleSaveTemplates = () => {
       updateMessageTemplates({ opening: msgOpening, closing: msgClosing });
       showNotification("Template messaggi aggiornati.", 'success');
-  };
-
-  const handleGenerateShareLink = () => {
-      if (!url || !key) return;
-      const encoded = btoa(JSON.stringify({ url, key }));
-      const link = `${window.location.origin}${window.location.pathname}?config=${encoded}`;
-      navigator.clipboard.writeText(link);
-      setShareLinkCopied(true);
-      showNotification("Link di configurazione copiato!", 'success');
-      setTimeout(() => setShareLinkCopied(false), 3000);
   };
 
   const copySqlToClipboard = () => {
@@ -226,7 +214,6 @@ const SettingsPanel: React.FC = () => {
           const toDelete = action === 'delete' ? idsToProcess : [];
           await resolveOrphans(toFix, toDelete);
           
-          // Rifai analisi per pulire la vista
           const updatedReport = checkProjectHealth();
           setHealthReport(updatedReport);
           setSelectedOrphans(updatedReport.orphanedBranches.map(o => o.id));
@@ -248,7 +235,6 @@ const SettingsPanel: React.FC = () => {
 
   return (
     <div className="w-full max-w-5xl mx-auto h-full flex flex-col p-3 md:p-8 overflow-hidden relative">
-      
       <div className="mb-6 md:mb-8 flex flex-col md:flex-row md:justify-between md:items-start gap-4 flex-shrink-0">
         <div>
             <h2 className="text-2xl md:text-3xl font-black text-slate-800 dark:text-white flex items-center gap-3">
@@ -303,21 +289,16 @@ const SettingsPanel: React.FC = () => {
                               <h3 className="text-lg font-bold text-slate-800 dark:text-white flex items-center gap-2"><Key className="w-5 h-5 text-indigo-500" /> Database</h3>
                               <p className="text-[10px] md:text-xs text-slate-500">Credenziali Supabase.</p>
                           </div>
-                          <div className="flex gap-2">
-                              <button onClick={() => setShowSql(!showSql)} className="text-[10px] font-bold text-slate-600 bg-slate-100 dark:bg-slate-700 px-3 py-2 rounded-lg flex items-center gap-2">
-                                  <Code className="w-3.5 h-3.5" /> Schema SQL
-                              </button>
-                              <button onClick={handleGenerateShareLink} className="text-[10px] font-bold text-indigo-600 bg-indigo-50 dark:bg-indigo-900/20 px-3 py-2 rounded-lg flex items-center gap-2 w-fit">
-                                  {shareLinkCopied ? <Check className="w-3.5 h-3.5" /> : <Link className="w-3.5 h-3.5" />} Link Configurazione
-                              </button>
-                          </div>
+                          <button onClick={() => setShowSql(!showSql)} className="text-[10px] font-bold text-slate-600 bg-slate-100 dark:bg-slate-700 px-3 py-2 rounded-lg flex items-center gap-2">
+                              <Code className="w-3.5 h-3.5" /> {showSql ? 'Nascondi SQL' : 'Mostra Schema SQL'}
+                          </button>
                       </div>
 
                       {showSql && (
                           <div className="mb-6 animate-in zoom-in-95 duration-200">
                               <div className="flex items-center justify-between bg-slate-900 text-slate-400 px-4 py-2 rounded-t-lg border-x border-t border-slate-700">
-                                  <span className="text-[10px] font-bold uppercase tracking-widest">Script Creazione Tabelle</span>
-                                  <button onClick={copySqlToClipboard} className="hover:text-white transition-colors">
+                                  <span className="text-[10px] font-bold uppercase tracking-widest">Script Setup Tabelle</span>
+                                  <button onClick={copySqlToClipboard} className="hover:text-white transition-colors" title="Copia SQL">
                                       <Copy className="w-4 h-4" />
                                   </button>
                               </div>
@@ -330,7 +311,7 @@ const SettingsPanel: React.FC = () => {
                       <div className="space-y-4">
                           <input type="text" value={url} onChange={(e) => setUrl(e.target.value)} placeholder="Project URL" className="w-full p-2.5 rounded-lg border border-slate-200 dark:border-slate-700 bg-slate-50 dark:bg-slate-900 text-xs focus:ring-1 focus:ring-indigo-500 font-mono" />
                           <input type="password" value={key} onChange={(e) => setKey(e.target.value)} placeholder="Anon Key" className="w-full p-2.5 rounded-lg border border-slate-300 dark:border-slate-700 bg-white dark:bg-slate-800 focus:ring-1 focus:ring-indigo-500 font-mono" />
-                          <button onClick={handleSaveConfig} className="px-6 py-2 bg-indigo-600 text-white rounded-xl text-xs font-bold">Salva</button>
+                          <button onClick={handleSaveConfig} className="px-6 py-2 bg-indigo-600 text-white rounded-xl text-xs font-bold shadow-md hover:bg-indigo-700">Salva Configurazione</button>
                       </div>
                   </div>
 
@@ -338,25 +319,27 @@ const SettingsPanel: React.FC = () => {
                       <div className="flex items-center justify-between mb-6">
                           <h3 className="text-lg font-bold text-slate-800 dark:text-white flex items-center gap-2"><Cloud className="w-5 h-5 text-indigo-500" /> Progetti Remoti</h3>
                           {session && (
-                              <button onClick={handleCloudSave} disabled={isSaving} className="flex items-center gap-2 px-4 py-2 rounded-xl text-xs font-black text-white bg-indigo-600 shadow-md">
+                              <button onClick={handleCloudSave} disabled={isSaving} className="flex items-center gap-2 px-4 py-2 rounded-xl text-xs font-black text-white bg-indigo-600 shadow-md hover:bg-indigo-700">
                                   {isSaving ? <Loader2 className="w-4 h-4 animate-spin" /> : <Upload className="w-4 h-4" />} Backup Ora
                               </button>
                           )}
                       </div>
                       {session ? (
                           <div className="grid grid-cols-1 gap-2">
-                              {remoteProjects.length === 0 ? (
-                                  <p className="text-xs text-slate-400 italic py-4 text-center">Nessun progetto cloud.</p>
+                              {isLoadingList ? (
+                                  <div className="flex justify-center py-8"><Loader2 className="w-8 h-8 animate-spin text-slate-300" /></div>
+                              ) : remoteProjects.length === 0 ? (
+                                  <p className="text-xs text-slate-400 italic py-4 text-center">Nessun progetto cloud trovato.</p>
                               ) : (
                                   remoteProjects.map(proj => (
-                                      <div key={proj.id} className="flex items-center justify-between p-3 rounded-xl border border-slate-100 dark:border-slate-700 bg-slate-50/50">
+                                      <div key={proj.id} className="flex items-center justify-between p-3 rounded-xl border border-slate-100 dark:border-slate-700 bg-slate-50/50 hover:bg-slate-50">
                                           <div className="min-w-0 pr-2">
                                               <p className="text-xs font-black text-slate-700 dark:text-slate-200 truncate">{proj.name}</p>
                                               <p className="text-[9px] text-slate-400 font-bold uppercase">{new Date(proj.created_at).toLocaleDateString()}</p>
                                           </div>
                                           <div className="flex gap-1">
                                               <button onClick={() => handleDownload(proj.id)} className="p-2 text-indigo-600 hover:bg-indigo-50 rounded-lg" title="Scarica"><Download className="w-4 h-4" /></button>
-                                              <button onClick={() => {if(confirm(`Eliminare definitivamente?`)) deleteProjectFromSupabase(proj.id).then(handleListProjects)}} className="p-2 text-slate-300 hover:text-red-500" title="Elimina Progetto Remoto"><Trash2 className="w-4 h-4" /></button>
+                                              <button onClick={() => {if(confirm(`Eliminare definitivamente?`)) deleteProjectFromSupabase(proj.id).then(handleListProjects)}} className="p-2 text-slate-300 hover:text-red-500" title="Elimina"><Trash2 className="w-4 h-4" /></button>
                                           </div>
                                       </div>
                                   ))
@@ -387,11 +370,10 @@ const SettingsPanel: React.FC = () => {
                       {!healthReport ? (
                            <button onClick={handleRunAnalysis} disabled={isAnalyzing} className="w-full py-12 bg-slate-50 dark:bg-slate-900/50 border-2 border-dashed border-slate-200 rounded-2xl flex flex-col items-center justify-center gap-3">
                               {isAnalyzing ? <Loader2 className="w-8 h-8 animate-spin text-indigo-500" /> : <Search className="w-8 h-8 text-slate-400" />}
-                              <span className="font-black text-slate-500 uppercase text-[10px] tracking-widest">{isAnalyzing ? 'Robot Analisi in corso...' : 'Inizia Check Progetto'}</span>
+                              <span className="font-black text-slate-500 uppercase text-[10px] tracking-widest">{isAnalyzing ? 'Analisi in corso...' : 'Inizia Check Salute Progetto'}</span>
                           </button>
                       ) : (
                           <div className="space-y-6">
-                              {/* PHASE 1: ROOT */}
                               <div className={`p-4 rounded-xl border-2 transition-all ${ (healthReport.legacyRootFound || healthReport.missingRootNode) ? 'bg-rose-50 border-rose-200 dark:bg-rose-900/10 dark:border-rose-800 animate-pulse' : 'bg-emerald-50 border-emerald-200 dark:bg-emerald-900/10 dark:border-emerald-800'}`}>
                                   <div className="flex flex-col sm:flex-row items-center gap-4">
                                       <div className={`w-10 h-10 rounded-full flex items-center justify-center shrink-0 ${ (healthReport.legacyRootFound || healthReport.missingRootNode) ? 'bg-rose-600 text-white' : 'bg-emerald-600 text-white'}`}>
@@ -399,36 +381,30 @@ const SettingsPanel: React.FC = () => {
                                       </div>
                                       <div className="flex-1 text-center sm:text-left">
                                           <div className="flex items-center justify-center sm:justify-start gap-2 mb-1">
-                                              <span className={`text-[9px] font-black px-1.5 py-0.5 rounded text-white ${ (healthReport.legacyRootFound || healthReport.missingRootNode) ? 'bg-rose-600' : 'bg-emerald-600'}`}>FASE 1</span>
+                                              <span className={`text-[9px] font-black px-1.5 py-0.5 rounded text-white ${ (healthReport.legacyRootFound || healthReport.missingRootNode) ? 'bg-rose-600' : 'bg-emerald-600'}`}>INTEGRITÀ</span>
                                               <p className={`text-sm font-black ${ (healthReport.legacyRootFound || healthReport.missingRootNode) ? 'text-rose-800 dark:text-rose-300' : 'text-emerald-800 dark:text-emerald-300'}`}>
-                                                  { (healthReport.legacyRootFound || healthReport.missingRootNode) ? 'Rilevato Problema Radice' : 'Struttura Integra'}
+                                                  { (healthReport.legacyRootFound || healthReport.missingRootNode) ? 'Problema Struttura Radice' : 'Struttura Radice OK'}
                                               </p>
                                           </div>
                                           <p className="text-[10px] text-slate-500 font-bold">
-                                              { (healthReport.legacyRootFound || healthReport.missingRootNode) ? 'Il record radice è corrotto o mancante su Supabase. Richiesto FIX.' : 'Punto di partenza configurato correttamente.' }
+                                              { (healthReport.legacyRootFound || healthReport.missingRootNode) ? 'La radice del progetto è mancante o corrotta. Richiesto Fix.' : 'Il punto di partenza è configurato correttamente.' }
                                           </p>
                                       </div>
                                       {(healthReport.legacyRootFound || healthReport.missingRootNode) && (
                                           <button onClick={handleFixRootIssues} disabled={isRepairing} className="w-full sm:w-auto px-6 py-2.5 bg-rose-600 text-white rounded-xl text-xs font-black shadow-lg flex items-center justify-center gap-2">
-                                              {isRepairing ? <Loader2 className="w-4 h-4 animate-spin" /> : <Rocket className="w-4 h-4" />} ESEGUI FIX RADICE
+                                              {isRepairing ? <Loader2 className="w-4 h-4 animate-spin" /> : <Rocket className="w-4 h-4" />} FIX RADICE
                                           </button>
                                       )}
                                   </div>
                               </div>
-
-                              {/* PHASE 2: ORPHANS */}
                               <div className={ (healthReport.legacyRootFound || healthReport.missingRootNode) ? 'opacity-30 pointer-events-none grayscale' : ''}>
                                   <div className="flex items-center justify-between mb-4 border-b border-slate-100 dark:border-slate-800 pb-2">
-                                      <div className="flex items-center gap-2">
-                                          <span className="bg-indigo-600 text-white text-[9px] font-black px-1.5 py-0.5 rounded">FASE 2</span>
-                                          <h4 className="text-xs font-black uppercase text-slate-400">Rami Orfani ({healthReport.orphanedBranches.length})</h4>
-                                      </div>
+                                      <h4 className="text-xs font-black uppercase text-slate-400 flex items-center gap-2">Rami Orfani ({healthReport.orphanedBranches.length})</h4>
                                   </div>
-
                                   {healthReport.orphanedBranches.length === 0 ? (
-                                      <div className="p-8 text-center bg-slate-50 dark:bg-slate-900/40 rounded-xl border border-slate-200 dark:border-slate-800">
-                                          <CheckCircle2 className="w-10 h-10 text-emerald-500 mx-auto mb-2" />
-                                          <p className="text-xs font-black text-slate-500">Tutti i rami sono collegati!</p>
+                                      <div className="p-8 text-center bg-slate-50 dark:bg-slate-900/40 rounded-xl">
+                                          <CheckCircle2 className="w-8 h-8 text-emerald-500 mx-auto mb-2" />
+                                          <p className="text-xs font-black text-slate-500 uppercase">Tutti i rami sono collegati correttamente!</p>
                                       </div>
                                   ) : (
                                       <div className="space-y-2">
@@ -440,27 +416,17 @@ const SettingsPanel: React.FC = () => {
                                                       </button>
                                                       <div className="min-w-0 flex-1">
                                                           <p className="text-xs font-black text-slate-700 dark:text-slate-200 truncate">{orphan.title || '(Senza Titolo)'}</p>
-                                                          <p className="text-[10px] text-slate-400 font-bold uppercase">{orphan.status}</p>
+                                                          <p className="text-[10px] text-slate-400 font-bold uppercase">{orphan.status} • {orphan.taskCount} task</p>
                                                       </div>
                                                       <div className="flex items-center gap-1">
-                                                          <button onClick={() => setExpandedOrphanId(expandedOrphanId === orphan.id ? null : orphan.id)} className="p-1.5 text-slate-400 hover:bg-slate-100 rounded-lg" title="Dettagli">
+                                                          <button onClick={() => setExpandedOrphanId(expandedOrphanId === orphan.id ? null : orphan.id)} className="p-1.5 text-slate-400 hover:bg-slate-100 rounded-lg">
                                                               {expandedOrphanId === orphan.id ? <EyeOff className="w-4 h-4" /> : <Eye className="w-4 h-4" />}
                                                           </button>
-                                                          <button onClick={(e) => { e.stopPropagation(); handleProcessOrphans('delete', orphan.id); }} className="p-1.5 text-slate-300 hover:text-red-500 hover:bg-red-50 rounded-lg" title="Elimina definitvamente">
+                                                          <button onClick={(e) => { e.stopPropagation(); handleProcessOrphans('delete', orphan.id); }} className="p-1.5 text-slate-300 hover:text-red-500 hover:bg-red-50 rounded-lg">
                                                               <Trash2 className="w-4 h-4" />
                                                           </button>
                                                       </div>
                                                   </div>
-                                                  {expandedOrphanId === orphan.id && (
-                                                      <div className="px-10 pb-4 pt-1 animate-in slide-in-from-top-1">
-                                                          <div className="bg-slate-50 dark:bg-slate-800 p-2 rounded-lg text-[10px] font-medium text-slate-500 flex flex-col gap-1">
-                                                              <p className="flex justify-between"><span>Totale Task:</span> <span className="font-bold text-slate-700 dark:text-slate-300">{orphan.taskCount}</span></p>
-                                                              <p className="flex justify-between"><span>Completati:</span> <span className="font-bold text-emerald-600">{orphan.completedCount}</span></p>
-                                                              <p className="flex justify-between"><span>Tipo:</span> <span className="font-bold text-slate-700 dark:text-slate-300">{orphan.isLabel ? 'Etichetta' : 'Ramo Operativo'}</span></p>
-                                                              <p className="text-[9px] text-slate-400 italic mt-1 font-mono break-all">ID: {orphan.id}</p>
-                                                          </div>
-                                                      </div>
-                                                  )}
                                               </div>
                                           ))}
                                           <div className="flex gap-2 pt-4">
