@@ -312,8 +312,24 @@ export const ProjectProvider: React.FC<{ children: React.ReactNode }> = ({ child
           const newBranch = { id: newId, title, status: BranchStatus.PLANNED, tasks: [], childrenIds: [], parentIds: [parentId], description: '', isLabel: false, isSprint: false, sprintCounter: 1 };
           const branches = { ...p.branches, [newId]: newBranch, [parentId]: { ...updatedParent, childrenIds: [...updatedParent.childrenIds, newId] } };
           
-          syncEntityToSupabase('flowtask_branches', { id: newId, project_id: p.id, title, status: BranchStatus.PLANNED, parent_ids: [parentId], children_ids: [] });
-          syncEntityToSupabase('flowtask_branches', { id: parentId, project_id: p.id, children_ids: branches[parentId].childrenIds, sprint_counter: branches[parentId].sprintCounter });
+          syncEntityToSupabase('flowtask_branches', { 
+              id: newId, 
+              project_id: p.id, 
+              title, 
+              status: BranchStatus.PLANNED, 
+              parent_ids: [parentId], 
+              children_ids: [],
+              archived: false,
+              collapsed: false
+          });
+          syncEntityToSupabase('flowtask_branches', { 
+              id: parentId, 
+              project_id: p.id, 
+              title: branches[parentId].title,
+              status: branches[parentId].status,
+              children_ids: branches[parentId].childrenIds, 
+              sprint_counter: branches[parentId].sprintCounter 
+          });
           
           return { ...p, branches };
       }));
@@ -322,21 +338,27 @@ export const ProjectProvider: React.FC<{ children: React.ReactNode }> = ({ child
   const updateBranch = useCallback((branchId: string, updates: Partial<Branch>) => {
       setProjects(prev => prev.map(p => {
           if (p.id !== activeProjectId || !p.branches[branchId]) return p;
-          const updated = { ...p.branches[branchId], ...updates };
+          const currentBranch = p.branches[branchId];
+          const updated = { ...currentBranch, ...updates };
           
-          // FIX RLS: Includiamo sempre project_id per superare il controllo di proprietà
-          const dbPayload: any = { id: branchId, project_id: p.id };
-          if (updates.title !== undefined) dbPayload.title = updates.title;
-          if (updates.status !== undefined) dbPayload.status = updates.status;
-          if (updates.description !== undefined) dbPayload.description = updates.description;
-          if (updates.isLabel !== undefined) dbPayload.is_label = updates.isLabel;
-          if (updates.isSprint !== undefined) dbPayload.is_sprint = updates.isSprint;
-          if (updates.sprintCounter !== undefined) dbPayload.sprint_counter = updates.sprintCounter;
-          if (updates.responsibleId !== undefined) dbPayload.responsible_id = updates.responsibleId || null;
-          if (updates.startDate !== undefined) dbPayload.start_date = updates.startDate;
-          if (updates.dueDate !== undefined) dbPayload.due_date = updates.dueDate;
-          if (updates.archived !== undefined) dbPayload.archived = updates.archived;
-          if (updates.collapsed !== undefined) dbPayload.collapsed = updates.collapsed;
+          // FIX NOT-NULL: Inviamo sempre i campi obbligatori title e status per evitare errori di vincolo DB
+          const dbPayload: any = { 
+              id: branchId, 
+              project_id: p.id,
+              title: updated.title,
+              status: updated.status,
+              description: updated.description || '',
+              is_label: updated.isLabel || false,
+              is_sprint: updated.isSprint || false,
+              sprint_counter: updated.sprintCounter || 1,
+              responsible_id: updated.responsibleId || null,
+              start_date: updated.startDate || null,
+              due_date: updated.dueDate || null,
+              archived: updated.archived || false,
+              collapsed: updated.collapsed || false,
+              parent_ids: updated.parentIds || [],
+              children_ids: updated.childrenIds || []
+          };
 
           syncEntityToSupabase('flowtask_branches', dbPayload);
           return { ...p, branches: { ...p.branches, [branchId]: updated } };
@@ -363,7 +385,15 @@ export const ProjectProvider: React.FC<{ children: React.ReactNode }> = ({ child
       const newTask: Task = { id: newId, title, completed: false, description: '', pinned: false, assigneeId: inheritedAssigneeId };
       setProjects(prev => prev.map(p => {
           if (p.id !== activeProjectId || !p.branches[branchId]) return p;
-          syncEntityToSupabase('flowtask_tasks', { id: newId, branch_id: branchId, title, completed: false, assignee_id: inheritedAssigneeId });
+          syncEntityToSupabase('flowtask_tasks', { 
+              id: newId, 
+              branch_id: branchId, 
+              title, 
+              completed: false, 
+              assignee_id: inheritedAssigneeId,
+              pinned: false,
+              description: ''
+          });
           return { ...p, branches: { ...p.branches, [branchId]: { ...p.branches[branchId], tasks: [...p.branches[branchId].tasks, newTask] } } };
       }));
   }, [activeProjectId, syncEntityToSupabase, activeProject.branches, getInheritedResponsibleId]);
@@ -375,20 +405,23 @@ export const ProjectProvider: React.FC<{ children: React.ReactNode }> = ({ child
           const task = branch.tasks.find(t => t.id === taskId);
           if (!task) return p;
 
-          // FIX RLS: Includiamo branch_id per validare la riga tramite la policy collegata al progetto
-          const dbPayload: any = { id: taskId, branch_id: branchId };
-          if (updates.title !== undefined) dbPayload.title = updates.title;
-          if (updates.completed !== undefined) {
-              dbPayload.completed = updates.completed;
-              dbPayload.completed_at = updates.completed ? (updates.completedAt || new Date().toISOString()) : null;
-          }
-          if (updates.assigneeId !== undefined) dbPayload.assignee_id = updates.assigneeId || null;
-          if (updates.dueDate !== undefined) dbPayload.due_date = updates.dueDate || null;
-          if (updates.pinned !== undefined) dbPayload.pinned = updates.pinned;
-          if (updates.description !== undefined) dbPayload.description = updates.description;
+          const updatedTask = { ...task, ...updates };
+
+          // FIX NOT-NULL: Inviamo i campi obbligatori
+          const dbPayload: any = { 
+              id: taskId, 
+              branch_id: branchId,
+              title: updatedTask.title,
+              completed: updatedTask.completed,
+              completed_at: updatedTask.completed ? (updatedTask.completedAt || new Date().toISOString()) : null,
+              assignee_id: updatedTask.assigneeId || null,
+              due_date: updatedTask.dueDate || null,
+              pinned: updatedTask.pinned || false,
+              description: updatedTask.description || ''
+          };
 
           syncEntityToSupabase('flowtask_tasks', dbPayload);
-          const nextTasks = branch.tasks.map(t => t.id === taskId ? { ...t, ...updates, completedAt: dbPayload.completed_at } : t);
+          const nextTasks = branch.tasks.map(t => t.id === taskId ? updatedTask : t);
           return { ...p, branches: { ...p.branches, [branchId]: { ...branch, tasks: nextTasks } } };
       }));
   }, [activeProjectId, syncEntityToSupabase]);
@@ -408,9 +441,9 @@ export const ProjectProvider: React.FC<{ children: React.ReactNode }> = ({ child
         const person = p.people.find(x => x.id === id);
         if (!person) return p;
         
-        // FIX RLS: Includiamo project_id
-        syncEntityToSupabase('flowtask_people', { ...person, ...updates, project_id: p.id });
-        return { ...p, people: p.people.map(x => x.id === id ? { ...x, ...updates } : x) };
+        const updatedPerson = { ...person, ...updates };
+        syncEntityToSupabase('flowtask_people', { ...updatedPerson, project_id: p.id });
+        return { ...p, people: p.people.map(x => x.id === id ? updatedPerson : x) };
     }));
   }, [activeProjectId, syncEntityToSupabase]);
 
