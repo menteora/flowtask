@@ -2,7 +2,7 @@
 import React, { createContext, useContext, useState, useEffect, useCallback, useRef } from 'react';
 import { createClient, SupabaseClient, Session } from '@supabase/supabase-js';
 import { ProjectState, Branch, Task, Person, BranchStatus } from '../types';
-import { INITIAL_STATE, createInitialProjectState } from '../constants';
+import { createInitialProjectState } from '../constants';
 
 export interface OrphanInfo {
     id: string;
@@ -210,7 +210,7 @@ export const ProjectProvider: React.FC<{ children: React.ReactNode }> = ({ child
                     description: t.description,
                     completed: t.completed,
                     completedAt: t.completed_at,
-                    assignee_id: t.assignee_id,
+                    assigneeId: t.assignee_id,
                     dueDate: t.due_date,
                     pinned: t.pinned || false
                   }));
@@ -296,7 +296,7 @@ export const ProjectProvider: React.FC<{ children: React.ReactNode }> = ({ child
             is_label: b.isLabel,
             parent_ids: b.parentIds,
             children_ids: b.childrenIds,
-            position: 0
+            position: b.position || 0
         }));
         if (branchesPayload.length > 0) {
             const { error: bErr } = await supabaseClient.from('flowtask_branches').upsert(branchesPayload);
@@ -315,7 +315,7 @@ export const ProjectProvider: React.FC<{ children: React.ReactNode }> = ({ child
                     due_date: t.dueDate,
                     completed: t.completed,
                     completed_at: t.completedAt,
-                    position: idx,
+                    position: t.position !== undefined ? t.position : idx,
                     pinned: t.pinned || false 
                 });
             });
@@ -491,7 +491,6 @@ export const ProjectProvider: React.FC<{ children: React.ReactNode }> = ({ child
       const branchToMove = sourceProject.branches[branchId];
       if (!branchToMove) return;
 
-      // 1. Raccogli tutti i discendenti
       const descendantIds = new Set<string>();
       const queue = [branchId];
       while (queue.length > 0) {
@@ -500,7 +499,6 @@ export const ProjectProvider: React.FC<{ children: React.ReactNode }> = ({ child
           sourceProject.branches[cid]?.childrenIds.forEach(id => queue.push(id));
       }
 
-      // 2. Crea le strutture dati per il trasferimento
       const movedBranches: Record<string, Branch> = {};
       descendantIds.forEach(id => {
           const b = sourceProject.branches[id];
@@ -513,23 +511,19 @@ export const ProjectProvider: React.FC<{ children: React.ReactNode }> = ({ child
           }
       });
 
-      // 3. Aggiorna lo stato locale
       setProjects(prev => prev.map(p => {
           if (p.id === activeProjectId) {
               const newBranches = { ...p.branches };
-              // Rimuovi dai genitori originali
               branchToMove.parentIds.forEach(pid => {
                   if (newBranches[pid]) {
                       newBranches[pid] = { ...newBranches[pid], childrenIds: newBranches[pid].childrenIds.filter(id => id !== branchId) };
                   }
               });
-              // Elimina rami
               descendantIds.forEach(id => delete newBranches[id]);
               return { ...p, branches: newBranches };
           }
           if (p.id === targetProjectId) {
               const newBranches = { ...p.branches, ...movedBranches };
-              // Aggiungi al nuovo genitore
               if (newBranches[targetParentId]) {
                   newBranches[targetParentId] = { ...newBranches[targetParentId], childrenIds: [...newBranches[targetParentId].childrenIds, branchId] };
               }
@@ -538,7 +532,6 @@ export const ProjectProvider: React.FC<{ children: React.ReactNode }> = ({ child
           return p;
       }));
 
-      // 4. Sincronizzazione Supabase
       if (session && !isOfflineMode && supabaseClient) {
           try {
               const { error } = await supabaseClient
@@ -630,7 +623,11 @@ export const ProjectProvider: React.FC<{ children: React.ReactNode }> = ({ child
   const deleteBranch = useCallback(async (branchId: string) => {
       if (session && !isOfflineMode && supabaseClient) {
           const { error } = await supabaseClient.from('flowtask_branches').delete().eq('id', branchId);
-          if (error) console.error("Error deleting branch remote", error);
+          if (error) {
+              console.error("Error deleting branch remote", error);
+              showNotification("Errore durante l'eliminazione remota.", "error");
+              return;
+          }
       }
 
       setProjects(prev => prev.map(p => {
@@ -652,7 +649,7 @@ export const ProjectProvider: React.FC<{ children: React.ReactNode }> = ({ child
           return { ...p, branches: newBranches };
       }));
       if (selectedBranchId === branchId) setSelectedBranchId(null);
-  }, [activeProjectId, selectedBranchId, session, isOfflineMode, supabaseClient]);
+  }, [activeProjectId, selectedBranchId, session, isOfflineMode, supabaseClient, showNotification]);
 
   const moveBranch = useCallback((branchId: string, direction: 'left' | 'right' | 'up' | 'down') => {
       setProjects(prev => prev.map(p => {
@@ -796,7 +793,11 @@ export const ProjectProvider: React.FC<{ children: React.ReactNode }> = ({ child
   const deleteTask = useCallback(async (branchId: string, taskId: string) => {
       if (session && !isOfflineMode && supabaseClient) {
           const { error } = await supabaseClient.from('flowtask_tasks').delete().eq('id', taskId);
-          if (error) console.error("Error deleting task remote", error);
+          if (error) {
+              console.error("Error deleting task remote", error);
+              showNotification("Errore eliminazione remota task.", "error");
+              return;
+          }
       }
 
       setProjects(prev => prev.map(p => {
@@ -808,7 +809,7 @@ export const ProjectProvider: React.FC<{ children: React.ReactNode }> = ({ child
               branches: { ...p.branches, [branchId]: { ...branch, tasks: branch.tasks.filter(t => t.id !== taskId) } }
           };
       }));
-  }, [activeProjectId, session, isOfflineMode, supabaseClient]);
+  }, [activeProjectId, session, isOfflineMode, supabaseClient, showNotification]);
 
   const moveTask = useCallback((branchId: string, taskId: string, direction: 'up' | 'down') => {
       setProjects(prev => prev.map(p => {
@@ -823,6 +824,8 @@ export const ProjectProvider: React.FC<{ children: React.ReactNode }> = ({ child
           
           if (swapIdx >= 0 && swapIdx < newTasks.length) {
               [newTasks[idx], newTasks[swapIdx]] = [newTasks[swapIdx], newTasks[idx]];
+              // Update positions for persistence
+              newTasks.forEach((t, i) => t.position = i);
               return {
                   ...p,
                   branches: { ...p.branches, [branchId]: { ...branch, tasks: newTasks } }
@@ -881,14 +884,15 @@ export const ProjectProvider: React.FC<{ children: React.ReactNode }> = ({ child
            const branch = p.branches[branchId];
            if (!branch) return p;
            
-           const newTasks: Task[] = lines.map(line => {
+           const newTasks: Task[] = lines.map((line, idx) => {
                const existing = branch.tasks.find(t => t.title === line);
                return existing || { 
                    id: crypto.randomUUID(), 
                    title: line, 
                    completed: false, 
                    description: '', 
-                   pinned: false 
+                   pinned: false,
+                   position: idx
                };
            });
            
@@ -1045,7 +1049,6 @@ export const ProjectProvider: React.FC<{ children: React.ReactNode }> = ({ child
           try {
               setAutoSaveStatus('saving');
               
-              // 1. ELIMINA FISICAMENTE record legacy prima di caricare il nuovo
               if (legacyIdToDelete) {
                   const { error: delErr } = await supabaseClient
                       .from('flowtask_branches')
@@ -1055,7 +1058,6 @@ export const ProjectProvider: React.FC<{ children: React.ReactNode }> = ({ child
                   if (delErr) throw delErr;
               }
 
-              // 2. Upsert nuovo nodo radice
               const rootBranch = finalBranches[finalRootId];
               const { error: branchErr } = await supabaseClient
                   .from('flowtask_branches')
@@ -1074,14 +1076,12 @@ export const ProjectProvider: React.FC<{ children: React.ReactNode }> = ({ child
                   });
               if (branchErr) throw branchErr;
 
-              // 3. Aggiorna ID progetto
               const { error: projErr } = await supabaseClient
                   .from('flowtask_projects')
                   .update({ root_branch_id: finalRootId })
                   .eq('id', activeProjectId);
               if (projErr) throw projErr;
               
-              // 4. Salva tutto il resto e aggiorna stato locale
               setProjects(prev => prev.map(p => p.id === activeProjectId ? updatedProject : p));
               await uploadProjectToSupabase(); 
               
