@@ -3,8 +3,7 @@ import React, { useState, useEffect, useRef, useMemo } from 'react';
 import { useProject } from '../../context/ProjectContext';
 import { BranchStatus, Branch } from '../../types';
 import { STATUS_CONFIG } from '../../constants';
-// Added Tag to the imports from lucide-react
-import { X, Save, Trash2, CheckSquare, Square, ArrowUpLeft, Calendar, Plus, Link as LinkIcon, Unlink, FileText, ChevronUp, ChevronDown, Loader2, ArrowRight, Mail, Check, Move, Pin, CheckCircle2, UserPlus, Eye, Edit2, Archive, RefreshCw, CalendarDays, Bold, Italic, List, AlertTriangle, Clock, Tag } from 'lucide-react';
+import { X, Save, Trash2, CheckSquare, Square, ArrowUpLeft, Calendar, Plus, Link as LinkIcon, Unlink, FileText, ChevronUp, ChevronDown, Loader2, ArrowRight, Mail, Check, Move, Pin, CheckCircle2, UserPlus, Eye, Edit2, Archive, RefreshCw, CalendarDays, Bold, Italic, List, AlertTriangle, Clock, Tag, Zap } from 'lucide-react';
 import Avatar from '../ui/Avatar';
 import DatePicker from '../ui/DatePicker';
 import Markdown from '../ui/Markdown';
@@ -197,7 +196,7 @@ const BranchDetails: React.FC = () => {
       <div className="p-4 border-b border-gray-100 dark:border-slate-700 flex justify-between items-center bg-gray-50 dark:bg-slate-800/50">
         <div className="flex-1 mr-4">
            <span className="text-xs font-bold text-gray-400 uppercase tracking-wider flex items-center gap-2">
-               {branch.isLabel ? 'Etichetta' : 'Dettagli Ramo'}
+               {branch.isLabel ? 'Etichetta' : (branch.isSprint ? 'Sprint Mode' : 'Dettagli Ramo')}
                {branch.archived && <span className="bg-slate-200 dark:bg-slate-700 text-slate-500 px-2 py-0.5 rounded text-[10px]">Archiviato</span>}
            </span>
            <div className="flex items-center gap-2 mt-1">
@@ -327,14 +326,44 @@ const BranchDetails: React.FC = () => {
             </div>
         )}
 
-        <div className="flex items-center justify-between p-3 rounded-lg border border-slate-200 dark:border-slate-700 bg-white dark:bg-slate-800/50">
-            <div className="flex items-center gap-2">
-                <Tag className="w-4 h-4 text-slate-500" />
-                <span className="text-sm font-medium text-slate-700 dark:text-slate-200">Tipo: {branch.isLabel ? 'Etichetta' : 'Ramo'}</span>
+        <div className="grid grid-cols-1 gap-3">
+            <div className="flex items-center justify-between p-3 rounded-lg border border-slate-200 dark:border-slate-700 bg-white dark:bg-slate-800/50">
+                <div className="flex items-center gap-2">
+                    <Tag className="w-4 h-4 text-slate-500" />
+                    <span className="text-sm font-medium text-slate-700 dark:text-slate-200">Tipo: {branch.isLabel ? 'Etichetta' : 'Ramo'}</span>
+                </div>
+                <button onClick={() => updateBranch(branch.id, { isLabel: !branch.isLabel, isSprint: false })} className={`px-3 py-1.5 rounded-md text-xs font-medium border transition-colors ${branch.isLabel ? 'bg-amber-100 text-amber-800 border-amber-300 dark:bg-amber-900/40 dark:text-amber-200 dark:border-amber-800' : 'bg-slate-100 text-slate-700 border-slate-300 dark:bg-slate-700 dark:text-slate-200 dark:border-slate-600'}`}>
+                    {branch.isLabel ? 'Converti in Ramo' : 'Converti in Etichetta'}
+                </button>
             </div>
-            <button onClick={() => updateBranch(branch.id, { isLabel: !branch.isLabel })} className={`px-3 py-1.5 rounded-md text-xs font-medium border transition-colors ${branch.isLabel ? 'bg-amber-100 text-amber-800 border-amber-300 dark:bg-amber-900/40 dark:text-amber-200 dark:border-amber-800' : 'bg-slate-100 text-slate-700 border-slate-300 dark:bg-slate-700 dark:text-slate-200 dark:border-slate-600'}`}>
-                {branch.isLabel ? 'Converti in Ramo' : 'Converti in Etichetta'}
-            </button>
+
+            <div className={`flex flex-col p-3 rounded-lg border transition-all ${branch.isSprint ? 'bg-indigo-50 border-indigo-200 dark:bg-indigo-900/20 dark:border-indigo-800' : 'bg-white border-slate-200 dark:bg-slate-800/50 dark:border-slate-700'}`}>
+                <div className="flex items-center justify-between mb-3">
+                    <div className="flex items-center gap-2">
+                        <Zap className={`w-4 h-4 ${branch.isSprint ? 'text-indigo-600' : 'text-slate-500'}`} />
+                        <span className="text-sm font-medium text-slate-700 dark:text-slate-200">Modalità Sprint</span>
+                    </div>
+                    <button onClick={() => updateBranch(branch.id, { isSprint: !branch.isSprint, isLabel: false })} className={`px-3 py-1.5 rounded-md text-xs font-medium border transition-colors ${branch.isSprint ? 'bg-indigo-600 text-white border-indigo-700' : 'bg-slate-100 text-slate-700 border-slate-300 dark:bg-slate-700 dark:text-slate-200 dark:border-slate-600'}`}>
+                        {branch.isSprint ? 'Attiva' : 'Disattiva'}
+                    </button>
+                </div>
+                {branch.isSprint && (
+                    <div className="space-y-2 animate-in fade-in slide-in-from-top-1">
+                        <p className="text-[10px] text-indigo-600 dark:text-indigo-400 font-bold uppercase tracking-tight">Auto-generazione Figli (AA-00)</p>
+                        <div className="flex items-center gap-3">
+                            <span className="text-xs text-slate-500 font-medium">Prossimo indice:</span>
+                            <input 
+                                type="number" 
+                                min="1"
+                                value={branch.sprintCounter || 1} 
+                                onChange={(e) => updateBranch(branch.id, { sprintCounter: parseInt(e.target.value) || 1 })}
+                                className="w-20 px-2 py-1 text-xs font-black bg-white dark:bg-slate-900 border border-indigo-200 dark:border-indigo-800 rounded outline-none focus:ring-1 focus:ring-indigo-500"
+                            />
+                        </div>
+                        <p className="text-[9px] text-slate-400 italic">I nuovi figli si chiameranno: "{branch.title} {new Date().getFullYear().toString().slice(-2)}-{String(branch.sprintCounter || 1).padStart(2, '0')}"</p>
+                    </div>
+                )}
+            </div>
         </div>
 
         <div className="space-y-2">
@@ -529,7 +558,7 @@ const BranchDetails: React.FC = () => {
   );
 };
 
-// Componenti mancanti in import (mock per non rompere il file)
+// Componenti mancanti in import (mock per non romperlo se non sono in tipi globali)
 const PlayCircle: React.FC<any> = (props) => <Clock {...props} />;
 
 export default BranchDetails;

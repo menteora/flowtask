@@ -228,7 +228,9 @@ export const ProjectProvider: React.FC<{ children: React.ReactNode }> = ({ child
                   dueDate: b.due_date,
                   archived: b.archived,
                   collapsed: b.collapsed,
-                  isLabel: b.is_label
+                  isLabel: b.is_label,
+                  isSprint: b.is_sprint || false,
+                  sprintCounter: b.sprint_counter || 1
               };
           });
 
@@ -294,6 +296,8 @@ export const ProjectProvider: React.FC<{ children: React.ReactNode }> = ({ child
             archived: b.archived,
             collapsed: b.collapsed,
             is_label: b.isLabel,
+            is_sprint: b.isSprint || false,
+            sprint_counter: b.sprintCounter || 1,
             parent_ids: b.parentIds,
             children_ids: b.childrenIds,
             position: b.position || 0
@@ -583,25 +587,41 @@ export const ProjectProvider: React.FC<{ children: React.ReactNode }> = ({ child
   const addBranch = useCallback((parentId: string) => {
       setProjects(prev => prev.map(p => {
           if (p.id !== activeProjectId) return p;
+          
+          const parent = p.branches[parentId];
+          let title = 'Nuovo Ramo';
+          let updatedParent = { ...parent };
+          
+          if (parent?.isSprint) {
+              const year = new Date().getFullYear().toString().slice(-2);
+              const counter = parent.sprintCounter || 1;
+              title = `${parent.title} ${year}-${String(counter).padStart(2, '0')}`;
+              updatedParent.sprintCounter = counter + 1;
+          }
+
           const newId = crypto.randomUUID();
           const newBranch: Branch = {
               id: newId,
-              title: 'Nuovo Ramo',
+              title: title,
               status: BranchStatus.PLANNED,
               tasks: [],
               childrenIds: [],
               parentIds: [parentId],
               description: '',
-              isLabel: false
+              isLabel: false,
+              isSprint: false,
+              sprintCounter: 1
           };
           
-          const newBranches = { ...p.branches, [newId]: newBranch };
-          if (newBranches[parentId]) {
-              newBranches[parentId] = {
-                  ...newBranches[parentId],
-                  childrenIds: [...newBranches[parentId].childrenIds, newId]
-              };
-          }
+          const newBranches = { 
+              ...p.branches, 
+              [newId]: newBranch,
+              [parentId]: {
+                  ...updatedParent,
+                  childrenIds: [...updatedParent.childrenIds, newId]
+              }
+          };
+          
           return { ...p, branches: newBranches };
       }));
   }, [activeProjectId]);
@@ -824,7 +844,6 @@ export const ProjectProvider: React.FC<{ children: React.ReactNode }> = ({ child
           
           if (swapIdx >= 0 && swapIdx < newTasks.length) {
               [newTasks[idx], newTasks[swapIdx]] = [newTasks[swapIdx], newTasks[idx]];
-              // Update positions for persistence
               newTasks.forEach((t, i) => t.position = i);
               return {
                   ...p,
@@ -1068,6 +1087,8 @@ export const ProjectProvider: React.FC<{ children: React.ReactNode }> = ({ child
                       description: rootBranch.description,
                       status: rootBranch.status,
                       is_label: rootBranch.isLabel,
+                      is_sprint: rootBranch.isSprint || false,
+                      sprint_counter: rootBranch.sprintCounter || 1,
                       parent_ids: [],
                       children_ids: rootBranch.childrenIds,
                       archived: false,

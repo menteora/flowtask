@@ -3,7 +3,7 @@ import React, { useState, useEffect, useMemo } from 'react';
 import { Branch, BranchStatus } from '../../types';
 import { STATUS_CONFIG } from '../../constants';
 import { useProject } from '../../context/ProjectContext';
-import { MoreHorizontal, Plus, Calendar, Archive, ChevronLeft, ChevronRight, FileText, ChevronDown, ChevronUp, GitMerge, Globe, Tag, Eye, EyeOff, CheckCircle2 } from 'lucide-react';
+import { MoreHorizontal, Plus, Calendar, Archive, ChevronLeft, ChevronRight, FileText, ChevronDown, ChevronUp, GitMerge, Globe, Tag, Eye, EyeOff, CheckCircle2, Zap } from 'lucide-react';
 import Avatar from '../ui/Avatar';
 
 interface BranchNodeProps {
@@ -64,7 +64,8 @@ const BranchNode: React.FC<BranchNodeProps> = ({ branchId }) => {
   const visibleTasks = isTasksExpanded ? sortedTasks : sortedTasks.slice(0, 3);
   const hiddenTasksCount = sortedTasks.length > 3 ? sortedTasks.length - 3 : 0;
 
-  if (branch.isLabel) {
+  if (branch.isLabel || branch.isSprint) {
+      const isSprint = branch.isSprint;
       return (
         <div className="flex flex-col items-center group/node">
             <div 
@@ -72,7 +73,7 @@ const BranchNode: React.FC<BranchNodeProps> = ({ branchId }) => {
                   relative w-56 rounded-lg shadow-sm border-2 transition-all duration-200 cursor-pointer hover:shadow-md
                   flex flex-col
                   ${isSelected 
-                    ? 'bg-amber-50 dark:bg-amber-900/10 border-amber-400 ring-2 ring-amber-400/20' 
+                    ? (isSprint ? 'bg-indigo-50 dark:bg-indigo-900/10 border-indigo-400 ring-2 ring-indigo-400/20' : 'bg-amber-50 dark:bg-amber-900/10 border-amber-400 ring-2 ring-amber-400/20') 
                     : 'bg-white dark:bg-slate-800 border-slate-300 dark:border-slate-600 hover:border-amber-300 dark:hover:border-amber-700'}
                   ${branch.archived ? 'border-dashed opacity-70 grayscale' : ''}
                 `}
@@ -83,7 +84,11 @@ const BranchNode: React.FC<BranchNodeProps> = ({ branchId }) => {
             >
                 <div className="p-2 flex items-center justify-between gap-2">
                     <div className="flex items-center gap-2 min-w-0">
-                        <Tag className={`w-4 h-4 shrink-0 ${isSelected ? 'text-amber-600 dark:text-amber-400' : 'text-slate-400'}`} />
+                        {isSprint ? (
+                            <Zap className={`w-4 h-4 shrink-0 ${isSelected ? 'text-indigo-600 dark:text-indigo-400' : 'text-slate-400'}`} />
+                        ) : (
+                            <Tag className={`w-4 h-4 shrink-0 ${isSelected ? 'text-amber-600 dark:text-amber-400' : 'text-slate-400'}`} />
+                        )}
                         <span className="font-bold text-sm text-slate-700 dark:text-slate-200 truncate" title={branch.title}>
                             {branch.title}
                         </span>
