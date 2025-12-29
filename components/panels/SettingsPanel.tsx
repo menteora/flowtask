@@ -1,4 +1,3 @@
-
 import React, { useState, useEffect, useRef, useMemo } from 'react';
 import { useProject } from '../../context/ProjectContext';
 import { Branch } from '../../types';
@@ -7,17 +6,12 @@ import {
   Database, Save, Download, Key, Check, Copy, Terminal, Cloud, Loader2, Upload, 
   User, LogOut, WifiOff, X, Link, Trash2, Eraser, AlertTriangle, Stethoscope, 
   Search, Square, CheckSquare, RefreshCw, Tag, GitBranch, Calendar, Info, 
-  MessageSquare, Settings as SettingsIcon, ShieldCheck, Rocket, ChevronRight, Eye, EyeOff, CheckCircle2
+  MessageSquare, Settings as SettingsIcon, ShieldCheck, Rocket, ChevronRight, Eye, EyeOff, CheckCircle2, Code
 } from 'lucide-react';
 
-const SQL_SCHEMA = `
--- CANCELLAZIONE VECCHIE TABELLE (Se esistono)
-DROP TABLE IF EXISTS public.flowtask_tasks;
-DROP TABLE IF EXISTS public.flowtask_branches;
-DROP TABLE IF EXISTS public.flowtask_people;
-DROP TABLE IF EXISTS public.flowtask_projects;
+const SQL_SCHEMA = `-- SCHEMA SQL FLOWTASK AGGIORNATO
 
--- CREAZIONE NUOVE TABELLE CON RLS
+-- PROGETTI
 create table public.flowtask_projects (
   id text primary key,
   name text not null,
@@ -26,6 +20,7 @@ create table public.flowtask_projects (
   created_at timestamp with time zone default timezone('utc'::text, now()) not null
 );
 
+-- PERSONE / TEAM
 create table public.flowtask_people (
   id text primary key,
   project_id text references public.flowtask_projects(id) on delete cascade,
@@ -36,6 +31,7 @@ create table public.flowtask_people (
   color text
 );
 
+-- RAMI / BRANCHES
 create table public.flowtask_branches (
   id text primary key,
   project_id text references public.flowtask_projects(id) on delete cascade,
@@ -55,6 +51,7 @@ create table public.flowtask_branches (
   position integer default 0
 );
 
+-- TASKS
 create table public.flowtask_tasks (
   id text primary key,
   branch_id text references public.flowtask_branches(id) on delete cascade,
@@ -76,8 +73,7 @@ alter table public.flowtask_tasks enable row level security;
 create policy "Users can all on own projects" on public.flowtask_projects for all using (auth.uid() = owner_id);
 create policy "Users can all on people of own projects" on public.flowtask_people for all using (exists (select 1 from public.flowtask_projects where public.flowtask_projects.id = public.flowtask_people.project_id and public.flowtask_projects.owner_id = auth.uid()));
 create policy "Users can all on branches of own projects" on public.flowtask_branches for all using (exists (select 1 from public.flowtask_projects where public.flowtask_projects.id = public.flowtask_branches.project_id and public.flowtask_projects.owner_id = auth.uid()));
-create policy "Users can all on tasks of own projects" on public.flowtask_tasks for all using (exists (select 1 from public.flowtask_branches join public.flowtask_projects on public.flowtask_projects.id = public.flowtask_branches.project_id where public.flowtask_branches.id = public.flowtask_tasks.branch_id and public.flowtask_projects.owner_id = auth.uid()));
-`;
+create policy "Users can all on tasks of own projects" on public.flowtask_tasks for all using (exists (select 1 from public.flowtask_branches join public.flowtask_projects on public.flowtask_projects.id = public.flowtask_branches.project_id where public.flowtask_branches.id = public.flowtask_tasks.branch_id and public.flowtask_projects.owner_id = auth.uid()));`;
 
 type TabType = 'cloud' | 'diagnostics' | 'maintenance' | 'preferences';
 
@@ -111,6 +107,7 @@ const SettingsPanel: React.FC = () => {
   const [selectedOrphans, setSelectedOrphans] = useState<string[]>([]);
   const [isRepairing, setIsRepairing] = useState(false);
   const [expandedOrphanId, setExpandedOrphanId] = useState<string | null>(null);
+  const [showSql, setShowSql] = useState(false);
 
   const cleanupStats = useMemo(() => {
     const threshold = new Date();
@@ -153,6 +150,11 @@ const SettingsPanel: React.FC = () => {
       setShareLinkCopied(true);
       showNotification("Link di configurazione copiato!", 'success');
       setTimeout(() => setShareLinkCopied(false), 3000);
+  };
+
+  const copySqlToClipboard = () => {
+      navigator.clipboard.writeText(SQL_SCHEMA);
+      showNotification("Script SQL copiato!", 'success');
   };
 
   const handleCloudSave = async () => {
@@ -301,10 +303,30 @@ const SettingsPanel: React.FC = () => {
                               <h3 className="text-lg font-bold text-slate-800 dark:text-white flex items-center gap-2"><Key className="w-5 h-5 text-indigo-500" /> Database</h3>
                               <p className="text-[10px] md:text-xs text-slate-500">Credenziali Supabase.</p>
                           </div>
-                          <button onClick={handleGenerateShareLink} className="text-[10px] font-bold text-indigo-600 bg-indigo-50 dark:bg-indigo-900/20 px-3 py-2 rounded-lg flex items-center gap-2 w-fit">
-                              {shareLinkCopied ? <Check className="w-3.5 h-3.5" /> : <Link className="w-3.5 h-3.5" />} Configurazione Link
-                          </button>
+                          <div className="flex gap-2">
+                              <button onClick={() => setShowSql(!showSql)} className="text-[10px] font-bold text-slate-600 bg-slate-100 dark:bg-slate-700 px-3 py-2 rounded-lg flex items-center gap-2">
+                                  <Code className="w-3.5 h-3.5" /> Schema SQL
+                              </button>
+                              <button onClick={handleGenerateShareLink} className="text-[10px] font-bold text-indigo-600 bg-indigo-50 dark:bg-indigo-900/20 px-3 py-2 rounded-lg flex items-center gap-2 w-fit">
+                                  {shareLinkCopied ? <Check className="w-3.5 h-3.5" /> : <Link className="w-3.5 h-3.5" />} Link Configurazione
+                              </button>
+                          </div>
                       </div>
+
+                      {showSql && (
+                          <div className="mb-6 animate-in zoom-in-95 duration-200">
+                              <div className="flex items-center justify-between bg-slate-900 text-slate-400 px-4 py-2 rounded-t-lg border-x border-t border-slate-700">
+                                  <span className="text-[10px] font-bold uppercase tracking-widest">Script Creazione Tabelle</span>
+                                  <button onClick={copySqlToClipboard} className="hover:text-white transition-colors">
+                                      <Copy className="w-4 h-4" />
+                                  </button>
+                              </div>
+                              <pre className="bg-slate-950 text-indigo-300 p-4 rounded-b-lg text-[10px] font-mono overflow-x-auto border-x border-b border-slate-700 max-h-60 custom-scrollbar">
+                                  {SQL_SCHEMA}
+                              </pre>
+                          </div>
+                      )}
+
                       <div className="space-y-4">
                           <input type="text" value={url} onChange={(e) => setUrl(e.target.value)} placeholder="Project URL" className="w-full p-2.5 rounded-lg border border-slate-200 dark:border-slate-700 bg-slate-50 dark:bg-slate-900 text-xs focus:ring-1 focus:ring-indigo-500 font-mono" />
                           <input type="password" value={key} onChange={(e) => setKey(e.target.value)} placeholder="Anon Key" className="w-full p-2.5 rounded-lg border border-slate-300 dark:border-slate-700 bg-white dark:bg-slate-800 focus:ring-1 focus:ring-indigo-500 font-mono" />
