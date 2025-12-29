@@ -216,7 +216,7 @@ export const ProjectProvider: React.FC<{ children: React.ReactNode }> = ({ child
                   responsibleId: b.responsible_id
               };
           });
-          loadProject({ id: p.id, name: p.name, root_branch_id: p.root_branch_id, branches, people }, activate, true); 
+          loadProject({ id: p.id, name: p.name, rootBranchId: p.root_branch_id, branches, people }, activate, true); 
           lastSyncedProjectIdRef.current = id;
           setRemoteDataLoaded(true); 
       } catch (e: any) {
@@ -239,14 +239,14 @@ export const ProjectProvider: React.FC<{ children: React.ReactNode }> = ({ child
         const branches = Object.values(p.branches).map(b => ({
             id: b.id, project_id: p.id, title: b.title, description: b.description, status: b.status,
             start_date: b.startDate, end_date: b.endDate, due_date: b.dueDate, archived: b.archived,
-            collapsed: b.collapsed, is_label: b.is_label, is_sprint: b.is_sprint || false,
-            sprint_counter: b.sprint_counter || 1, parent_ids: b.parentIds, children_ids: b.childrenIds,
+            collapsed: b.collapsed, is_label: b.isLabel, is_sprint: b.isSprint || false,
+            sprint_counter: b.sprintCounter || 1, parent_ids: b.parentIds, children_ids: b.childrenIds,
             responsible_id: b.responsibleId
         }));
         if (branches.length > 0) await supabaseClient.from('flowtask_branches').upsert(branches);
         const tasks: any[] = [];
         Object.values(p.branches).forEach(b => b.tasks.forEach((t, i) => tasks.push({
-            id: t.id, branch_id: b.id, title: t.title, description: t.description, assignee_id: t.assignee_id,
+            id: t.id, branch_id: b.id, title: t.title, description: t.description, assignee_id: t.assigneeId,
             due_date: t.dueDate, completed: t.completed, completed_at: t.completedAt, position: t.position ?? i, pinned: t.pinned || false
         })));
         if (tasks.length > 0) await supabaseClient.from('flowtask_tasks').upsert(tasks);
@@ -287,6 +287,7 @@ export const ProjectProvider: React.FC<{ children: React.ReactNode }> = ({ child
 
   const activeProject = projects.find(p => p.id === activeProjectId) || projects[0] || createInitialProjectState();
 
+  // Helper per trovare il responsabile ereditato
   const getInheritedResponsibleId = useCallback((branchId: string, branches: Record<string, Branch>): string | undefined => {
     const branch = branches[branchId];
     if (!branch) return undefined;
@@ -321,9 +322,7 @@ export const ProjectProvider: React.FC<{ children: React.ReactNode }> = ({ child
       setProjects(prev => prev.map(p => {
           if (p.id !== activeProjectId || !p.branches[branchId]) return p;
           const updated = { ...p.branches[branchId], ...updates };
-          
-          // FIX RLS: Includiamo sempre project_id per superare il controllo di proprietà
-          const dbPayload: any = { id: branchId, project_id: p.id };
+          const dbPayload: any = { id: branchId };
           if (updates.title !== undefined) dbPayload.title = updates.title;
           if (updates.status !== undefined) dbPayload.status = updates.status;
           if (updates.description !== undefined) dbPayload.description = updates.description;
@@ -334,7 +333,6 @@ export const ProjectProvider: React.FC<{ children: React.ReactNode }> = ({ child
           if (updates.startDate !== undefined) dbPayload.start_date = updates.startDate;
           if (updates.dueDate !== undefined) dbPayload.due_date = updates.dueDate;
           if (updates.archived !== undefined) dbPayload.archived = updates.archived;
-          
           syncEntityToSupabase('flowtask_branches', dbPayload);
           return { ...p, branches: { ...p.branches, [branchId]: updated } };
       }));
@@ -361,6 +359,7 @@ export const ProjectProvider: React.FC<{ children: React.ReactNode }> = ({ child
 
   const addTask = useCallback((branchId: string, title: string) => {
       const newId = crypto.randomUUID();
+      // Applichiamo l'ereditarietà al momento della creazione del task
       const inheritedAssigneeId = getInheritedResponsibleId(branchId, activeProject.branches);
       const newTask: Task = { id: newId, title, completed: false, description: '', pinned: false, assigneeId: inheritedAssigneeId };
       setProjects(prev => prev.map(p => {
@@ -376,9 +375,7 @@ export const ProjectProvider: React.FC<{ children: React.ReactNode }> = ({ child
           const branch = p.branches[branchId];
           const task = branch.tasks.find(t => t.id === taskId);
           if (!task) return p;
-
-          // FIX RLS: Includiamo branch_id per validare la riga tramite la policy collegata al progetto
-          const dbPayload: any = { id: taskId, branch_id: branchId };
+          const dbPayload: any = { id: taskId };
           if (updates.title !== undefined) dbPayload.title = updates.title;
           if (updates.completed !== undefined) {
               dbPayload.completed = updates.completed;
@@ -388,32 +385,10 @@ export const ProjectProvider: React.FC<{ children: React.ReactNode }> = ({ child
           if (updates.dueDate !== undefined) dbPayload.due_date = updates.dueDate || null;
           if (updates.pinned !== undefined) dbPayload.pinned = updates.pinned;
           if (updates.description !== undefined) dbPayload.description = updates.description;
-
           syncEntityToSupabase('flowtask_tasks', dbPayload);
           const nextTasks = branch.tasks.map(t => t.id === taskId ? { ...t, ...updates, completedAt: dbPayload.completed_at } : t);
           return { ...p, branches: { ...p.branches, [branchId]: { ...branch, tasks: nextTasks } } };
       }));
-  }, [activeProjectId, syncEntityToSupabase]);
-
-  const addPerson = useCallback((name: string, email?: string, phone?: string) => {
-    const np = { id: crypto.randomUUID(), name, email, phone, initials: name.slice(0, 2).toUpperCase(), color: 'bg-indigo-500' };
-    setProjects(prev => prev.map(p => {
-        if (p.id !== activeProjectId) return p;
-        syncEntityToSupabase('flowtask_people', { ...np, project_id: p.id });
-        return { ...p, people: [...p.people, np] };
-    }));
-  }, [activeProjectId, syncEntityToSupabase]);
-
-  const updatePerson = useCallback((id: string, updates: Partial<Person>) => {
-    setProjects(prev => prev.map(p => {
-        if (p.id !== activeProjectId) return p;
-        const person = p.people.find(x => x.id === id);
-        if (!person) return p;
-        
-        // FIX RLS: Includiamo project_id
-        syncEntityToSupabase('flowtask_people', { ...person, ...updates, project_id: p.id });
-        return { ...p, people: p.people.map(x => x.id === id ? { ...x, ...updates } : x) };
-    }));
   }, [activeProjectId, syncEntityToSupabase]);
 
   const setSupabaseConfig = (url: string, key: string) => {
@@ -441,22 +416,26 @@ export const ProjectProvider: React.FC<{ children: React.ReactNode }> = ({ child
           if (supabaseClient && !isOfflineMode) await supabaseClient.from('flowtask_tasks').delete().eq('id', tid);
           setProjects(prev => prev.map(p => p.id === activeProjectId ? { ...p, branches: { ...p.branches, [bid]: { ...p.branches[bid], tasks: p.branches[bid].tasks.filter(t => t.id !== tid) } } } : p));
       },
-      addPerson, updatePerson,
-      removePerson: id => {
-        if (supabaseClient && !isOfflineMode) supabaseClient.from('flowtask_people').delete().eq('id', id).then(() => {});
-        setProjects(prev => prev.map(p => p.id === activeProjectId ? { ...p, people: p.people.filter(x => x.id !== id) } : p));
+      addPerson: (name, email, phone) => {
+          const np = { id: crypto.randomUUID(), name, email, phone, initials: name.slice(0, 2).toUpperCase(), color: 'bg-indigo-500' };
+          setProjects(prev => prev.map(p => {
+              if (p.id !== activeProjectId) return p;
+              syncEntityToSupabase('flowtask_people', { ...np, project_id: p.id });
+              return { ...p, people: [...p.people, np] };
+          }));
       },
+      updatePerson: (id, up) => setProjects(prev => prev.map(p => p.id === activeProjectId ? { ...p, people: p.people.map(x => x.id === id ? { ...x, ...up } : x) } : p)),
+      removePerson: id => setProjects(prev => prev.map(p => p.id === activeProjectId ? { ...p, people: p.people.filter(x => x.id !== id) } : p)),
       readingDescriptionId, setReadingDescriptionId, editingTask, setEditingTask, readingTask, setReadingTask,
       remindingUserId, setRemindingUserId, messageTemplates, updateMessageTemplates: t => setMessageTemplates(p => ({ ...p, ...t })),
-      uploadProjectToSupabase, downloadProjectFromSupabase, listProjectsFromSupabase: async () => (await supabaseClient?.from('flowtask_projects').select('*'))?.data || [],
+      uploadProjectToSupabase, downloadProjectFromSupabase, listProjectsFromSupabase: async () => supabaseClient?.from('flowtask_projects').select('*') as any,
       getProjectBranchesFromSupabase: async pid => (await supabaseClient?.from('flowtask_branches').select('*').eq('project_id', pid))?.data as any,
       deleteProjectFromSupabase: async id => { await supabaseClient?.from('flowtask_projects').delete().eq('id', id); },
       logout, enableOfflineMode, disableOfflineMode, showNotification,
       moveBranch: () => {}, linkBranch: () => {}, unlinkBranch: () => {}, setAllBranchesCollapsed: c => setProjects(prev => prev.map(p => p.id === activeProjectId ? { ...p, branches: Object.fromEntries(Object.entries(p.branches).map(([k, v]) => [k, { ...v, collapsed: c }])) } : p)),
       moveTask: () => {}, moveTaskToBranch: () => {}, bulkMoveTasks: () => {}, bulkUpdateTasks: () => {}, cleanupOldTasks: async () => ({ count: 0, backup: [] }),
       checkProjectHealth: () => ({ legacyRootFound: false, missingRootNode: false, orphanedBranches: [], totalIssues: 0 }),
-      repairProjectStructure: async () => null, resolveOrphans: async () => {}, moveLocalBranchToRemoteProject: async () => {},
-      isInitializing
+      repairProjectStructure: async () => null, resolveOrphans: async () => {}, moveLocalBranchToRemoteProject: async () => {}
     }}>
       {children}
     </ProjectContext.Provider>
