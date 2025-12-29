@@ -48,6 +48,8 @@ create table public.flowtask_branches (
   archived boolean default false,
   collapsed boolean default false,
   is_label boolean default false,
+  is_sprint boolean default false,
+  sprint_counter integer default 1,
   parent_ids text[],
   children_ids text[],
   position integer default 0

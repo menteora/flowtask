@@ -11,7 +11,7 @@ export interface Person {
   id: string;
   name: string;
   email?: string;
-  phone?: string; // Added phone field
+  phone?: string; 
   initials: string;
   color: string;
 }
@@ -19,13 +19,13 @@ export interface Person {
 export interface Task {
   id: string;
   title: string;
-  description?: string; // Added markdown description
+  description?: string; 
   assigneeId?: string;
-  dueDate?: string; // ISO Date string YYYY-MM-DD
+  dueDate?: string; 
   completed: boolean;
-  completedAt?: string; // ISO Date string (Timestamp)
-  position?: number; // Added for ordering
-  pinned?: boolean; // New field for Focus View
+  completedAt?: string; 
+  position?: number; 
+  pinned?: boolean; 
 }
 
 export interface Branch {
@@ -33,21 +33,23 @@ export interface Branch {
   title: string;
   description?: string;
   status: BranchStatus;
-  isLabel?: boolean; // New field: treats branch as a label/container
-  startDate?: string; // ISO Date string YYYY-MM-DD (Automatic on ACTIVE)
-  endDate?: string;   // ISO Date string YYYY-MM-DD (Automatic on CLOSED/CANCELLED)
-  dueDate?: string;   // ISO Date string YYYY-MM-DD (Deadline)
+  isLabel?: boolean; 
+  isSprint?: boolean; // New field for Sprint logic
+  sprintCounter?: number; // Counter for auto-naming children
+  startDate?: string; 
+  endDate?: string;   
+  dueDate?: string;   
   tasks: Task[];
   childrenIds: string[];
-  parentIds: string[]; // Changed from parentId: string | null
+  parentIds: string[]; 
   archived?: boolean;
-  position?: number; // Added for explicit SQL ordering
-  collapsed?: boolean; // New field for UI collapsing
+  position?: number; 
+  collapsed?: boolean; 
 }
 
 export interface ProjectState {
-  id: string;   // Unique ID for the project tab
-  name: string; // Display name for the tab
+  id: string;   
+  name: string; 
   branches: Record<string, Branch>;
   people: Person[];
   rootBranchId: string;
