@@ -1,8 +1,9 @@
 
 import React, { useEffect, useState, useRef } from 'react';
 import { useProject } from '../../context/ProjectContext';
-import { X, FileText, Calendar, Edit2, Save, Bold, Italic, List, Link as LinkIcon, Mail, Check, User, CheckSquare, Square, CalendarDays, CheckCircle2 } from 'lucide-react';
+import { X, FileText, Calendar, Edit2, Save, Bold, Italic, List, Link as LinkIcon, Mail, Check, CheckSquare, Square, CalendarDays, CheckCircle2 } from 'lucide-react';
 import Avatar from '../ui/Avatar';
+import Markdown from '../ui/Markdown';
 
 const TaskDescriptionReader: React.FC = () => {
   const { readingTask, setReadingTask, state, updateTask } = useProject();
@@ -11,7 +12,6 @@ const TaskDescriptionReader: React.FC = () => {
   const [tempDescription, setTempDescription] = useState('');
   const textareaRef = useRef<HTMLTextAreaElement>(null);
 
-  // Editor Popup State
   const [popupMode, setPopupMode] = useState<'link' | 'email' | null>(null);
   const [popupInput, setPopupInput] = useState('');
   const popupInputRef = useRef<HTMLInputElement>(null);
@@ -62,7 +62,6 @@ const TaskDescriptionReader: React.FC = () => {
       }
   };
 
-  // --- EDITOR LOGIC ---
   const insertFormat = (prefix: string, suffix: string, selectionOverride?: string) => {
     if (!textareaRef.current) return;
     const start = textareaRef.current.selectionStart;
@@ -125,21 +124,6 @@ const TaskDescriptionReader: React.FC = () => {
       setPopupInput('');
   };
 
-  // --- RENDERER ---
-  const renderMarkdown = (text: string) => {
-    if (!text) return <p className="text-gray-400 italic text-sm">Nessuna descrizione.</p>;
-    
-    let html = text
-      .replace(/&/g, '&amp;').replace(/</g, '&lt;').replace(/>/g, '&gt;')
-      .replace(/\*\*(.*?)\*\*/g, '<strong>$1</strong>')
-      .replace(/\*(.*?)\*/g, '<em>$1</em>')
-      .replace(/\[(.*?)\]\((.*?)\)/g, '<a href="$2" target="_blank" rel="noopener noreferrer" class="text-indigo-600 dark:text-indigo-400 hover:underline inline-flex items-center gap-0.5">$1</a>')
-      .replace(/^\s*-\s+(.*)$/gm, '<li class="ml-4 list-disc">$1</li>')
-      .replace(/\n/g, '<br />');
-
-    return <div className="text-sm text-slate-700 dark:text-slate-300 leading-relaxed break-words" dangerouslySetInnerHTML={{ __html: html }} />;
-  };
-
   return (
     <div 
         className={`fixed inset-0 z-[100] flex items-center justify-center p-4 bg-black/50 backdrop-blur-sm transition-opacity duration-200 ${readingTask ? 'opacity-100' : 'opacity-0 pointer-events-none'}`}
@@ -149,7 +133,6 @@ const TaskDescriptionReader: React.FC = () => {
         className={`bg-white dark:bg-slate-900 w-full max-w-2xl rounded-2xl shadow-2xl border border-gray-200 dark:border-slate-700 flex flex-col max-h-[85vh] transition-transform duration-200 ${readingTask ? 'scale-100 translate-y-0' : 'scale-95 translate-y-4'}`}
         onClick={e => e.stopPropagation()}
       >
-        {/* Header */}
         <div className="flex items-center justify-between p-6 border-b border-gray-100 dark:border-slate-800 bg-gray-50/50 dark:bg-slate-800/30 rounded-t-2xl">
             <div className="flex items-center gap-4 flex-1 min-w-0">
                 <button 
@@ -213,33 +196,18 @@ const TaskDescriptionReader: React.FC = () => {
             </div>
         </div>
 
-        {/* Content */}
         <div className="p-6 overflow-y-auto custom-scrollbar flex-1 relative">
             {isEditing ? (
                 <div className="h-full flex flex-col border border-slate-200 dark:border-slate-700 rounded-lg overflow-hidden">
-                    {/* Toolbar */}
                     <div className="flex items-center gap-1 p-1 bg-slate-50 dark:bg-slate-800 border-b border-slate-200 dark:border-slate-700">
-                        <button onClick={() => handleToolbarAction('bold')} className="p-1.5 rounded hover:bg-slate-200 dark:hover:bg-slate-700 text-slate-600 dark:text-slate-300" title="Grassetto">
-                            <Bold className="w-3.5 h-3.5" />
-                        </button>
-                        <button onClick={() => handleToolbarAction('italic')} className="p-1.5 rounded hover:bg-slate-200 dark:hover:bg-slate-700 text-slate-600 dark:text-slate-300" title="Corsivo">
-                            <Italic className="w-3.5 h-3.5" />
-                        </button>
-                        <button onClick={() => handleToolbarAction('link')} className="p-1.5 rounded hover:bg-slate-200 dark:hover:bg-slate-700 text-slate-600 dark:text-slate-300" title="Link">
-                            <LinkIcon className="w-3.5 h-3.5" />
-                        </button>
-                         <button onClick={() => handleToolbarAction('email')} className="p-1.5 rounded hover:bg-slate-200 dark:hover:bg-slate-700 text-slate-600 dark:text-slate-300" title="Link a Gmail Search">
-                            <Mail className="w-3.5 h-3.5" />
-                        </button>
-                        <button onClick={() => handleToolbarAction('list')} className="p-1.5 rounded hover:bg-slate-200 dark:hover:bg-slate-700 text-slate-600 dark:text-slate-300" title="Lista">
-                            <List className="w-3.5 h-3.5" />
-                        </button>
-                        <button onClick={() => handleToolbarAction('today-date')} className="p-1.5 rounded hover:bg-slate-200 dark:hover:bg-slate-700 text-slate-600 dark:text-slate-300" title="Inserisci Data Odierna">
-                            <CalendarDays className="w-3.5 h-3.5" />
-                        </button>
+                        <button onClick={() => handleToolbarAction('bold')} className="p-1.5 rounded hover:bg-slate-200 dark:hover:bg-slate-700 text-slate-600 dark:text-slate-300" title="Grassetto"><Bold className="w-3.5 h-3.5" /></button>
+                        <button onClick={() => handleToolbarAction('italic')} className="p-1.5 rounded hover:bg-slate-200 dark:hover:bg-slate-700 text-slate-600 dark:text-slate-300" title="Corsivo"><Italic className="w-3.5 h-3.5" /></button>
+                        <button onClick={() => handleToolbarAction('link')} className="p-1.5 rounded hover:bg-slate-200 dark:hover:bg-slate-700 text-slate-600 dark:text-slate-300" title="Link"><LinkIcon className="w-3.5 h-3.5" /></button>
+                        <button onClick={() => handleToolbarAction('email')} className="p-1.5 rounded hover:bg-slate-200 dark:hover:bg-slate-700 text-slate-600 dark:text-slate-300" title="Link a Gmail Search"><Mail className="w-3.5 h-3.5" /></button>
+                        <button onClick={() => handleToolbarAction('list')} className="p-1.5 rounded hover:bg-slate-200 dark:hover:bg-slate-700 text-slate-600 dark:text-slate-300" title="Lista"><List className="w-3.5 h-3.5" /></button>
+                        <button onClick={() => handleToolbarAction('today-date')} className="p-1.5 rounded hover:bg-slate-200 dark:hover:bg-slate-700 text-slate-600 dark:text-slate-300" title="Inserisci Data Odierna"><CalendarDays className="w-3.5 h-3.5" /></button>
                     </div>
 
-                    {/* Editor Popup (Absolute over textarea) */}
                     {popupMode && (
                         <div className="absolute top-[50px] left-8 right-8 z-10 bg-white dark:bg-slate-900 border border-indigo-200 dark:border-indigo-800 shadow-lg rounded-lg p-2 flex gap-2 animate-in fade-in zoom-in-95 duration-150">
                             <input 
@@ -251,15 +219,10 @@ const TaskDescriptionReader: React.FC = () => {
                                     if(e.key === 'Enter') applyPopupValue();
                                     if(e.key === 'Escape') { setPopupMode(null); setPopupInput(''); }
                                 }}
-                                placeholder={popupMode === 'link' ? "Inserisci URL..." : "Inserisci Oggetto Mail..."}
+                                placeholder={popupMode === 'link' ? "URL..." : "Oggetto..."}
                                 className="flex-1 text-sm border border-slate-300 dark:border-slate-600 rounded px-2 py-1 bg-slate-50 dark:bg-slate-800 focus:outline-none focus:ring-1 focus:ring-indigo-500"
                             />
-                            <button onClick={applyPopupValue} className="p-1 bg-indigo-600 text-white rounded hover:bg-indigo-700">
-                                <Check className="w-4 h-4" />
-                            </button>
-                            <button onClick={() => { setPopupMode(null); setPopupInput(''); }} className="p-1 bg-slate-200 dark:bg-slate-700 text-slate-600 dark:text-slate-300 rounded hover:bg-slate-300 dark:hover:bg-slate-600">
-                                <X className="w-4 h-4" />
-                            </button>
+                            <button onClick={applyPopupValue} className="p-1 bg-indigo-600 text-white rounded hover:bg-indigo-700"><Check className="w-4 h-4" /></button>
                         </div>
                     )}
 
@@ -273,13 +236,10 @@ const TaskDescriptionReader: React.FC = () => {
                     />
                 </div>
             ) : (
-                <div className="prose dark:prose-invert max-w-none">
-                    {renderMarkdown(task.description || '')}
-                </div>
+                <Markdown content={task.description || ''} />
             )}
         </div>
 
-        {/* Footer */}
         <div className="p-4 border-t border-gray-100 dark:border-slate-800 bg-gray-50 dark:bg-slate-900 rounded-b-2xl flex justify-end gap-2">
              {isEditing ? (
                  <>

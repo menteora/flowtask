@@ -5,6 +5,7 @@ import { X, Calendar, User, Trash2, CheckSquare, Square, Save, ArrowRight, Bold,
 import Avatar from '../ui/Avatar';
 import { Branch } from '../../types';
 import DatePicker from '../ui/DatePicker';
+import Markdown from '../ui/Markdown';
 
 const TaskEditorModal: React.FC = () => {
   const { editingTask, setEditingTask, state, updateTask, deleteTask, moveTaskToBranch } = useProject();
@@ -61,7 +62,7 @@ const TaskEditorModal: React.FC = () => {
     } else {
         setTimeout(() => setIsVisible(false), 200);
     }
-  }, [editingTask, state.branches]);
+  }, [editingTask, state.branches, setEditingTask]);
 
   useEffect(() => {
       if (popupMode && popupInputRef.current) {
@@ -176,18 +177,6 @@ const TaskEditorModal: React.FC = () => {
       setPopupInput('');
   };
 
-  const renderMarkdown = (text: string) => {
-    if (!text) return <p className="text-gray-400 italic text-sm">Nessuna descrizione.</p>;
-    let html = text
-      .replace(/&/g, '&amp;').replace(/</g, '&lt;').replace(/>/g, '&gt;')
-      .replace(/\*\*(.*?)\*\*/g, '<strong>$1</strong>')
-      .replace(/\*(.*?)\*/g, '<em>$1</em>')
-      .replace(/\[(.*?)\]\((.*?)\)/g, '<a href="$2" target="_blank" rel="noopener noreferrer" class="text-indigo-600 dark:text-indigo-400 hover:underline inline-flex items-center gap-0.5">$1</a>')
-      .replace(/^\s*-\s+(.*)$/gm, '<li class="ml-4 list-disc">$1</li>')
-      .replace(/\n/g, '<br />');
-    return <div className="text-sm text-slate-700 dark:text-slate-300 leading-relaxed break-words" dangerouslySetInnerHTML={{ __html: html }} />;
-  };
-
   return (
     <div 
         className={`fixed inset-0 z-[100] flex items-center justify-center p-4 bg-black/50 backdrop-blur-sm transition-opacity duration-200 ${editingTask ? 'opacity-100' : 'opacity-0 pointer-events-none'}`}
@@ -263,7 +252,7 @@ const TaskEditorModal: React.FC = () => {
                 
                 {isPreviewMode ? (
                     <div className="min-h-[100px] p-3 bg-slate-50 dark:bg-slate-800/50 rounded-lg border border-slate-200 dark:border-slate-700">
-                        {renderMarkdown(description)}
+                        <Markdown content={description} />
                     </div>
                 ) : (
                     <div className="border border-slate-200 dark:border-slate-700 rounded-lg overflow-hidden relative focus-within:ring-2 focus-within:ring-indigo-500/50 focus-within:border-indigo-500 transition-all">
@@ -288,10 +277,9 @@ const TaskEditorModal: React.FC = () => {
                                         if(e.key === 'Escape') { setPopupMode(null); setPopupInput(''); }
                                     }}
                                     placeholder={popupMode === 'link' ? "URL..." : "Oggetto..."}
-                                    className="flex-1 text-xs border border-slate-300 dark:border-slate-600 rounded px-2 py-1 bg-slate-50 dark:bg-slate-800 focus:outline-none focus:ring-1 focus:ring-indigo-500"
+                                    className="flex-1 text-sm border border-slate-300 dark:border-slate-600 rounded px-2 py-1 bg-slate-50 dark:bg-slate-800 focus:outline-none focus:ring-1 focus:ring-indigo-500"
                                 />
                                 <button onClick={applyPopupValue} className="p-1 bg-indigo-600 text-white rounded hover:bg-indigo-700"><Check className="w-3 h-3" /></button>
-                                <button onClick={() => { setPopupMode(null); setPopupInput(''); }} className="p-1 bg-slate-200 dark:bg-slate-700 text-slate-600 dark:text-slate-300 rounded hover:bg-slate-300 dark:hover:bg-slate-600"><X className="w-3 h-3" /></button>
                             </div>
                         )}
 
