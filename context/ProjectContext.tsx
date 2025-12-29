@@ -66,8 +66,8 @@ interface ProjectContextType {
   bulkUpdateTasks: (branchId: string, text: string) => void;
   cleanupOldTasks: (months: number) => Promise<{ count: number; backup: any[] }>;
 
-  checkProjectHealth: () => ProjectHealthReport;
-  repairProjectStructure: () => Promise<boolean>;
+  checkProjectHealth: (project?: ProjectState) => ProjectHealthReport;
+  repairProjectStructure: () => Promise<ProjectState | null>;
   resolveOrphans: (idsToFix: string[], idsToDelete: string[]) => void;
 
   addPerson: (name: string, email?: string, phone?: string) => void;
@@ -538,7 +538,7 @@ export const ProjectProvider: React.FC<{ children: React.ReactNode }> = ({ child
           return p;
       }));
 
-      // 4. Sincronizzazione Supabase se attiva
+      // 4. Sincronizzazione Supabase si attiva
       if (session && !isOfflineMode && supabaseClient) {
           try {
               // Sposta fisicamente i rami nel database aggiornando il project_id
@@ -951,8 +951,8 @@ export const ProjectProvider: React.FC<{ children: React.ReactNode }> = ({ child
       return { count: idsToDelete.length, backup };
   }, [activeProjectId, supabaseClient, session, isOfflineMode]);
 
-  const checkProjectHealth = useCallback((): ProjectHealthReport => {
-      const proj = activeProject;
+  const checkProjectHealth = useCallback((projectOverride?: ProjectState): ProjectHealthReport => {
+      const proj = projectOverride || activeProject;
       const report: ProjectHealthReport = {
           legacyRootFound: proj.rootBranchId === 'root' || !!proj.branches['root'],
           missingRootNode: !proj.branches[proj.rootBranchId],
@@ -997,12 +997,14 @@ export const ProjectProvider: React.FC<{ children: React.ReactNode }> = ({ child
       return report;
   }, [activeProject]);
 
-  const repairProjectStructure = useCallback(async (): Promise<boolean> => {
+  const repairProjectStructure = useCallback(async (): Promise<ProjectState | null> => {
       let finalRootId = activeProject.rootBranchId;
       let finalBranches = { ...activeProject.branches };
+      let legacyIdToDelete: string | null = null;
 
       // 1. Identifica se c'è un problema di ID radice legacy o mancante
       if (finalBranches['root'] || finalRootId === 'root') {
+          legacyIdToDelete = 'root';
           const oldRoot = finalBranches['root'] || finalBranches[finalRootId];
           const newRootId = crypto.randomUUID();
           
@@ -1044,22 +1046,21 @@ export const ProjectProvider: React.FC<{ children: React.ReactNode }> = ({ child
           };
       }
 
-      // 3. Applica i cambiamenti locali
-      setProjects(prev => prev.map(p => {
-          if (p.id !== activeProjectId) return p;
-          return { 
-              ...p, 
-              rootBranchId: finalRootId, 
-              branches: finalBranches 
-          };
-      }));
+      const updatedProject: ProjectState = { 
+          ...activeProject, 
+          rootBranchId: finalRootId, 
+          branches: finalBranches 
+      };
 
-      // 4. Se connesso al cloud, sincronizza immediatamente la radice per evitare discrepanze
+      // 3. Applica i cambiamenti locali
+      setProjects(prev => prev.map(p => p.id === activeProjectId ? updatedProject : p));
+
+      // 4. Se connesso al cloud, sincronizza immediatamente
       if (session && !isOfflineMode && supabaseClient) {
           try {
               setAutoSaveStatus('saving');
               
-              // Inserimento del nodo radice se mancante
+              // Inserimento del nodo radice se mancante o modificato
               const rootBranch = finalBranches[finalRootId];
               const { error: branchErr } = await supabaseClient
                   .from('flowtask_branches')
@@ -1086,22 +1087,32 @@ export const ProjectProvider: React.FC<{ children: React.ReactNode }> = ({ child
               
               if (projErr) throw projErr;
               
-              // Forza caricamento completo per assicurarsi che i rami orfani siano salvati prima del loro recupero
+              // ELIMINA FISICAMENTE il record legacy 'root' per evitare che torni al refresh
+              if (legacyIdToDelete) {
+                  await supabaseClient
+                      .from('flowtask_branches')
+                      .delete()
+                      .eq('id', legacyIdToDelete)
+                      .eq('project_id', activeProjectId);
+              }
+
+              // Carica il resto del progetto
               await uploadProjectToSupabase(); 
+              
               setAutoSaveStatus('saved');
               setTimeout(() => setAutoSaveStatus('idle'), 2000);
-              showNotification("Integrità radice ripristinata e sincronizzata.", 'success');
-              return true;
+              showNotification("Integrità radice ripristinata e pulita nel cloud.", 'success');
+              return updatedProject;
           } catch (e: any) {
               console.error("Remote root update error", e);
               setAutoSaveStatus('error');
               showNotification("Errore sincronizzazione radice remota.", 'error');
-              return false;
+              return null;
           }
       }
 
       showNotification("Integrità radice ripristinata localmente.", 'success');
-      return true;
+      return updatedProject;
   }, [activeProjectId, activeProject, session, isOfflineMode, supabaseClient, uploadProjectToSupabase, showNotification]);
 
   const resolveOrphans = useCallback((idsToFix: string[], idsToDelete: string[]) => {
