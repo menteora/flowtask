@@ -592,6 +592,7 @@ export const ProjectProvider: React.FC<{ children: React.ReactNode }> = ({ child
           let title = 'Nuovo Ramo';
           let updatedParent = { ...parent };
           
+          // Logica Sprint: auto-nome figlio come [NomePadre] YY-NN
           if (parent?.isSprint) {
               const year = new Date().getFullYear().toString().slice(-2);
               const counter = parent.sprintCounter || 1;

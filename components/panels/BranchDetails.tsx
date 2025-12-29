@@ -3,7 +3,7 @@ import React, { useState, useEffect, useRef, useMemo } from 'react';
 import { useProject } from '../../context/ProjectContext';
 import { BranchStatus, Branch } from '../../types';
 import { STATUS_CONFIG } from '../../constants';
-import { X, Save, Trash2, CheckSquare, Square, ArrowUpLeft, Calendar, Plus, Link as LinkIcon, Unlink, FileText, ChevronUp, ChevronDown, Loader2, ArrowRight, Mail, Check, Move, Pin, CheckCircle2, UserPlus, Eye, Edit2, Archive, RefreshCw, CalendarDays, Bold, Italic, List, AlertTriangle, Clock, Tag, Zap } from 'lucide-react';
+import { X, Save, Trash2, CheckSquare, Square, ArrowUpLeft, Calendar, Plus, Link as LinkIcon, Unlink, FileText, ChevronUp, ChevronDown, Loader2, ArrowRight, Mail, Check, Move, Pin, CheckCircle2, UserPlus, Eye, Edit2, Archive, RefreshCw, CalendarDays, Bold, Italic, List, AlertTriangle, Clock, Tag, Zap, GitBranch, Settings } from 'lucide-react';
 import Avatar from '../ui/Avatar';
 import DatePicker from '../ui/DatePicker';
 import Markdown from '../ui/Markdown';
@@ -326,41 +326,47 @@ const BranchDetails: React.FC = () => {
             </div>
         )}
 
-        <div className="grid grid-cols-1 gap-3">
-            <div className="flex items-center justify-between p-3 rounded-lg border border-slate-200 dark:border-slate-700 bg-white dark:bg-slate-800/50">
-                <div className="flex items-center gap-2">
-                    <Tag className="w-4 h-4 text-slate-500" />
-                    <span className="text-sm font-medium text-slate-700 dark:text-slate-200">Tipo: {branch.isLabel ? 'Etichetta' : 'Ramo'}</span>
+        <div className="space-y-4">
+            <div className="bg-white dark:bg-slate-800 border border-slate-200 dark:border-slate-700 rounded-xl overflow-hidden shadow-sm">
+                <div className="p-3 bg-slate-50 dark:bg-slate-800/50 border-b border-slate-200 dark:border-slate-700">
+                    <label className="text-[10px] font-black uppercase text-slate-400 tracking-widest flex items-center gap-2">
+                        <Settings className="w-3 h-3" /> Configurazione Ramo
+                    </label>
                 </div>
-                <button onClick={() => updateBranch(branch.id, { isLabel: !branch.isLabel, isSprint: false })} className={`px-3 py-1.5 rounded-md text-xs font-medium border transition-colors ${branch.isLabel ? 'bg-amber-100 text-amber-800 border-amber-300 dark:bg-amber-900/40 dark:text-amber-200 dark:border-amber-800' : 'bg-slate-100 text-slate-700 border-slate-300 dark:bg-slate-700 dark:text-slate-200 dark:border-slate-600'}`}>
-                    {branch.isLabel ? 'Converti in Ramo' : 'Converti in Etichetta'}
-                </button>
-            </div>
-
-            <div className={`flex flex-col p-3 rounded-lg border transition-all ${branch.isSprint ? 'bg-indigo-50 border-indigo-200 dark:bg-indigo-900/20 dark:border-indigo-800' : 'bg-white border-slate-200 dark:bg-slate-800/50 dark:border-slate-700'}`}>
-                <div className="flex items-center justify-between mb-3">
-                    <div className="flex items-center gap-2">
-                        <Zap className={`w-4 h-4 ${branch.isSprint ? 'text-indigo-600' : 'text-slate-500'}`} />
-                        <span className="text-sm font-medium text-slate-700 dark:text-slate-200">Modalità Sprint</span>
-                    </div>
-                    <button onClick={() => updateBranch(branch.id, { isSprint: !branch.isSprint, isLabel: false })} className={`px-3 py-1.5 rounded-md text-xs font-medium border transition-colors ${branch.isSprint ? 'bg-indigo-600 text-white border-indigo-700' : 'bg-slate-100 text-slate-700 border-slate-300 dark:bg-slate-700 dark:text-slate-200 dark:border-slate-600'}`}>
-                        {branch.isSprint ? 'Attiva' : 'Disattiva'}
-                    </button>
+                <div className="p-2 grid grid-cols-3 gap-1 bg-white dark:bg-slate-900">
+                    {[
+                        { id: 'normal', icon: GitBranch, label: 'Normale', active: !branch.isLabel && !branch.isSprint, onClick: () => updateBranch(branch.id, { isLabel: false, isSprint: false }) },
+                        { id: 'label', icon: Tag, label: 'Label', active: branch.isLabel, onClick: () => updateBranch(branch.id, { isLabel: true, isSprint: false }) },
+                        { id: 'sprint', icon: Zap, label: 'Sprint', active: branch.isSprint, onClick: () => updateBranch(branch.id, { isLabel: false, isSprint: true }) }
+                    ].map(type => (
+                        <button 
+                            key={type.id}
+                            onClick={type.onClick}
+                            className={`flex flex-col items-center justify-center p-2 rounded-lg border transition-all ${type.active ? 'bg-indigo-50 border-indigo-300 text-indigo-600 dark:bg-indigo-900/30 dark:border-indigo-700 dark:text-indigo-400 shadow-inner' : 'bg-transparent border-transparent text-slate-400 hover:bg-slate-50 dark:hover:bg-slate-800'}`}
+                        >
+                            <type.icon className="w-4 h-4 mb-1" />
+                            <span className="text-[10px] font-bold uppercase tracking-tighter">{type.label}</span>
+                        </button>
+                    ))}
                 </div>
                 {branch.isSprint && (
-                    <div className="space-y-2 animate-in fade-in slide-in-from-top-1">
-                        <p className="text-[10px] text-indigo-600 dark:text-indigo-400 font-bold uppercase tracking-tight">Auto-generazione Figli (AA-00)</p>
-                        <div className="flex items-center gap-3">
-                            <span className="text-xs text-slate-500 font-medium">Prossimo indice:</span>
-                            <input 
-                                type="number" 
-                                min="1"
-                                value={branch.sprintCounter || 1} 
-                                onChange={(e) => updateBranch(branch.id, { sprintCounter: parseInt(e.target.value) || 1 })}
-                                className="w-20 px-2 py-1 text-xs font-black bg-white dark:bg-slate-900 border border-indigo-200 dark:border-indigo-800 rounded outline-none focus:ring-1 focus:ring-indigo-500"
-                            />
+                    <div className="p-4 bg-indigo-50/30 dark:bg-indigo-900/10 border-t border-indigo-100 dark:border-indigo-900/30 animate-in slide-in-from-top-2">
+                        <div className="flex items-center justify-between gap-4">
+                            <div className="flex-1 min-w-0">
+                                <p className="text-[10px] font-black text-indigo-600 dark:text-indigo-400 uppercase leading-none mb-1.5">Auto-Naming Figli (YY-NN)</p>
+                                <p className="text-[9px] text-slate-500 italic truncate">Esempio: {branch.title} {new Date().getFullYear().toString().slice(-2)}-{String(branch.sprintCounter || 1).padStart(2, '0')}</p>
+                            </div>
+                            <div className="shrink-0 flex items-center gap-2 bg-white dark:bg-slate-800 p-1.5 rounded-lg border border-indigo-200 dark:border-indigo-800">
+                                <span className="text-[10px] font-bold text-slate-400 px-1">Prossimo:</span>
+                                <input 
+                                    type="number" 
+                                    min="1" 
+                                    value={branch.sprintCounter || 1} 
+                                    onChange={(e) => updateBranch(branch.id, { sprintCounter: Math.max(1, parseInt(e.target.value) || 1) })}
+                                    className="w-12 text-center text-xs font-black text-indigo-600 bg-transparent outline-none"
+                                />
+                            </div>
                         </div>
-                        <p className="text-[9px] text-slate-400 italic">I nuovi figli si chiameranno: "{branch.title} {new Date().getFullYear().toString().slice(-2)}-{String(branch.sprintCounter || 1).padStart(2, '0')}"</p>
                     </div>
                 )}
             </div>
@@ -424,7 +430,7 @@ const BranchDetails: React.FC = () => {
                                 </div>
                             </div>
                         )}
-                        <form onSubmit={handleAddTask} className="flex gap-2"><input type="text" value={newTaskTitle} onChange={(e) => setNewTaskTitle(e.target.value)} placeholder="Aggiungi task..." className="flex-1 text-sm border border-gray-300 dark:border-slate-600 rounded-md px-3 py-1.5 bg-white dark:bg-slate-800 text-slate-900 dark:text-white focus:outline-none focus:ring-2 focus:ring-indigo-500" /></form>
+                        <form onSubmit={handleAddTask} className="flex gap-2"><input type="text" value={newTaskTitle} onChange={(e) => setNewTaskTitle(e.target.value)} placeholder="Aggiungi task..." className="flex-1 text-sm border border-gray-300 dark:border-slate-600 rounded-md px-3 py-1.5 bg-white dark:bg-slate-900 text-slate-900 dark:text-white focus:outline-none focus:ring-2 focus:ring-indigo-500" /></form>
                         <ul className="space-y-2">
                             {sortedTasks.map((task) => {
                                 const assignee = task.assigneeId ? state.people.find(p => p.id === task.assigneeId) : null;
@@ -496,29 +502,27 @@ const BranchDetails: React.FC = () => {
             </div>
         )}
 
-        {!branch.isLabel && (
-            <div className="space-y-3 p-3 bg-slate-50 dark:bg-slate-800/50 rounded-lg border border-slate-100 dark:border-slate-700">
-                <h4 className="text-xs font-semibold text-gray-500 dark:text-gray-400 uppercase tracking-wider">Timeline</h4>
-                <div>
-                    <label className="text-[10px] font-medium text-gray-400 mb-1 flex items-center gap-1 pointer-events-none"><PlayCircle className="w-3 h-3" /> Data Inizio</label>
-                    <DatePicker 
-                        value={branch.startDate}
-                        onChange={(val) => updateBranch(branch.id, { startDate: val })}
-                        placeholder="Inizio progetto"
-                        className="w-full bg-white dark:bg-slate-800 border border-gray-200 dark:border-slate-600 rounded p-2 min-h-[36px]"
-                    />
-                </div>
-                <div>
-                     <label className="text-[10px] font-medium text-gray-400 mb-1 flex items-center gap-1 pointer-events-none"><Clock className="w-3 h-3" /> Scadenza Ramo</label>
-                     <DatePicker 
-                        value={branch.dueDate}
-                        onChange={(val) => updateBranch(branch.id, { dueDate: val })}
-                        placeholder="Fine progetto"
-                        className="w-full bg-white dark:bg-slate-800 border border-gray-200 dark:border-slate-600 rounded p-2 min-h-[36px]"
-                    />
-                </div>
+        <div className="space-y-3 p-3 bg-slate-50 dark:bg-slate-800/50 rounded-lg border border-slate-100 dark:border-slate-700">
+            <h4 className="text-xs font-semibold text-gray-500 dark:text-gray-400 uppercase tracking-wider">Timeline</h4>
+            <div>
+                <label className="text-[10px] font-medium text-gray-400 mb-1 flex items-center gap-1 pointer-events-none"><PlayCircle className="w-3 h-3" /> Data Inizio</label>
+                <DatePicker 
+                    value={branch.startDate}
+                    onChange={(val) => updateBranch(branch.id, { startDate: val })}
+                    placeholder="Inizio progetto"
+                    className="w-full bg-white dark:bg-slate-800 border border-gray-200 dark:border-slate-600 rounded p-2 min-h-[36px]"
+                />
             </div>
-        )}
+            <div>
+                 <label className="text-[10px] font-medium text-gray-400 mb-1 flex items-center gap-1 pointer-events-none"><Clock className="w-3 h-3" /> Scadenza Ramo</label>
+                 <DatePicker 
+                    value={branch.dueDate}
+                    onChange={(val) => updateBranch(branch.id, { dueDate: val })}
+                    placeholder="Fine progetto"
+                    className="w-full bg-white dark:bg-slate-800 border border-gray-200 dark:border-slate-600 rounded p-2 min-h-[36px]"
+                />
+            </div>
+        </div>
 
         {!branch.isLabel && (
             <div>
@@ -558,7 +562,6 @@ const BranchDetails: React.FC = () => {
   );
 };
 
-// Componenti mancanti in import (mock per non romperlo se non sono in tipi globali)
 const PlayCircle: React.FC<any> = (props) => <Clock {...props} />;
 
 export default BranchDetails;
