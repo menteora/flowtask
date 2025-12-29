@@ -215,10 +215,11 @@ const SettingsPanel: React.FC = () => {
   const handleFixRootIssues = async () => {
       setIsRepairing(true);
       try {
-          const success = await repairProjectStructure();
-          if (success) {
-            // Dopo il fix, rifai l'analisi per aggiornare l'UI e mostrare che Fase 1 è risolta
-            const report = checkProjectHealth();
+          // Ottieni il nuovo stato del progetto dopo la riparazione
+          const updatedProj = await repairProjectStructure();
+          if (updatedProj) {
+            // Dopo il fix, rifai l'analisi forzando il controllo sul nuovo stato per sbloccare la Fase 2
+            const report = checkProjectHealth(updatedProj);
             setHealthReport(report);
             setSelectedOrphans(report.orphanedBranches.map(o => o.id));
           }
