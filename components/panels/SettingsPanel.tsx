@@ -37,6 +37,7 @@ create table public.flowtask_branches (
   title text not null,
   description text,
   status text not null,
+  responsible_id text references public.flowtask_people(id) on delete set null,
   start_date text,
   end_date text,
   due_date text,

@@ -1,4 +1,3 @@
-
 export enum BranchStatus {
   PLANNED = 'PLANNED',
   ACTIVE = 'ACTIVE',
@@ -34,8 +33,9 @@ export interface Branch {
   description?: string;
   status: BranchStatus;
   isLabel?: boolean; 
-  isSprint?: boolean; // Nuovo campo per la logica Sprint
-  sprintCounter?: number; // Contatore per l'auto-naming dei figli
+  isSprint?: boolean; 
+  sprintCounter?: number; 
+  responsibleId?: string; // Nuova proprietà per il responsabile del ramo
   startDate?: string; 
   endDate?: string;   
   dueDate?: string;   

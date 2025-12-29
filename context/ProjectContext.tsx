@@ -32,7 +32,7 @@ interface ProjectContextType {
   loadingAuth: boolean;
   isInitializing: boolean;
   autoSaveStatus: 'idle' | 'saving' | 'saved' | 'error';
-  pendingSyncIds: Set<string>; // Nuova lista ID in attesa
+  pendingSyncIds: Set<string>;
   notification: { type: 'success' | 'error'; message: string } | null;
   supabaseConfig: { url: string; key: string };
   supabaseClient: SupabaseClient | null;
@@ -150,13 +150,8 @@ export const ProjectProvider: React.FC<{ children: React.ReactNode }> = ({ child
 
   const syncEntityToSupabase = useCallback(async (table: string, payload: any) => {
     if (!supabaseClient || !session || isOfflineMode) return;
-    
-    // Identifichiamo l'ID del record per il tracking
     const recordId = payload.id;
-    if (recordId) {
-        setPendingSyncIds(prev => new Set(prev).add(recordId));
-    }
-
+    if (recordId) setPendingSyncIds(prev => new Set(prev).add(recordId));
     try {
         const { error } = await supabaseClient.from(table).upsert(payload);
         if (error) throw error;
@@ -167,7 +162,6 @@ export const ProjectProvider: React.FC<{ children: React.ReactNode }> = ({ child
         setAutoSaveStatus('error');
     } finally {
         if (recordId) {
-            // Rimuoviamo l'ID dopo un piccolo delay per far vedere l'icona all'utente (opzionale)
             setTimeout(() => {
                 setPendingSyncIds(prev => {
                     const next = new Set(prev);
@@ -196,18 +190,14 @@ export const ProjectProvider: React.FC<{ children: React.ReactNode }> = ({ child
       try {
           const { data: p, error: pErr } = await supabaseClient.from('flowtask_projects').select('*').eq('id', id).single();
           if (pErr) throw pErr;
-          
           const [{ data: peopleData }, { data: branchesData }] = await Promise.all([
               supabaseClient.from('flowtask_people').select('*').eq('project_id', id),
               supabaseClient.from('flowtask_branches').select('*').eq('project_id', id)
           ]);
-
           const { data: tasksData } = await supabaseClient.from('flowtask_tasks').select('*').in('branch_id', branchesData?.map(b => b.id) || []);
-
           const people: Person[] = (peopleData || []).map(p => ({
               id: p.id, name: p.name, email: p.email, phone: p.phone, initials: p.initials, color: p.color
           }));
-
           const branches: Record<string, Branch> = {};
           (branchesData || []).forEach(b => {
               const bTasks = (tasksData || [])
@@ -217,16 +207,15 @@ export const ProjectProvider: React.FC<{ children: React.ReactNode }> = ({ child
                     id: t.id, title: t.title, description: t.description, completed: t.completed,
                     completedAt: t.completed_at, assigneeId: t.assignee_id, dueDate: t.due_date, pinned: t.pinned || false
                   }));
-
               branches[b.id] = {
                   id: b.id, title: b.title, description: b.description, status: b.status as BranchStatus,
                   tasks: bTasks, childrenIds: b.children_ids || [], parentIds: b.parent_ids || [],
                   startDate: b.start_date, endDate: b.end_date, dueDate: b.due_date,
                   archived: b.archived, collapsed: b.collapsed, isLabel: b.is_label,
-                  isSprint: b.is_sprint || false, sprintCounter: b.sprint_counter || 1
+                  isSprint: b.is_sprint || false, sprintCounter: b.sprint_counter || 1,
+                  responsibleId: b.responsible_id
               };
           });
-
           loadProject({ id: p.id, name: p.name, rootBranchId: p.root_branch_id, branches, people }, activate, true); 
           lastSyncedProjectIdRef.current = id;
           setRemoteDataLoaded(true); 
@@ -240,31 +229,27 @@ export const ProjectProvider: React.FC<{ children: React.ReactNode }> = ({ child
     if (!supabaseClient || !session || isOfflineMode) return;
     const p = projects.find(x => x.id === activeProjectId);
     if (!p || p.id === 'default-project') return;
-
     setAutoSaveStatus('saving');
     try {
         await supabaseClient.from('flowtask_projects').upsert({
             id: p.id, name: p.name, root_branch_id: p.rootBranchId, owner_id: session.user.id
         });
-
         const people = p.people.map(x => ({ ...x, project_id: p.id }));
         if (people.length > 0) await supabaseClient.from('flowtask_people').upsert(people);
-
         const branches = Object.values(p.branches).map(b => ({
             id: b.id, project_id: p.id, title: b.title, description: b.description, status: b.status,
             start_date: b.startDate, end_date: b.endDate, due_date: b.dueDate, archived: b.archived,
             collapsed: b.collapsed, is_label: b.isLabel, is_sprint: b.isSprint || false,
-            sprint_counter: b.sprintCounter || 1, parent_ids: b.parentIds, children_ids: b.childrenIds
+            sprint_counter: b.sprintCounter || 1, parent_ids: b.parentIds, children_ids: b.childrenIds,
+            responsible_id: b.responsibleId
         }));
         if (branches.length > 0) await supabaseClient.from('flowtask_branches').upsert(branches);
-
         const tasks: any[] = [];
         Object.values(p.branches).forEach(b => b.tasks.forEach((t, i) => tasks.push({
             id: t.id, branch_id: b.id, title: t.title, description: t.description, assignee_id: t.assigneeId,
             due_date: t.dueDate, completed: t.completed, completed_at: t.completedAt, position: t.position ?? i, pinned: t.pinned || false
         })));
         if (tasks.length > 0) await supabaseClient.from('flowtask_tasks').upsert(tasks);
-
         setAutoSaveStatus('saved');
         setTimeout(() => setAutoSaveStatus('idle'), 2000);
     } catch (e) { setAutoSaveStatus('error'); }
@@ -272,9 +257,7 @@ export const ProjectProvider: React.FC<{ children: React.ReactNode }> = ({ child
 
   useEffect(() => {
     const stored = localStorage.getItem('supabase_config');
-    if (stored) {
-        try { setSupabaseConfigState(JSON.parse(stored)); } catch(e) {}
-    }
+    if (stored) { try { setSupabaseConfigState(JSON.parse(stored)); } catch(e) {} }
     setIsInitializing(false);
     setLoadingAuth(false); 
   }, []);
@@ -304,6 +287,17 @@ export const ProjectProvider: React.FC<{ children: React.ReactNode }> = ({ child
 
   const activeProject = projects.find(p => p.id === activeProjectId) || projects[0] || createInitialProjectState();
 
+  // Helper per trovare il responsabile ereditato
+  const getInheritedResponsibleId = useCallback((branchId: string, branches: Record<string, Branch>): string | undefined => {
+    const branch = branches[branchId];
+    if (!branch) return undefined;
+    if (branch.responsibleId) return branch.responsibleId;
+    if (branch.parentIds.length > 0) {
+        return getInheritedResponsibleId(branch.parentIds[0], branches);
+    }
+    return undefined;
+  }, []);
+
   const addBranch = useCallback((parentId: string) => {
       setProjects(prev => prev.map(p => {
           if (p.id !== activeProjectId) return p;
@@ -318,16 +312,8 @@ export const ProjectProvider: React.FC<{ children: React.ReactNode }> = ({ child
           const newId = crypto.randomUUID();
           const newBranch = { id: newId, title, status: BranchStatus.PLANNED, tasks: [], childrenIds: [], parentIds: [parentId], description: '', isLabel: false, isSprint: false, sprintCounter: 1 };
           const branches = { ...p.branches, [newId]: newBranch, [parentId]: { ...updatedParent, childrenIds: [...updatedParent.childrenIds, newId] } };
-          
-          syncEntityToSupabase('flowtask_branches', { 
-            id: newId, project_id: p.id, title, status: BranchStatus.PLANNED, 
-            parent_ids: [parentId], children_ids: [] 
-          });
-          syncEntityToSupabase('flowtask_branches', { 
-            id: parentId, project_id: p.id, children_ids: branches[parentId].childrenIds, 
-            sprint_counter: branches[parentId].sprintCounter 
-          });
-
+          syncEntityToSupabase('flowtask_branches', { id: newId, project_id: p.id, title, status: BranchStatus.PLANNED, parent_ids: [parentId], children_ids: [] });
+          syncEntityToSupabase('flowtask_branches', { id: parentId, project_id: p.id, children_ids: branches[parentId].childrenIds, sprint_counter: branches[parentId].sprintCounter });
           return { ...p, branches };
       }));
   }, [activeProjectId, syncEntityToSupabase]);
@@ -336,7 +322,6 @@ export const ProjectProvider: React.FC<{ children: React.ReactNode }> = ({ child
       setProjects(prev => prev.map(p => {
           if (p.id !== activeProjectId || !p.branches[branchId]) return p;
           const updated = { ...p.branches[branchId], ...updates };
-          
           const dbPayload: any = { id: branchId };
           if (updates.title !== undefined) dbPayload.title = updates.title;
           if (updates.status !== undefined) dbPayload.status = updates.status;
@@ -344,12 +329,11 @@ export const ProjectProvider: React.FC<{ children: React.ReactNode }> = ({ child
           if (updates.isLabel !== undefined) dbPayload.is_label = updates.isLabel;
           if (updates.isSprint !== undefined) dbPayload.is_sprint = updates.isSprint;
           if (updates.sprintCounter !== undefined) dbPayload.sprint_counter = updates.sprintCounter;
+          if (updates.responsibleId !== undefined) dbPayload.responsible_id = updates.responsibleId || null;
           if (updates.startDate !== undefined) dbPayload.start_date = updates.startDate;
           if (updates.dueDate !== undefined) dbPayload.due_date = updates.dueDate;
           if (updates.archived !== undefined) dbPayload.archived = updates.archived;
-          
           syncEntityToSupabase('flowtask_branches', dbPayload);
-
           return { ...p, branches: { ...p.branches, [branchId]: updated } };
       }));
   }, [activeProjectId, syncEntityToSupabase]);
@@ -370,20 +354,20 @@ export const ProjectProvider: React.FC<{ children: React.ReactNode }> = ({ child
 
   const toggleBranchArchive = useCallback((branchId: string) => {
       const branch = activeProject.branches[branchId];
-      if (branch) {
-          updateBranch(branchId, { archived: !branch.archived });
-      }
+      if (branch) updateBranch(branchId, { archived: !branch.archived });
   }, [activeProject.branches, updateBranch]);
 
   const addTask = useCallback((branchId: string, title: string) => {
       const newId = crypto.randomUUID();
-      const newTask = { id: newId, title, completed: false, description: '', pinned: false };
+      // Applichiamo l'ereditarietà al momento della creazione del task
+      const inheritedAssigneeId = getInheritedResponsibleId(branchId, activeProject.branches);
+      const newTask: Task = { id: newId, title, completed: false, description: '', pinned: false, assigneeId: inheritedAssigneeId };
       setProjects(prev => prev.map(p => {
           if (p.id !== activeProjectId || !p.branches[branchId]) return p;
-          syncEntityToSupabase('flowtask_tasks', { id: newId, branch_id: branchId, title, completed: false });
+          syncEntityToSupabase('flowtask_tasks', { id: newId, branch_id: branchId, title, completed: false, assignee_id: inheritedAssigneeId });
           return { ...p, branches: { ...p.branches, [branchId]: { ...p.branches[branchId], tasks: [...p.branches[branchId].tasks, newTask] } } };
       }));
-  }, [activeProjectId, syncEntityToSupabase]);
+  }, [activeProjectId, syncEntityToSupabase, activeProject.branches, getInheritedResponsibleId]);
 
   const updateTask = useCallback((branchId: string, taskId: string, updates: Partial<Task>) => {
       setProjects(prev => prev.map(p => {
@@ -391,7 +375,6 @@ export const ProjectProvider: React.FC<{ children: React.ReactNode }> = ({ child
           const branch = p.branches[branchId];
           const task = branch.tasks.find(t => t.id === taskId);
           if (!task) return p;
-
           const dbPayload: any = { id: taskId };
           if (updates.title !== undefined) dbPayload.title = updates.title;
           if (updates.completed !== undefined) {
@@ -402,9 +385,7 @@ export const ProjectProvider: React.FC<{ children: React.ReactNode }> = ({ child
           if (updates.dueDate !== undefined) dbPayload.due_date = updates.dueDate || null;
           if (updates.pinned !== undefined) dbPayload.pinned = updates.pinned;
           if (updates.description !== undefined) dbPayload.description = updates.description;
-
           syncEntityToSupabase('flowtask_tasks', dbPayload);
-
           const nextTasks = branch.tasks.map(t => t.id === taskId ? { ...t, ...updates, completedAt: dbPayload.completed_at } : t);
           return { ...p, branches: { ...p.branches, [branchId]: { ...branch, tasks: nextTasks } } };
       }));
