@@ -1,8 +1,7 @@
-
 import React, { useMemo } from 'react';
 import { useProject } from '../../context/ProjectContext';
 import { STATUS_CONFIG } from '../../constants';
-import { ChevronRight, ChevronDown, Plus, FileText, CheckSquare, Square, Archive, GitBranch, ChevronUp, Tag, Calendar, CheckCircle2, ChevronsDown, ChevronsUp, Layers } from 'lucide-react';
+import { ChevronRight, ChevronDown, Plus, FileText, CheckSquare, Square, Archive, GitBranch, ChevronUp, Tag, Calendar, CheckCircle2, ChevronsDown, ChevronsUp, Layers, RefreshCw } from 'lucide-react';
 import Avatar from '../ui/Avatar';
 
 interface FolderNodeProps {
@@ -13,12 +12,13 @@ interface FolderNodeProps {
 }
 
 const FolderNode: React.FC<FolderNodeProps> = ({ branchId, depth = 0, index, siblingsCount }) => {
-  const { state, selectBranch, selectedBranchId, addBranch, updateTask, updateBranch, moveTask, moveBranch, showArchived, showOnlyOpen, setEditingTask, setReadingTask } = useProject();
+  const { state, selectBranch, selectedBranchId, addBranch, updateTask, updateBranch, moveTask, moveBranch, showArchived, showOnlyOpen, setEditingTask, setReadingTask, pendingSyncIds } = useProject();
   const branch = state.branches[branchId];
   
   if (!branch) return null;
   
-  // Logic: Show if not archived OR showArchived=true OR has active children
+  const isSyncing = pendingSyncIds.has(branchId);
+
   const isSelfVisible = !branch.archived || showArchived;
   const hasActiveChildren = branch.childrenIds.some(cid => {
       const child = state.branches[cid];
@@ -29,7 +29,6 @@ const FolderNode: React.FC<FolderNodeProps> = ({ branchId, depth = 0, index, sib
 
   if (!shouldRender) return null;
 
-  // Sort tasks: Open first, Completed last, apply showOnlyOpen filter
   const sortedTasks = useMemo(() => {
     let list = [...branch.tasks];
     if (showOnlyOpen) {
@@ -48,8 +47,6 @@ const FolderNode: React.FC<FolderNodeProps> = ({ branchId, depth = 0, index, sib
   
   const isSelected = selectedBranchId === branchId;
   const statusConfig = STATUS_CONFIG[branch.status];
-
-  // In FolderTree, "Open" means NOT collapsed
   const isOpen = !branch.collapsed;
 
   const handleToggle = (e: React.MouseEvent) => {
@@ -62,16 +59,21 @@ const FolderNode: React.FC<FolderNodeProps> = ({ branchId, depth = 0, index, sib
   };
 
   return (
-    <div className={`flex flex-col select-none ${branch.archived ? 'opacity-60' : ''}`}>
-      {/* Branch Row */}
+    <div className={`flex flex-col select-none ${branch.archived ? 'opacity-60' : ''} ${isSyncing ? 'bg-indigo-50/20' : ''}`}>
       <div 
         className={`
-          flex items-center gap-2 py-3 px-4 border-b border-gray-100 dark:border-slate-800 transition-colors cursor-pointer
+          flex items-center gap-2 py-3 px-4 border-b border-gray-100 dark:border-slate-800 transition-colors cursor-pointer relative
           ${isSelected ? 'bg-indigo-50 dark:bg-indigo-900/20' : 'bg-white dark:bg-slate-900 hover:bg-gray-50 dark:hover:bg-slate-800'}
         `}
         style={{ paddingLeft: `${depth * 1.5 + 1}rem` }}
         onClick={handleSelect}
       >
+        {isSyncing && (
+            <div className="absolute left-1 top-1/2 -translate-y-1/2">
+                <RefreshCw className="w-3 h-3 text-indigo-500 animate-spin" />
+            </div>
+        )}
+
         <button 
            onClick={handleToggle}
            className={`p-1 rounded hover:bg-gray-200 dark:hover:bg-slate-700 ${!hasContent ? 'invisible' : ''}`}
@@ -98,11 +100,6 @@ const FolderNode: React.FC<FolderNodeProps> = ({ branchId, depth = 0, index, sib
                         {branch.status}
                      </span>
                  )}
-                 {branch.isLabel && (
-                     <span className="text-[10px] px-1.5 rounded-full border border-amber-300 text-amber-600 dark:text-amber-400 dark:border-amber-700 bg-transparent">
-                        Label
-                     </span>
-                 )}
              </div>
         </div>
 
@@ -116,113 +113,48 @@ const FolderNode: React.FC<FolderNodeProps> = ({ branchId, depth = 0, index, sib
         >
             <Plus className="w-4 h-4" />
         </button>
-
-        {/* Mobile Branch Reordering Controls */}
-        {index !== undefined && siblingsCount !== undefined && siblingsCount > 1 && (
-            <div className="flex flex-col gap-1 border-l border-gray-200 dark:border-slate-700 pl-2 ml-1">
-                {index > 0 ? (
-                    <button 
-                        onClick={(e) => { e.stopPropagation(); moveBranch(branchId, 'left'); }} 
-                        className="p-0.5 text-slate-400 hover:text-indigo-500"
-                    >
-                        <ChevronUp className="w-3.5 h-3.5" />
-                    </button>
-                ) : <div className="w-3.5 h-3.5 p-0.5"></div>}
-                
-                {index < siblingsCount - 1 ? (
-                    <button 
-                        onClick={(e) => { e.stopPropagation(); moveBranch(branchId, 'right'); }} 
-                        className="p-0.5 text-slate-400 hover:text-indigo-500"
-                    >
-                        <ChevronDown className="w-3.5 h-3.5" />
-                    </button>
-                ) : <div className="w-3.5 h-3.5 p-0.5"></div>}
-            </div>
-        )}
       </div>
 
-      {/* Children (Tasks & Sub-Branches) */}
       {isOpen && hasContent && (
         <div className="flex flex-col">
-          {/* Tasks (Sorted) */}
-          {sortedTasks.map((task, index) => (
-             <div 
-                key={task.id}
-                className="flex items-center gap-3 py-2 border-b border-gray-50 dark:border-slate-800/50 bg-gray-50/50 dark:bg-slate-900/50 pr-2 group"
-                style={{ paddingLeft: `${(depth + 1) * 1.5 + 2.5}rem` }}
-             >
-                <button 
-                    onClick={(e) => {
-                        e.stopPropagation();
-                        updateTask(branchId, task.id, { completed: !task.completed });
-                    }}
-                    className={`${task.completed ? 'text-green-500' : 'text-gray-300 dark:text-slate-600'}`}
-                >
-                    {task.completed ? <CheckSquare className="w-4 h-4" /> : <Square className="w-4 h-4" />}
-                </button>
-                
-                <div 
-                    className="flex-1 min-w-0 flex items-center justify-between cursor-pointer"
-                    onClick={() => setEditingTask({ branchId, taskId: task.id })}
-                >
-                    <div className="flex items-center gap-2 min-w-0">
-                        <span className={`text-sm truncate hover:text-indigo-600 dark:hover:text-indigo-400 ${task.completed ? 'line-through text-gray-400' : 'text-slate-600 dark:text-slate-300'}`}>
-                            {task.title}
-                        </span>
-                        {task.description && task.description.trim() !== '' && (
-                            <button 
-                                onClick={(e) => {
-                                    e.stopPropagation();
-                                    setReadingTask({ branchId, taskId: task.id });
-                                }}
-                                className="text-slate-400 hover:text-indigo-500 shrink-0 p-0.5"
-                            >
-                                <FileText className="w-3 h-3" />
-                            </button>
-                        )}
-                    </div>
-                    <div className="flex flex-col items-end gap-0.5">
-                        {task.dueDate && (
-                            <div className="flex items-center gap-1 text-[9px] text-slate-400">
-                                <Calendar className="w-2.5 h-2.5" />
-                                <span>{new Date(task.dueDate).toLocaleDateString(undefined, {day: '2-digit', month: '2-digit'})}</span>
-                            </div>
-                        )}
-                        {task.completed && task.completedAt && (
-                            <div className="flex items-center gap-1 text-[9px] text-green-500 font-bold">
-                                <CheckCircle2 className="w-2.5 h-2.5" />
-                                <span>{new Date(task.completedAt).toLocaleDateString(undefined, {day: '2-digit', month: '2-digit'})}</span>
-                            </div>
-                        )}
-                        {task.assigneeId && (
-                            <Avatar person={state.people.find(p => p.id === task.assigneeId)!} size="sm" className="w-5 h-5 text-[10px] mr-2" />
-                        )}
-                    </div>
-                </div>
-
-                <div className="flex flex-col gap-1 border-l border-gray-200 dark:border-slate-700 pl-2">
-                    {index > 0 && !task.completed ? (
-                        <button 
-                            onClick={(e) => { e.stopPropagation(); moveTask(branchId, task.id, 'up'); }}
-                            className="p-0.5 text-slate-400 hover:text-indigo-500"
-                        >
-                            <ChevronUp className="w-3.5 h-3.5" />
-                        </button>
-                    ) : <div className="w-3.5 h-3.5 p-0.5"></div>}
+          {sortedTasks.map((task, index) => {
+             const taskSyncing = pendingSyncIds.has(task.id);
+             return (
+                 <div 
+                    key={task.id}
+                    className={`flex items-center gap-3 py-2 border-b border-gray-50 dark:border-slate-800/50 pr-2 group ${taskSyncing ? 'bg-indigo-50/10' : 'bg-gray-50/50 dark:bg-slate-900/50'}`}
+                    style={{ paddingLeft: `${(depth + 1) * 1.5 + 2.5}rem` }}
+                 >
+                    <button 
+                        onClick={(e) => {
+                            e.stopPropagation();
+                            updateTask(branchId, task.id, { completed: !task.completed });
+                        }}
+                        className={`${task.completed ? 'text-green-500' : 'text-gray-300 dark:text-slate-600'}`}
+                        disabled={taskSyncing}
+                    >
+                        {taskSyncing ? <RefreshCw className="w-4 h-4 animate-spin text-indigo-400" /> : (task.completed ? <CheckSquare className="w-4 h-4" /> : <Square className="w-4 h-4" />)}
+                    </button>
                     
-                    {index < sortedTasks.length - 1 && !sortedTasks[index+1].completed ? (
-                        <button 
-                            onClick={(e) => { e.stopPropagation(); moveTask(branchId, task.id, 'down'); }}
-                            className="p-0.5 text-slate-400 hover:text-indigo-500"
-                        >
-                            <ChevronDown className="w-3.5 h-3.5" />
-                        </button>
-                    ) : <div className="w-3.5 h-3.5 p-0.5"></div>}
-                </div>
-             </div>
-          ))}
+                    <div 
+                        className="flex-1 min-w-0 flex items-center justify-between cursor-pointer"
+                        onClick={() => setEditingTask({ branchId, taskId: task.id })}
+                    >
+                        <div className="flex items-center gap-2 min-w-0">
+                            <span className={`text-sm truncate hover:text-indigo-600 dark:hover:text-indigo-400 ${task.completed ? 'line-through text-gray-400' : 'text-slate-600 dark:text-slate-300'}`}>
+                                {task.title}
+                            </span>
+                        </div>
+                        <div className="flex flex-col items-end gap-0.5">
+                            {task.assigneeId && (
+                                <Avatar person={state.people.find(p => p.id === task.assigneeId)!} size="sm" className="w-5 h-5 text-[10px] mr-2" />
+                            )}
+                        </div>
+                    </div>
+                 </div>
+             );
+          })}
 
-          {/* Sub Branches */}
           {visibleChildrenIds.map((childId, idx) => (
             <FolderNode 
                 key={childId} 
@@ -240,12 +172,10 @@ const FolderNode: React.FC<FolderNodeProps> = ({ branchId, depth = 0, index, sib
 
 const FolderTree: React.FC = () => {
     const { state, setAllBranchesCollapsed } = useProject();
-    
-    const branchesCount = Object.keys(state.branches).length - 1; // excluding root for clarity
+    const branchesCount = Object.keys(state.branches).length - 1;
 
     return (
         <div className="w-full h-full flex flex-col bg-white dark:bg-slate-950">
-            {/* Contextual Toolbar for Mobile */}
             <div className="sticky top-0 z-20 flex items-center justify-between px-4 py-3 bg-white/80 dark:bg-slate-950/80 backdrop-blur-md border-b border-slate-200 dark:border-slate-800 shadow-sm flex-shrink-0">
                 <div className="flex items-center gap-2 min-w-0">
                     <div className="bg-indigo-600/10 p-1.5 rounded-lg">
@@ -258,23 +188,8 @@ const FolderTree: React.FC = () => {
                 </div>
 
                 <div className="flex items-center gap-1">
-                    <button 
-                        onClick={() => setAllBranchesCollapsed(false)}
-                        className="p-2 text-indigo-600 dark:text-indigo-400 hover:bg-indigo-50 dark:hover:bg-indigo-900/30 rounded-lg flex items-center gap-1.5 transition-colors"
-                        title="Espandi tutto"
-                    >
-                        <ChevronsDown className="w-4 h-4" />
-                        <span className="text-[10px] font-bold uppercase hidden xs:inline">Espandi</span>
-                    </button>
-                    <div className="w-px h-4 bg-slate-200 dark:bg-slate-800 mx-1"></div>
-                    <button 
-                        onClick={() => setAllBranchesCollapsed(true)}
-                        className="p-2 text-slate-500 hover:bg-slate-100 dark:hover:bg-slate-800 rounded-lg flex items-center gap-1.5 transition-colors"
-                        title="Comprimi tutto"
-                    >
-                        <ChevronsUp className="w-4 h-4" />
-                        <span className="text-[10px] font-bold uppercase hidden xs:inline">Comprimi</span>
-                    </button>
+                    <button onClick={() => setAllBranchesCollapsed(false)} className="p-2 text-indigo-600 dark:text-indigo-400 rounded-lg"><ChevronsDown className="w-4 h-4" /></button>
+                    <button onClick={() => setAllBranchesCollapsed(true)} className="p-2 text-slate-500 rounded-lg"><ChevronsUp className="w-4 h-4" /></button>
                 </div>
             </div>
 

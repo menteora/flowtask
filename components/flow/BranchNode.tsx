@@ -1,9 +1,8 @@
-
 import React, { useState, useEffect, useMemo } from 'react';
 import { Branch, BranchStatus } from '../../types';
 import { STATUS_CONFIG } from '../../constants';
 import { useProject } from '../../context/ProjectContext';
-import { MoreHorizontal, Plus, Calendar, Archive, ChevronLeft, ChevronRight, FileText, ChevronDown, ChevronUp, GitMerge, Globe, Tag, Eye, EyeOff, CheckCircle2, Zap } from 'lucide-react';
+import { MoreHorizontal, Plus, Calendar, Archive, ChevronLeft, ChevronRight, FileText, ChevronDown, ChevronUp, GitMerge, Globe, Tag, Eye, EyeOff, CheckCircle2, Zap, RefreshCw } from 'lucide-react';
 import Avatar from '../ui/Avatar';
 
 interface BranchNodeProps {
@@ -11,12 +10,13 @@ interface BranchNodeProps {
 }
 
 const BranchNode: React.FC<BranchNodeProps> = ({ branchId }) => {
-  const { state, addBranch, selectBranch, selectedBranchId, moveBranch, setReadingDescriptionId, updateBranch, setReadingTask, showOnlyOpen } = useProject();
+  const { state, addBranch, selectBranch, selectedBranchId, moveBranch, setReadingDescriptionId, updateBranch, setReadingTask, showOnlyOpen, pendingSyncIds } = useProject();
   const [isTasksExpanded, setIsTasksExpanded] = useState(false);
   const branch = state.branches[branchId];
   
   const isInactive = branch?.status === BranchStatus.CLOSED || branch?.status === BranchStatus.CANCELLED;
   const [isDetailsOpen, setIsDetailsOpen] = useState(!isInactive);
+  const isSyncing = pendingSyncIds.has(branchId);
 
   useEffect(() => {
       if (branch) {
@@ -59,10 +59,15 @@ const BranchNode: React.FC<BranchNodeProps> = ({ branchId }) => {
   const hasDescription = branch.description && branch.description.trim().length > 0;
   const hasChildren = branch.childrenIds.length > 0;
   const isMultiParent = branch.parentIds.length > 1;
-  const isImported = branch.title.includes('(Importato)');
 
   const visibleTasks = isTasksExpanded ? sortedTasks : sortedTasks.slice(0, 3);
   const hiddenTasksCount = sortedTasks.length > 3 ? sortedTasks.length - 3 : 0;
+
+  const SyncIndicator = () => isSyncing ? (
+    <div className="absolute -top-2 -right-2 bg-indigo-600 text-white p-1 rounded-full shadow-lg animate-spin z-50">
+        <RefreshCw className="w-3 h-3" />
+    </div>
+  ) : null;
 
   if (branch.isLabel || branch.isSprint) {
       const isSprint = branch.isSprint;
@@ -82,6 +87,7 @@ const BranchNode: React.FC<BranchNodeProps> = ({ branchId }) => {
                   selectBranch(branchId);
                 }}
             >
+                <SyncIndicator />
                 <div className="p-2 flex items-center justify-between gap-2">
                     <div className="flex items-center gap-2 min-w-0">
                         {isSprint ? (
@@ -106,29 +112,6 @@ const BranchNode: React.FC<BranchNodeProps> = ({ branchId }) => {
                          >
                              <FileText className="w-3 h-3" />
                          </button>
-                    </div>
-                )}
-
-                {(canMoveLeft || canMoveRight) && (
-                    <div className="absolute -top-3 right-0 left-0 flex justify-center opacity-0 group-hover/node:opacity-100 transition-opacity pointer-events-none">
-                        <div className="bg-white dark:bg-slate-800 rounded-full border border-slate-200 dark:border-slate-600 shadow-sm flex pointer-events-auto">
-                            <button onClick={(e) => { e.stopPropagation(); moveBranch(branchId, 'left'); }} disabled={!canMoveLeft} className="p-1 hover:bg-slate-100 dark:hover:bg-slate-700 rounded-l-full disabled:opacity-30"><ChevronLeft className="w-3 h-3" /></button>
-                            <button onClick={(e) => { e.stopPropagation(); moveBranch(branchId, 'right'); }} disabled={!canMoveRight} className="p-1 hover:bg-slate-100 dark:hover:bg-slate-700 rounded-r-full disabled:opacity-30"><ChevronRight className="w-3 h-3" /></button>
-                        </div>
-                    </div>
-                )}
-
-                {hasChildren && (
-                    <div className="absolute -bottom-2.5 left-1/2 -translate-x-1/2 z-20">
-                        <button
-                            onClick={(e) => {
-                                e.stopPropagation();
-                                updateBranch(branchId, { collapsed: !branch.collapsed });
-                            }}
-                            className="w-5 h-5 rounded-full bg-white dark:bg-slate-700 border border-slate-300 dark:border-slate-500 shadow-sm flex items-center justify-center hover:bg-slate-50 dark:hover:bg-slate-600 text-slate-500 dark:text-slate-300 transition-colors"
-                        >
-                            {branch.collapsed ? <ChevronDown className="w-3 h-3" /> : <ChevronUp className="w-3 h-3" />}
-                        </button>
                     </div>
                 )}
             </div>
@@ -172,6 +155,7 @@ const BranchNode: React.FC<BranchNodeProps> = ({ branchId }) => {
           selectBranch(branchId);
         }}
       >
+        <SyncIndicator />
         <div className={`p-3 border-b border-slate-100 dark:border-slate-700 flex justify-between items-start ${branch.archived ? 'bg-slate-50 dark:bg-slate-800' : ''} relative`}>
           <div className="flex flex-col gap-1 overflow-hidden flex-1 min-w-0 pr-1">
              <h3 className="font-bold text-slate-800 dark:text-slate-100 truncate text-sm flex items-center gap-2" title={branch.title}>
@@ -205,12 +189,6 @@ const BranchNode: React.FC<BranchNodeProps> = ({ branchId }) => {
                      <FileText className="w-4 h-4" />
                  </button>
              )}
-             {(canMoveLeft || canMoveRight) && (
-                <div className="flex bg-slate-50 dark:bg-slate-900/50 rounded-lg p-0.5 opacity-0 group-hover/node:opacity-100 transition-opacity">
-                    <button onClick={(e) => { e.stopPropagation(); moveBranch(branchId, 'left'); }} disabled={!canMoveLeft} className="p-0.5 hover:bg-white dark:hover:bg-slate-800 rounded disabled:opacity-20"><ChevronLeft className="w-3.5 h-3.5" /></button>
-                    <button onClick={(e) => { e.stopPropagation(); moveBranch(branchId, 'right'); }} disabled={!canMoveRight} className="p-0.5 hover:bg-white dark:hover:bg-slate-800 rounded disabled:opacity-20"><ChevronRight className="w-3.5 h-3.5" /></button>
-                </div>
-             )}
           </div>
         </div>
 
@@ -230,8 +208,9 @@ const BranchNode: React.FC<BranchNodeProps> = ({ branchId }) => {
                 <ul className="mt-2 space-y-1.5">
                     {visibleTasks.map(task => {
                         const assignee = task.assigneeId ? state.people.find(p => p.id === task.assigneeId) : null;
+                        const taskSyncing = pendingSyncIds.has(task.id);
                         return (
-                            <li key={task.id} className="text-[11px] flex items-center justify-between gap-2 py-0.5">
+                            <li key={task.id} className={`text-[11px] flex items-center justify-between gap-2 py-0.5 relative ${taskSyncing ? 'opacity-70' : ''}`}>
                                 <div className="flex items-center gap-1.5 flex-1 min-w-0">
                                     <div className={`flex-shrink-0 w-1.5 h-1.5 rounded-full ${task.completed ? 'bg-green-400' : 'bg-slate-300 dark:bg-slate-600'}`} />
                                     <span className={`truncate text-slate-600 dark:text-slate-300 ${task.completed ? 'line-through opacity-60' : ''}`}>
@@ -240,17 +219,23 @@ const BranchNode: React.FC<BranchNodeProps> = ({ branchId }) => {
                                 </div>
 
                                 <div className="flex items-center gap-1.5 flex-shrink-0">
-                                    {task.completed && task.completedAt ? (
-                                        <div className="flex items-center text-green-500" title={`Chiuso il: ${new Date(task.completedAt).toLocaleDateString()}`}>
-                                            <CheckCircle2 className="w-3 h-3" />
-                                        </div>
-                                    ) : task.dueDate ? (
-                                        <div className={`flex items-center gap-0.5 px-1 rounded-sm text-[8px] font-black ${new Date(task.dueDate) < new Date() ? 'bg-red-100 text-red-600' : 'bg-amber-100 text-amber-700'}`}>
-                                            <Calendar className="w-2.5 h-2.5" />
-                                            <span>{new Date(task.dueDate).getDate()}/{new Date(task.dueDate).getMonth() + 1}</span>
-                                        </div>
-                                    ) : null}
-                                    {assignee && <Avatar person={assignee} size="sm" className="w-4 h-4 text-[7px]" />}
+                                    {taskSyncing ? (
+                                        <RefreshCw className="w-2.5 h-2.5 text-indigo-500 animate-spin" />
+                                    ) : (
+                                        <>
+                                            {task.completed && task.completedAt ? (
+                                                <div className="flex items-center text-green-500">
+                                                    <CheckCircle2 className="w-3 h-3" />
+                                                </div>
+                                            ) : task.dueDate ? (
+                                                <div className={`flex items-center gap-0.5 px-1 rounded-sm text-[8px] font-black ${new Date(task.dueDate) < new Date() ? 'bg-red-100 text-red-600' : 'bg-amber-100 text-amber-700'}`}>
+                                                    <Calendar className="w-2.5 h-2.5" />
+                                                    <span>{new Date(task.dueDate).getDate()}/{new Date(task.dueDate).getMonth() + 1}</span>
+                                                </div>
+                                            ) : null}
+                                            {assignee && <Avatar person={assignee} size="sm" className="w-4 h-4 text-[7px]" />}
+                                        </>
+                                    )}
                                 </div>
                             </li>
                         );
@@ -265,15 +250,6 @@ const BranchNode: React.FC<BranchNodeProps> = ({ branchId }) => {
                         </li>
                     )}
                 </ul>
-
-                {isInactive && (
-                    <button 
-                        onClick={(e) => { e.stopPropagation(); setIsDetailsOpen(false); }}
-                        className="w-full text-[10px] text-center text-slate-400 hover:text-slate-600 dark:hover:text-slate-300 py-1 hover:bg-slate-50 dark:hover:bg-slate-700/50 rounded flex items-center justify-center gap-1 transition-colors mt-2"
-                    >
-                        <EyeOff className="w-3 h-3" /> Nascondi
-                    </button>
-                )}
             </div>
         ) : (
             <div 
