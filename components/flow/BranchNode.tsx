@@ -1,8 +1,8 @@
-import React, { useState, useEffect, useMemo } from 'react';
-import { Branch, BranchStatus } from '../../types';
+import React, { useState, useEffect, useMemo, useCallback } from 'react';
+import { Branch, BranchStatus, Person } from '../../types';
 import { STATUS_CONFIG } from '../../constants';
 import { useProject } from '../../context/ProjectContext';
-import { MoreHorizontal, Plus, Calendar, Archive, ChevronLeft, ChevronRight, FileText, ChevronDown, ChevronUp, GitMerge, Globe, Tag, Eye, EyeOff, CheckCircle2, Zap, RefreshCw } from 'lucide-react';
+import { MoreHorizontal, Plus, Calendar, Archive, ChevronLeft, ChevronRight, FileText, ChevronDown, ChevronUp, GitMerge, Globe, Tag, Eye, EyeOff, CheckCircle2, Zap, RefreshCw, User } from 'lucide-react';
 import Avatar from '../ui/Avatar';
 
 interface BranchNodeProps {
@@ -37,6 +37,17 @@ const BranchNode: React.FC<BranchNodeProps> = ({ branchId }) => {
     });
   }, [branch?.tasks, showOnlyOpen]);
 
+  // Helper per trovare il responsabile ereditato
+  const getInheritedResponsible = useCallback((bid: string): Person | undefined => {
+    const b = state.branches[bid];
+    if (!b) return undefined;
+    if (b.responsibleId) return state.people.find(p => p.id === b.responsibleId);
+    if (b.parentIds.length > 0) {
+        return getInheritedResponsible(b.parentIds[0]);
+    }
+    return undefined;
+  }, [state.branches, state.people]);
+
   if (!branch) return null;
 
   const isSelected = selectedBranchId === branchId;
@@ -44,17 +55,8 @@ const BranchNode: React.FC<BranchNodeProps> = ({ branchId }) => {
   const completedTasks = branch.tasks.filter(t => t.completed).length;
   const progress = totalTasks > 0 ? (completedTasks / totalTasks) * 100 : 0;
 
-  let canMoveLeft = false;
-  let canMoveRight = false;
-  
-  if (branch.parentIds.length > 0) {
-      const firstParent = state.branches[branch.parentIds[0]];
-      if (firstParent) {
-          const idx = firstParent.childrenIds.indexOf(branchId);
-          if (idx > 0) canMoveLeft = true;
-          if (idx !== -1 && idx < firstParent.childrenIds.length - 1) canMoveRight = true;
-      }
-  }
+  const currentResp = branch.responsibleId ? state.people.find(p => p.id === branch.responsibleId) : undefined;
+  const inheritedResp = !branch.responsibleId ? getInheritedResponsible(branchId) : undefined;
 
   const hasDescription = branch.description && branch.description.trim().length > 0;
   const hasChildren = branch.childrenIds.length > 0;
@@ -99,21 +101,12 @@ const BranchNode: React.FC<BranchNodeProps> = ({ branchId }) => {
                             {branch.title}
                         </span>
                     </div>
+                    {(currentResp || inheritedResp) && (
+                        <div className={`shrink-0 ${!currentResp ? 'opacity-40 grayscale' : ''}`}>
+                            <Avatar person={currentResp || inheritedResp!} size="sm" className="w-5 h-5 text-[7px]" />
+                        </div>
+                    )}
                 </div>
-
-                {hasDescription && (
-                    <div className="px-2 pb-1 flex justify-end">
-                         <button
-                            onClick={(e) => {
-                                e.stopPropagation();
-                                setReadingDescriptionId(branchId);
-                            }}
-                            className="text-slate-400 hover:text-indigo-500"
-                         >
-                             <FileText className="w-3 h-3" />
-                         </button>
-                    </div>
-                )}
             </div>
 
             <div className="h-6 w-px bg-slate-300 dark:bg-slate-600"></div>
@@ -177,7 +170,12 @@ const BranchNode: React.FC<BranchNodeProps> = ({ branchId }) => {
             </div>
           </div>
 
-          <div className="flex items-center gap-1 shrink-0">
+          <div className="flex items-center gap-2 shrink-0">
+             {(currentResp || inheritedResp) && (
+                 <div className={!currentResp ? 'opacity-40 grayscale' : ''} title={currentResp ? `Responsabile: ${currentResp.name}` : `Responsabile Ereditato: ${inheritedResp!.name}`}>
+                    <Avatar person={currentResp || inheritedResp!} size="sm" className="w-6 h-6 text-[8px]" />
+                 </div>
+             )}
              {hasDescription && (
                  <button
                     onClick={(e) => {

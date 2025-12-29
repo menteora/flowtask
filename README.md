@@ -6,14 +6,13 @@
 
 ### 🌳 Gestione Workflow Visiva
 *   **Visualizzazione a Nodi (Canvas)**: Un'interfaccia drag-and-drop su Desktop.
-*   **Visualizzazione ad Albero (Mobile)**: Una lista gerarchica ottimizzata per il touch.
 *   **Logica a Rami**: Crea rami figli, collega rami a più genitori e organizza il flusso.
+*   **Responsabile di Ramo 👥**: Imposta un responsabile per un'intera fase. Tutti i task creati in quel ramo e nei suoi sotto-rami erediteranno automaticamente questo assegnatario, a meno di modifiche manuali.
 *   **Modalità Sprint 🚀**: Rami speciali che generano automaticamente i nomi dei figli seguendo il pattern `[NomePadre] YY-NN`.
 
 ### ✅ Gestione Task Avanzata
 *   **Focus & Pin**: Aggiungi i task più importanti alla vista Focus per averli sempre sott'occhio.
-*   **Bulk Edit**: Modifica massiva per incollare liste di task da appunti.
-*   **Sincronizzazione Real-time**: I dati vengono salvati automaticamente su Supabase.
+*   **Sincronizzazione Real-time**: I dati vengono salvati automaticamente su Supabase con feedback visivo dello stato di invio.
 
 ## 🗄️ Configurazione Database (Supabase)
 
@@ -47,6 +46,7 @@ create table public.flowtask_branches (
   title text not null,
   description text,
   status text not null,
+  responsible_id text references public.flowtask_people(id) on delete set null,
   start_date text,
   end_date text,
   due_date text,
