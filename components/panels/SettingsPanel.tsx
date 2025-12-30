@@ -113,8 +113,8 @@ const SettingsPanel: React.FC = () => {
     const threshold = new Date();
     threshold.setMonth(threshold.getMonth() - cleanupMonths);
     let count = 0;
-    (Object.values(state.branches) as Branch[]).forEach(b => {
-        b.tasks.forEach(t => {
+    Object.values(state.branches).forEach((b: Branch) => {
+        (b.tasks || []).forEach(t => {
             if (t.completed && t.completedAt) {
                 const cDate = new Date(t.completedAt);
                 if (cDate < threshold) count++;
@@ -163,7 +163,6 @@ const SettingsPanel: React.FC = () => {
       if (!supabaseClient || !session) return;
       setIsExportingAll(true);
       try {
-          // 1. Recupera tutti i progetti dell'utente
           const { data: projects, error: pErr } = await supabaseClient
               .from('flowtask_projects')
               .select('*')
@@ -176,8 +175,6 @@ const SettingsPanel: React.FC = () => {
           }
 
           const projectIds = projects.map(p => p.id);
-
-          // 2. Recupera tutto il resto in parallelo basandosi sugli ID dei progetti
           const [peopleRes, branchesRes] = await Promise.all([
               supabaseClient.from('flowtask_people').select('*').in('project_id', projectIds),
               supabaseClient.from('flowtask_branches').select('*').in('project_id', projectIds)
@@ -187,8 +184,6 @@ const SettingsPanel: React.FC = () => {
           if (branchesRes.error) throw branchesRes.error;
 
           const branchIds = branchesRes.data?.map(b => b.id) || [];
-          
-          // 3. Recupera i task basandosi sui rami trovati
           let tasks: any[] = [];
           if (branchIds.length > 0) {
               const { data: tData, error: tErr } = await supabaseClient.from('flowtask_tasks').select('*').in('branch_id', branchIds);
@@ -196,7 +191,6 @@ const SettingsPanel: React.FC = () => {
               tasks = tData || [];
           }
 
-          // 4. Struttura l'export
           const fullExport = {
               exportDate: new Date().toISOString(),
               account: session.user.email,
@@ -206,7 +200,6 @@ const SettingsPanel: React.FC = () => {
               tasks: tasks
           };
 
-          // 5. Trigger download
           const blob = new Blob([JSON.stringify(fullExport, null, 2)], { type: 'application/json' });
           const exportUrl = URL.createObjectURL(blob);
           const link = document.createElement('a');
@@ -274,8 +267,7 @@ const SettingsPanel: React.FC = () => {
   const handleProcessOrphans = async (action: 'restore' | 'delete', specificId?: string) => {
       const idsToProcess = specificId ? [specificId] : selectedOrphans;
       if (idsToProcess.length === 0) return;
-
-      if (action === 'delete' && !confirm(`Stai per eliminare DEFINITIVAMENTE ${idsToProcess.length} rami. Questa azione non è reversibile. Procedere?`)) return;
+      if (action === 'delete' && !confirm(`Stai per eliminare DEFINITIVAMENTE ${idsToProcess.length} rami. Procedere?`)) return;
 
       setIsRepairing(true);
       try {
@@ -286,8 +278,7 @@ const SettingsPanel: React.FC = () => {
           const updatedReport = checkProjectHealth();
           setHealthReport(updatedReport);
           setSelectedOrphans(updatedReport.orphanedBranches.map(o => o.id));
-
-          showNotification(action === 'restore' ? "Rami ripristinati correttamente." : "Rami eliminati dal server.", 'success');
+          showNotification(action === 'restore' ? "Rami ripristinati correttamente." : "Rami eliminati.", 'success');
       } finally {
           setIsRepairing(false);
       }
