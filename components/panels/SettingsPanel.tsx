@@ -5,7 +5,7 @@ import {
   Database, Save, Download, Key, Check, Copy, Cloud, Loader2, Upload, 
   User, LogOut, X, Trash2, Eraser, AlertTriangle, Stethoscope, 
   Search, Square, CheckSquare, RefreshCw, MessageSquare, 
-  Settings as SettingsIcon, ShieldCheck, Rocket, Eye, EyeOff, CheckCircle2, Code
+  Settings as SettingsIcon, ShieldCheck, Rocket, Eye, EyeOff, CheckCircle2, Code, DownloadCloud
 } from 'lucide-react';
 
 const SQL_SCHEMA = `-- SCHEMA SQL FLOWTASK AGGIORNATO
@@ -83,7 +83,7 @@ const SettingsPanel: React.FC = () => {
     downloadProjectFromSupabase, deleteProjectFromSupabase, cleanupOldTasks,
     checkProjectHealth, repairProjectStructure, resolveOrphans,
     state, session, logout, disableOfflineMode, showNotification,
-    messageTemplates, updateMessageTemplates
+    messageTemplates, updateMessageTemplates, supabaseClient
   } = useProject();
 
   const [activeTab, setActiveTab] = useState<TabType>('cloud');
@@ -96,6 +96,7 @@ const SettingsPanel: React.FC = () => {
 
   // UI States
   const [isSaving, setIsSaving] = useState(false);
+  const [isExportingAll, setIsExportingAll] = useState(false);
   const [isLoadingList, setIsLoadingList] = useState(false);
   const [remoteProjects, setRemoteProjects] = useState<any[]>([]);
   const [cleanupMonths, setCleanupMonths] = useState(6);
@@ -112,7 +113,6 @@ const SettingsPanel: React.FC = () => {
     const threshold = new Date();
     threshold.setMonth(threshold.getMonth() - cleanupMonths);
     let count = 0;
-    // FIX: Cast Object.values to Branch[] to avoid 'unknown' errors when iterating through branches
     (Object.values(state.branches) as Branch[]).forEach(b => {
         b.tasks.forEach(t => {
             if (t.completed && t.completedAt) {
@@ -157,6 +157,73 @@ const SettingsPanel: React.FC = () => {
       } catch (e) { 
           showNotification("Errore salvataggio cloud.", 'error');
       } finally { setIsSaving(false); }
+  };
+
+  const handleExportAllCloud = async () => {
+      if (!supabaseClient || !session) return;
+      setIsExportingAll(true);
+      try {
+          // 1. Recupera tutti i progetti dell'utente
+          const { data: projects, error: pErr } = await supabaseClient
+              .from('flowtask_projects')
+              .select('*')
+              .eq('owner_id', session.user.id);
+          
+          if (pErr) throw pErr;
+          if (!projects || projects.length === 0) {
+              showNotification("Nessun progetto trovato nel cloud.", 'error');
+              return;
+          }
+
+          const projectIds = projects.map(p => p.id);
+
+          // 2. Recupera tutto il resto in parallelo basandosi sugli ID dei progetti
+          const [peopleRes, branchesRes] = await Promise.all([
+              supabaseClient.from('flowtask_people').select('*').in('project_id', projectIds),
+              supabaseClient.from('flowtask_branches').select('*').in('project_id', projectIds)
+          ]);
+
+          if (peopleRes.error) throw peopleRes.error;
+          if (branchesRes.error) throw branchesRes.error;
+
+          const branchIds = branchesRes.data?.map(b => b.id) || [];
+          
+          // 3. Recupera i task basandosi sui rami trovati
+          let tasks: any[] = [];
+          if (branchIds.length > 0) {
+              const { data: tData, error: tErr } = await supabaseClient.from('flowtask_tasks').select('*').in('branch_id', branchIds);
+              if (tErr) throw tErr;
+              tasks = tData || [];
+          }
+
+          // 4. Struttura l'export
+          const fullExport = {
+              exportDate: new Date().toISOString(),
+              account: session.user.email,
+              projects: projects,
+              people: peopleRes.data,
+              branches: branchesRes.data,
+              tasks: tasks
+          };
+
+          // 5. Trigger download
+          const blob = new Blob([JSON.stringify(fullExport, null, 2)], { type: 'application/json' });
+          const exportUrl = URL.createObjectURL(blob);
+          const link = document.createElement('a');
+          link.href = exportUrl;
+          link.download = `flowtask_full_cloud_backup_${new Date().toISOString().slice(0, 10)}.json`;
+          document.body.appendChild(link);
+          link.click();
+          document.body.removeChild(link);
+          URL.revokeObjectURL(exportUrl);
+          
+          showNotification("Backup completo scaricato!", 'success');
+      } catch (e: any) {
+          console.error(e);
+          showNotification("Errore durante l'esportazione cloud.", 'error');
+      } finally {
+          setIsExportingAll(false);
+      }
   };
 
   const handleListProjects = async () => {
@@ -321,9 +388,14 @@ const SettingsPanel: React.FC = () => {
                       <div className="flex items-center justify-between mb-6">
                           <h3 className="text-lg font-bold text-slate-800 dark:text-white flex items-center gap-2"><Cloud className="w-5 h-5 text-indigo-500" /> Progetti Remoti</h3>
                           {session && (
-                              <button onClick={handleCloudSave} disabled={isSaving} className="flex items-center gap-2 px-4 py-2 rounded-xl text-xs font-black text-white bg-indigo-600 shadow-md hover:bg-indigo-700">
-                                  {isSaving ? <Loader2 className="w-4 h-4 animate-spin" /> : <Upload className="w-4 h-4" />} Backup Ora
-                              </button>
+                              <div className="flex gap-2">
+                                  <button onClick={handleExportAllCloud} disabled={isExportingAll} className="flex items-center gap-2 px-4 py-2 rounded-xl text-xs font-black text-indigo-600 bg-indigo-50 hover:bg-indigo-100 border border-indigo-200 transition-colors">
+                                      {isExportingAll ? <Loader2 className="w-4 h-4 animate-spin" /> : <DownloadCloud className="w-4 h-4" />} Esporta DB Cloud
+                                  </button>
+                                  <button onClick={handleCloudSave} disabled={isSaving} className="flex items-center gap-2 px-4 py-2 rounded-xl text-xs font-black text-white bg-indigo-600 shadow-md hover:bg-indigo-700">
+                                      {isSaving ? <Loader2 className="w-4 h-4 animate-spin" /> : <Upload className="w-4 h-4" />} Backup Ora
+                                  </button>
+                              </div>
                           )}
                       </div>
                       {session ? (

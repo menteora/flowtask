@@ -1,3 +1,4 @@
+
 import React, { createContext, useContext, useState, useEffect, useCallback, useRef } from 'react';
 import { createClient, SupabaseClient } from '@supabase/supabase-js';
 import { ProjectState, Branch, Task, Person, BranchStatus } from '../types';
@@ -218,7 +219,7 @@ export const ProjectProvider: React.FC<{ children: React.ReactNode }> = ({ child
                   responsibleId: b.responsible_id
               };
           });
-          loadProject({ id: p.id, name: p.name, rootBranchId: p.root_branch_id, branches, people }, activate, true); 
+          loadProject({ id: p.id, name: p.name, root_branch_id: p.root_branch_id, branches, people }, activate, true); 
           lastSyncedProjectIdRef.current = id;
       } catch (e: any) {
           console.error("Download Error:", e);
@@ -530,29 +531,31 @@ export const ProjectProvider: React.FC<{ children: React.ReactNode }> = ({ child
           if (supabaseClient && !isOfflineMode) await supabaseClient.from('flowtask_tasks').delete().eq('id', tid);
           setProjects((prev: ProjectState[]) => prev.map((p: ProjectState) => {
               if (p.id !== activeProjectId || !p.branches[bid]) return p;
-              const branch = p.branches[bid];
-              const nextTasks = branch.tasks.filter(t => t.id !== tid);
-              const updatedBranch = { ...branch, tasks: nextTasks };
-              const nextBranches = { ...p.branches, [bid]: updatedBranch };
+              const branch = p.branches[bid] as Branch;
+              const nextTasks = (branch.tasks || []).filter(t => t.id !== tid);
+              const updatedBranch = { ...(branch as object), tasks: nextTasks };
+              const nextBranches = { ...(p.branches as object), [bid]: updatedBranch };
               
               return { 
-                  ...p, 
+                  ...(p as object), 
                   branches: nextBranches
-              };
+              } as ProjectState;
           }));
       },
       moveTask,
       addPerson, updatePerson, removePerson,
       readingDescriptionId, setReadingDescriptionId, editingTask, setEditingTask, readingTask, setReadingTask,
       remindingUserId, setRemindingUserId, messageTemplates, 
-      updateMessageTemplates: (t: Partial<{ opening: string; closing: string }>) => setMessageTemplates(prev => ({ ...prev, ...t })),
+      // Fix spread for updateMessageTemplates
+      updateMessageTemplates: (t: Partial<{ opening: string; closing: string }>) => setMessageTemplates(prev => ({ ...(prev as object), ...t } as { opening: string; closing: string })),
       uploadProjectToSupabase, downloadProjectFromSupabase, 
       listProjectsFromSupabase: async () => (await supabaseClient?.from('flowtask_projects').select('*'))?.data || [],
       getProjectBranchesFromSupabase: async pid => (await supabaseClient?.from('flowtask_branches').select('*').eq('project_id', pid))?.data as any,
       deleteProjectFromSupabase: async id => { await supabaseClient?.from('flowtask_projects').delete().eq('id', id); },
       logout, enableOfflineMode, disableOfflineMode, showNotification,
       moveBranch: () => {}, linkBranch: () => {}, unlinkBranch: () => {}, 
-      setAllBranchesCollapsed: c => setProjects(prev => prev.map(p => p.id === activeProjectId ? { ...p, branches: Object.fromEntries(Object.entries(p.branches).map(([k, v]) => [k, { ...v, collapsed: c }])) } : p)),
+      // Fix spread for setAllBranchesCollapsed
+      setAllBranchesCollapsed: c => setProjects(prev => prev.map(p => p.id === activeProjectId ? { ...(p as object), branches: Object.fromEntries(Object.entries(p.branches).map(([k, v]) => [k, { ...(v as Branch), collapsed: c }])) } as ProjectState : p)),
       moveTaskToBranch: () => {}, bulkMoveTasks: () => {}, bulkUpdateTasks: () => {}, cleanupOldTasks: async () => ({ count: 0, backup: [] }),
       checkProjectHealth: () => ({ legacyRootFound: false, missingRootNode: false, orphanedBranches: [], totalIssues: 0 }),
       repairProjectStructure: async () => null, resolveOrphans: async () => {}, moveLocalBranchToRemoteProject: async () => {}
