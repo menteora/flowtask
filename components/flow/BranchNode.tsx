@@ -32,7 +32,9 @@ const BranchNode: React.FC<BranchNodeProps> = ({ branchId }) => {
         list = list.filter(t => !t.completed);
     }
     return list.sort((a, b) => {
-        if (a.completed === b.completed) return 0;
+        if (a.completed === b.completed) {
+            return (a.position ?? 0) - (b.position ?? 0);
+        }
         return a.completed ? 1 : -1;
     });
   }, [branch?.tasks, showOnlyOpen]);

@@ -35,7 +35,9 @@ const FolderNode: React.FC<FolderNodeProps> = ({ branchId, depth = 0, index, sib
         list = list.filter(t => !t.completed);
     }
     return list.sort((a, b) => {
-        if (a.completed === b.completed) return 0;
+        if (a.completed === b.completed) {
+            return (a.position ?? 0) - (b.position ?? 0);
+        }
         return a.completed ? 1 : -1;
     });
   }, [branch.tasks, showOnlyOpen]);
@@ -59,11 +61,12 @@ const FolderNode: React.FC<FolderNodeProps> = ({ branchId, depth = 0, index, sib
   };
 
   return (
-    <div className={`flex flex-col select-none ${branch.archived ? 'opacity-60' : ''} ${isSyncing ? 'bg-indigo-50/20' : ''}`}>
+    <div className={`flex flex-col select-none ${isSyncing ? 'bg-indigo-50/20' : ''}`}>
       <div 
         className={`
           flex items-center gap-2 py-3 px-4 border-b border-gray-100 dark:border-slate-800 transition-colors cursor-pointer relative
           ${isSelected ? 'bg-indigo-50 dark:bg-indigo-900/20' : 'bg-white dark:bg-slate-900 hover:bg-gray-50 dark:hover:bg-slate-800'}
+          ${branch.archived ? 'opacity-60 grayscale-[0.5]' : ''}
         `}
         style={{ paddingLeft: `${depth * 1.5 + 1}rem` }}
         onClick={handleSelect}
@@ -117,8 +120,12 @@ const FolderNode: React.FC<FolderNodeProps> = ({ branchId, depth = 0, index, sib
 
       {isOpen && hasContent && (
         <div className="flex flex-col">
-          {sortedTasks.map((task, index) => {
+          {sortedTasks.map((task, idx) => {
              const taskSyncing = pendingSyncIds.has(task.id);
+             // Verifica se il task può essere spostato su o giù
+             const canMoveUp = idx > 0 && sortedTasks[idx - 1].completed === task.completed;
+             const canMoveDown = idx < sortedTasks.length - 1 && sortedTasks[idx + 1].completed === task.completed;
+
              return (
                  <div 
                     key={task.id}
@@ -145,9 +152,29 @@ const FolderNode: React.FC<FolderNodeProps> = ({ branchId, depth = 0, index, sib
                                 {task.title}
                             </span>
                         </div>
-                        <div className="flex flex-col items-end gap-0.5">
+                        <div className="flex items-center gap-2 shrink-0">
                             {task.assigneeId && (
-                                <Avatar person={state.people.find(p => p.id === task.assigneeId)!} size="sm" className="w-5 h-5 text-[10px] mr-2" />
+                                <Avatar person={state.people.find(p => p.id === task.assigneeId)!} size="sm" className="w-5 h-5 text-[10px]" />
+                            )}
+                            
+                            {/* Pulsanti di ordinamento per mobile */}
+                            {!task.completed && (
+                                <div className="flex flex-col items-center ml-1">
+                                    <button 
+                                        onClick={(e) => { e.stopPropagation(); moveTask(branchId, task.id, 'up'); }}
+                                        disabled={!canMoveUp}
+                                        className={`p-0.5 ${canMoveUp ? 'text-indigo-400 hover:text-indigo-600' : 'text-slate-200 dark:text-slate-800'}`}
+                                    >
+                                        <ChevronUp className="w-3 h-3" />
+                                    </button>
+                                    <button 
+                                        onClick={(e) => { e.stopPropagation(); moveTask(branchId, task.id, 'down'); }}
+                                        disabled={!canMoveDown}
+                                        className={`p-0.5 ${canMoveDown ? 'text-indigo-400 hover:text-indigo-600' : 'text-slate-200 dark:text-slate-800'}`}
+                                    >
+                                        <ChevronDown className="w-3 h-3" />
+                                    </button>
+                                </div>
                             )}
                         </div>
                     </div>
