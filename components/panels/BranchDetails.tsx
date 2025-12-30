@@ -8,7 +8,7 @@ import DatePicker from '../ui/DatePicker';
 import Markdown from '../ui/Markdown';
 
 const BranchDetails: React.FC = () => {
-  const { state, selectedBranchId, selectBranch, updateBranch, deleteBranch, linkBranch, unlinkBranch, addTask, updateTask, deleteTask, bulkUpdateTasks, bulkMoveTasks, toggleBranchArchive, listProjectsFromSupabase, getProjectBranchesFromSupabase, moveLocalBranchToRemoteProject, session, showNotification, setEditingTask, setReadingTask, showOnlyOpen } = useProject();
+  const { state, selectedBranchId, selectBranch, updateBranch, deleteBranch, linkBranch, unlinkBranch, addTask, updateTask, moveTask, deleteTask, bulkUpdateTasks, bulkMoveTasks, toggleBranchArchive, listProjectsFromSupabase, getProjectBranchesFromSupabase, moveLocalBranchToRemoteProject, session, showNotification, setEditingTask, setReadingTask, showOnlyOpen } = useProject();
   const [isBulkMode, setIsBulkMode] = useState(false);
   const [bulkText, setBulkText] = useState('');
   const [newTaskTitle, setNewTaskTitle] = useState('');
@@ -71,7 +71,9 @@ const BranchDetails: React.FC = () => {
         list = list.filter(t => !t.completed);
     }
     return list.sort((a, b) => {
-        if (a.completed === b.completed) return 0;
+        if (a.completed === b.completed) {
+            return (a.position ?? 0) - (b.position ?? 0);
+        }
         return a.completed ? 1 : -1;
     });
   }, [branch?.tasks, showOnlyOpen]);
@@ -212,7 +214,7 @@ const BranchDetails: React.FC = () => {
                {branch.archived && <span className="bg-slate-200 dark:bg-slate-700 text-slate-500 px-2 py-0.5 rounded text-[10px]">Archiviato</span>}
            </span>
            <div className="flex items-center gap-2 mt-1">
-             <input type="text" value={branch.title} onChange={(e) => updateBranch(branch.id, { title: e.target.value })} className="font-bold text-lg bg-transparent border-b border-transparent hover:border-gray-300 focus:border-indigo-500 focus:outline-none text-slate-800 dark:text-white w-full" />
+             <input type="text" value={branch.title} onChange={(e) => updateBranch(branch.id, { title: e.target.value })} className="font-bold text-lg bg-transparent border-b border-transparent hover:border-gray-300 focus:border-indigo-500 focus:outline-none text-slate-800 dark:white w-full" />
            </div>
         </div>
         <button onClick={() => selectBranch(null)} className="p-2 rounded-full hover:bg-gray-200 dark:hover:bg-slate-700 text-gray-500 dark:text-gray-300 transition-colors"><X className="w-5 h-5" /></button>
@@ -345,7 +347,7 @@ const BranchDetails: React.FC = () => {
                 {/* Sezione Responsabile Ramo */}
                 <div className="p-3 border-b border-slate-100 dark:border-slate-700">
                     <div className="flex items-center justify-between mb-2">
-                        <label className="text-[11px] font-bold text-slate-500 dark:text-slate-400 flex items-center gap-1.5">
+                        <label className="text-11px font-bold text-slate-500 dark:text-slate-400 flex items-center gap-1.5">
                             <User className="w-3.5 h-3.5" /> Responsabile Flusso
                         </label>
                         {inheritedResp && !branch.responsibleId && (
@@ -490,7 +492,7 @@ const BranchDetails: React.FC = () => {
                         )}
                         <form onSubmit={handleAddTask} className="flex gap-2"><input type="text" value={newTaskTitle} onChange={(e) => setNewTaskTitle(e.target.value)} placeholder="Aggiungi task..." className="flex-1 text-sm border border-gray-300 dark:border-slate-600 rounded-md px-3 py-1.5 bg-white dark:bg-slate-900 text-slate-900 dark:text-white focus:outline-none focus:ring-2 focus:ring-indigo-500" /></form>
                         <ul className="space-y-2">
-                            {sortedTasks.map((task) => {
+                            {sortedTasks.map((task, idx) => {
                                 const assignee = task.assigneeId ? state.people.find(p => p.id === task.assigneeId) : null;
                                 return (
                                     <li key={task.id} className={`group bg-white dark:bg-slate-800 border rounded-xl p-3 hover:shadow-sm transition-all relative ${selectedTaskIds.includes(task.id) ? 'border-indigo-400 ring-1 ring-indigo-400/20 bg-indigo-50/30' : 'border-gray-100 dark:border-slate-700'}`}>
@@ -543,6 +545,12 @@ const BranchDetails: React.FC = () => {
                                             </div>
                                             <div className="flex flex-col gap-1 opacity-0 group-hover:opacity-100 transition-opacity">
                                                 <button onClick={() => deleteTask(branch.id, task.id)} className="p-1 text-slate-300 hover:text-red-500 rounded hover:bg-red-50 dark:hover:bg-red-900/10"><X className="w-4 h-4" /></button>
+                                                {!isBulkMoveMode && (
+                                                    <>
+                                                        <button onClick={() => moveTask(branch.id, task.id, 'up')} className="p-1 text-slate-300 hover:text-indigo-500 disabled:opacity-30" disabled={idx === 0 || sortedTasks[idx-1].completed !== task.completed}><ChevronUp className="w-4 h-4" /></button>
+                                                        <button onClick={() => moveTask(branch.id, task.id, 'down')} className="p-1 text-slate-300 hover:text-indigo-500 disabled:opacity-30" disabled={idx === sortedTasks.length - 1 || sortedTasks[idx+1].completed !== task.completed}><ChevronDown className="w-4 h-4" /></button>
+                                                    </>
+                                                )}
                                             </div>
                                         </div>
                                     </li>
