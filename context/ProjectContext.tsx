@@ -236,7 +236,8 @@ export const ProjectProvider: React.FC<{ children: React.ReactNode }> = ({ child
         });
         const people = p.people.map(x => ({ ...x, project_id: p.id }));
         if (people.length > 0) await supabaseClient.from('flowtask_people').upsert(people);
-        const branches = Object.values(p.branches).map(b => ({
+        // FIX: Cast Object.values to Branch[] to avoid 'unknown' errors when using older TypeScript or certain configurations
+        const branches = (Object.values(p.branches) as Branch[]).map(b => ({
             id: b.id, project_id: p.id, title: b.title, description: b.description, status: b.status,
             start_date: b.startDate, end_date: b.endDate, due_date: b.dueDate, archived: b.archived,
             collapsed: b.collapsed, is_label: b.isLabel, is_sprint: b.isSprint || false,
@@ -245,7 +246,8 @@ export const ProjectProvider: React.FC<{ children: React.ReactNode }> = ({ child
         }));
         if (branches.length > 0) await supabaseClient.from('flowtask_branches').upsert(branches);
         const tasks: any[] = [];
-        Object.values(p.branches).forEach(b => b.tasks.forEach((t, i) => tasks.push({
+        // FIX: Cast Object.values to Branch[] to avoid 'unknown' errors when accessing tasks
+        (Object.values(p.branches) as Branch[]).forEach(b => b.tasks.forEach((t, i) => tasks.push({
             id: t.id, branch_id: b.id, title: t.title, description: t.description, assignee_id: t.assigneeId,
             due_date: t.dueDate, completed: t.completed, completed_at: t.completedAt, position: t.position ?? i, pinned: t.pinned || false
         })));
@@ -348,16 +350,16 @@ export const ProjectProvider: React.FC<{ children: React.ReactNode }> = ({ child
               title: updated.title,
               status: updated.status,
               description: updated.description || '',
-              is_label: updated.isLabel || false,
-              is_sprint: updated.isSprint || false,
-              sprint_counter: updated.sprintCounter || 1,
-              responsible_id: updated.responsibleId || null,
-              start_date: updated.startDate || null,
-              due_date: updated.dueDate || null,
+              is_label: updated.is_label || false,
+              is_sprint: updated.is_sprint || false,
+              sprint_counter: updated.sprint_counter || 1,
+              responsible_id: updated.responsible_id || null,
+              start_date: updated.start_date || null,
+              due_date: updated.due_date || null,
               archived: updated.archived || false,
               collapsed: updated.collapsed || false,
-              parent_ids: updated.parentIds || [],
-              children_ids: updated.childrenIds || []
+              parent_ids: updated.parent_ids || [],
+              children_ids: updated.children_ids || []
           };
 
           syncEntityToSupabase('flowtask_branches', dbPayload);
@@ -481,7 +483,9 @@ export const ProjectProvider: React.FC<{ children: React.ReactNode }> = ({ child
       },
       addPerson, updatePerson, removePerson,
       readingDescriptionId, setReadingDescriptionId, editingTask, setEditingTask, readingTask, setReadingTask,
-      remindingUserId, setRemindingUserId, messageTemplates, updateMessageTemplates: t => setMessageTemplates(p => ({ ...p, ...t })),
+      remindingUserId, setRemindingUserId, messageTemplates, 
+      // FIX: Explicitly type parameter 't' to avoid spread error from inferred 'unknown' types
+      updateMessageTemplates: (t: Partial<{ opening: string; closing: string }>) => setMessageTemplates(prev => ({ ...prev, ...t })),
       uploadProjectToSupabase, downloadProjectFromSupabase, 
       listProjectsFromSupabase: async () => (await supabaseClient?.from('flowtask_projects').select('*'))?.data || [],
       getProjectBranchesFromSupabase: async pid => (await supabaseClient?.from('flowtask_branches').select('*').eq('project_id', pid))?.data as any,

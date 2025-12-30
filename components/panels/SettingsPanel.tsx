@@ -112,7 +112,8 @@ const SettingsPanel: React.FC = () => {
     const threshold = new Date();
     threshold.setMonth(threshold.getMonth() - cleanupMonths);
     let count = 0;
-    Object.values(state.branches).forEach(b => {
+    // FIX: Cast Object.values to Branch[] to avoid 'unknown' errors when iterating through branches
+    (Object.values(state.branches) as Branch[]).forEach(b => {
         b.tasks.forEach(t => {
             if (t.completed && t.completedAt) {
                 const cDate = new Date(t.completedAt);

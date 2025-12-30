@@ -2,7 +2,7 @@ import React, { useState, useEffect, useMemo, useCallback } from 'react';
 import { Branch, BranchStatus, Person } from '../../types';
 import { STATUS_CONFIG } from '../../constants';
 import { useProject } from '../../context/ProjectContext';
-import { MoreHorizontal, Plus, Calendar, Archive, ChevronLeft, ChevronRight, FileText, ChevronDown, ChevronUp, GitMerge, Globe, Tag, Eye, EyeOff, CheckCircle2, Zap, RefreshCw, User } from 'lucide-react';
+import { Plus, Calendar, Archive, FileText, ChevronDown, ChevronUp, GitMerge, Tag, Eye, CheckCircle2, Zap, RefreshCw } from 'lucide-react';
 import Avatar from '../ui/Avatar';
 
 interface BranchNodeProps {
@@ -10,7 +10,7 @@ interface BranchNodeProps {
 }
 
 const BranchNode: React.FC<BranchNodeProps> = ({ branchId }) => {
-  const { state, addBranch, selectBranch, selectedBranchId, moveBranch, setReadingDescriptionId, updateBranch, setReadingTask, showOnlyOpen, pendingSyncIds } = useProject();
+  const { state, addBranch, selectBranch, selectedBranchId, setReadingDescriptionId, updateBranch, showOnlyOpen, pendingSyncIds } = useProject();
   const [isTasksExpanded, setIsTasksExpanded] = useState(false);
   const branch = state.branches[branchId];
   
@@ -37,7 +37,6 @@ const BranchNode: React.FC<BranchNodeProps> = ({ branchId }) => {
     });
   }, [branch?.tasks, showOnlyOpen]);
 
-  // Helper per trovare il responsabile ereditato
   const getInheritedResponsible = useCallback((bid: string): Person | undefined => {
     const b = state.branches[bid];
     if (!b) return undefined;
@@ -141,7 +140,7 @@ const BranchNode: React.FC<BranchNodeProps> = ({ branchId }) => {
           ${isSelected 
             ? 'border-indigo-500 ring-2 ring-indigo-500/20' 
             : 'border-slate-200 dark:border-slate-700 hover:border-indigo-300 dark:hover:border-slate-500'}
-          ${branch.archived ? 'border-dashed opacity-80' : ''}
+          ${branch.archived ? 'border-dashed opacity-80 grayscale-[0.5]' : ''}
         `}
         onClick={(e) => {
           e.stopPropagation();
