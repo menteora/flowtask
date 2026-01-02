@@ -1,3 +1,4 @@
+
 import React, { createContext, useContext, useState, useEffect, useCallback, useRef } from 'react';
 import { createClient, SupabaseClient } from '@supabase/supabase-js';
 import { ProjectState, Branch, Task, Person, BranchStatus } from '../types';
@@ -386,11 +387,12 @@ export const ProjectProvider: React.FC<{ children: React.ReactNode }> = ({ child
       const nextChild = { ...child, parentIds: [...child.parentIds, parentId] };
       const nextParent = { ...parent, childrenIds: [...parent.childrenIds, childId] };
 
+      // Ensure mandatory NOT NULL fields (title, status) are included in the upsert
       syncEntityToSupabase('flowtask_branches', { 
-          id: childId, project_id: p.id, parent_ids: nextChild.parentIds 
+          id: childId, project_id: p.id, title: nextChild.title, status: nextChild.status, parent_ids: nextChild.parentIds 
       });
       syncEntityToSupabase('flowtask_branches', { 
-          id: parentId, project_id: p.id, children_ids: nextParent.childrenIds 
+          id: parentId, project_id: p.id, title: nextParent.title, status: nextParent.status, children_ids: nextParent.childrenIds 
       });
 
       return {
@@ -410,11 +412,12 @@ export const ProjectProvider: React.FC<{ children: React.ReactNode }> = ({ child
       const nextChild = { ...child, parentIds: child.parentIds.filter(id => id !== parentId) };
       const nextParent = { ...parent, childrenIds: parent.childrenIds.filter(id => id !== childId) };
 
+      // Ensure mandatory NOT NULL fields (title, status) are included in the upsert
       syncEntityToSupabase('flowtask_branches', { 
-          id: childId, project_id: p.id, parent_ids: nextChild.parentIds 
+          id: childId, project_id: p.id, title: nextChild.title, status: nextChild.status, parent_ids: nextChild.parentIds 
       });
       syncEntityToSupabase('flowtask_branches', { 
-          id: parentId, project_id: p.id, children_ids: nextParent.childrenIds 
+          id: parentId, project_id: p.id, title: nextParent.title, status: nextParent.status, children_ids: nextParent.childrenIds 
       });
 
       return {
