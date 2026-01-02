@@ -1,3 +1,4 @@
+
 import React, { useState, useEffect, useMemo, useCallback } from 'react';
 import { Branch, BranchStatus, Person } from '../../types';
 import { STATUS_CONFIG } from '../../constants';
@@ -108,6 +109,20 @@ const BranchNode: React.FC<BranchNodeProps> = ({ branchId }) => {
                         </div>
                     )}
                 </div>
+
+                {hasChildren && (
+                    <div className="absolute -bottom-3 left-1/2 -translate-x-1/2 z-20">
+                         <button
+                            onClick={(e) => {
+                                e.stopPropagation();
+                                updateBranch(branchId, { collapsed: !branch.collapsed });
+                            }}
+                            className="w-6 h-6 rounded-full bg-white dark:bg-slate-700 border border-slate-200 dark:border-slate-600 shadow-sm flex items-center justify-center hover:bg-slate-50 dark:hover:bg-slate-600 text-slate-500 dark:text-slate-300 transition-colors"
+                         >
+                             {branch.collapsed ? <ChevronDown className="w-3.5 h-3.5" /> : <ChevronUp className="w-3.5 h-3.5" />}
+                         </button>
+                    </div>
+                )}
             </div>
 
             <div className="h-6 w-px bg-slate-300 dark:bg-slate-600"></div>
@@ -284,7 +299,7 @@ const BranchNode: React.FC<BranchNodeProps> = ({ branchId }) => {
             if (branch.collapsed) updateBranch(branchId, { collapsed: false });
             addBranch(branchId);
         }}
-        className="w-6 h-6 rounded-full bg-white dark:bg-slate-700 border border-slate-300 dark:border-slate-500 flex items-center justify-center hover:bg-indigo-50 dark:hover:bg-slate-600 text-slate-500 dark:text-slate-300 transition-colors z-10"
+        className="w-6 h-6 rounded-full bg-white dark:bg-slate-300 border border-slate-300 dark:border-slate-500 flex items-center justify-center hover:bg-indigo-50 dark:hover:bg-slate-600 text-slate-500 dark:text-slate-300 transition-colors z-10"
       >
         <Plus className="w-3.5 h-3.5" />
       </button>
