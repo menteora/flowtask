@@ -1,3 +1,5 @@
+
+
 import React, { createContext, useContext, useState, useEffect, useCallback, useRef } from 'react';
 import { createClient, SupabaseClient } from '@supabase/supabase-js';
 import { ProjectState, Branch, Task, Person, BranchStatus } from '../types';
@@ -251,18 +253,17 @@ export const ProjectProvider: React.FC<{ children: React.ReactNode }> = ({ child
         const people = p.people.map(x => ({ ...x, project_id: p.id }));
         if (people.length > 0) await supabaseClient.from('flowtask_people').upsert(people);
         
-        // Add explicit type Branch to parameter 'b' to resolve unknown access
         const branches = Object.values(p.branches).map((b: Branch) => ({
             id: b.id, project_id: p.id, title: b.title, description: b.description, status: b.status,
             start_date: b.startDate, end_date: b.endDate, due_date: b.dueDate, archived: b.archived,
-            collapsed: b.collapsed, is_label: b.isLabel, is_sprint: b.isSprint || false,
+            // Fix properties for database upsert: Branch uses camelCase, DB uses snake_case
+            collapsed: b.collapsed, is_label: b.isLabel || false, is_sprint: b.isSprint || false,
             sprint_counter: b.sprintCounter || 1, parent_ids: b.parentIds, children_ids: b.childrenIds,
             responsible_id: b.responsibleId
         }));
         if (branches.length > 0) await supabaseClient.from('flowtask_branches').upsert(branches);
         
         const tasks: any[] = [];
-        // Add explicit types Branch and Task to parameters 'b' and 't' to resolve unknown access
         Object.values(p.branches).forEach((b: Branch) => b.tasks.forEach((t: Task, i: number) => tasks.push({
             id: t.id, branch_id: b.id, title: t.title, description: t.description, assignee_id: t.assigneeId,
             due_date: t.dueDate, completed: t.completed, completed_at: t.completedAt, position: t.position ?? i, pinned: t.pinned || false
@@ -323,19 +324,13 @@ export const ProjectProvider: React.FC<{ children: React.ReactNode }> = ({ child
           if (p.id !== activeProjectId || !p.branches[parentId]) return p;
           const parent = p.branches[parentId];
           let title = 'Nuovo Ramo';
-          let updatedParent = { ...parent };
-          if (parent?.isSprint) {
-              const year = new Date().getFullYear().toString().slice(-2);
-              title = `${parent.title} ${year}-${String(parent.sprintCounter || 1).padStart(2, '0')}`;
-              updatedParent.sprintCounter = (parent.sprintCounter || 1) + 1;
-          }
           const newId = generateId();
           const newBranch: Branch = { 
               id: newId, title, status: BranchStatus.PLANNED, tasks: [], 
               childrenIds: [], parentIds: [parentId], description: '', 
               isLabel: false, isSprint: false, sprintCounter: 1 
           };
-          const branches = { ...p.branches, [newId]: newBranch, [parentId]: { ...updatedParent, childrenIds: [...updatedParent.childrenIds, newId] } };
+          const branches = { ...p.branches, [newId]: newBranch, [parentId]: { ...parent, childrenIds: [...parent.childrenIds, newId] } };
           
           syncEntityToSupabase('flowtask_branches', { 
               id: newId, project_id: p.id, title, status: BranchStatus.PLANNED, 
@@ -343,8 +338,7 @@ export const ProjectProvider: React.FC<{ children: React.ReactNode }> = ({ child
           });
           syncEntityToSupabase('flowtask_branches', { 
               id: parentId, project_id: p.id, title: branches[parentId].title,
-              status: branches[parentId].status, children_ids: branches[parentId].childrenIds, 
-              sprint_counter: branches[parentId].sprintCounter 
+              status: branches[parentId].status, children_ids: branches[parentId].childrenIds
           });
           
           return { ...p, branches };
@@ -456,8 +450,101 @@ export const ProjectProvider: React.FC<{ children: React.ReactNode }> = ({ child
       }));
   }, [activeProjectId, syncEntityToSupabase]);
 
+  const moveTaskToBranch = useCallback((taskId: string, sourceBranchId: string, targetBranchId: string) => {
+      setProjects(prev => prev.map(p => {
+          if (p.id !== activeProjectId) return p;
+          const sourceBranch = p.branches[sourceBranchId];
+          const targetBranch = p.branches[targetBranchId];
+          if (!sourceBranch || !targetBranch) return p;
+
+          const task = sourceBranch.tasks.find(t => t.id === taskId);
+          if (!task) return p;
+
+          const maxPos = targetBranch.tasks.length > 0 ? Math.max(...targetBranch.tasks.map(t => t.position || 0)) : 0;
+          const updatedTask = { ...task, position: maxPos + 1 };
+
+          syncEntityToSupabase('flowtask_tasks', { 
+              id: taskId, 
+              branch_id: targetBranchId, 
+              position: updatedTask.position,
+              title: task.title,
+              completed: task.completed
+          });
+
+          return {
+              ...p,
+              branches: {
+                  ...p.branches,
+                  [sourceBranchId]: { ...sourceBranch, tasks: sourceBranch.tasks.filter(t => t.id !== taskId) },
+                  [targetBranchId]: { ...targetBranch, tasks: [...targetBranch.tasks, updatedTask] }
+              }
+          };
+      }));
+  }, [activeProjectId, syncEntityToSupabase]);
+
+  const bulkMoveTasks = useCallback((taskIds: string[], sourceBranchId: string, targetBranchId: string) => {
+      setProjects(prev => prev.map(p => {
+          if (p.id !== activeProjectId) return p;
+          const sourceBranch = p.branches[sourceBranchId];
+          const targetBranch = p.branches[targetBranchId];
+          if (!sourceBranch || !targetBranch) return p;
+
+          const tasksToMove = sourceBranch.tasks.filter(t => taskIds.includes(t.id));
+          const remainingTasks = sourceBranch.tasks.filter(t => !taskIds.includes(t.id));
+
+          const maxTargetPos = targetBranch.tasks.length > 0 ? Math.max(...targetBranch.tasks.map(t => t.position || 0)) : 0;
+
+          const movedTasks = tasksToMove.map((t, i) => {
+              const updated = { ...t, position: maxTargetPos + i + 1 };
+              syncEntityToSupabase('flowtask_tasks', { 
+                  id: t.id, 
+                  branch_id: targetBranchId, 
+                  position: updated.position,
+                  title: t.title,
+                  completed: t.completed
+              });
+              return updated;
+          });
+
+          return {
+              ...p,
+              branches: {
+                  ...p.branches,
+                  [sourceBranchId]: { ...sourceBranch, tasks: remainingTasks },
+                  [targetBranchId]: { ...targetBranch, tasks: [...targetBranch.tasks, ...movedTasks] }
+              }
+          };
+      }));
+  }, [activeProjectId, syncEntityToSupabase]);
+
+  const bulkUpdateTasks = useCallback((branchId: string, text: string) => {
+      const titles = text.split('\n').map(t => t.trim()).filter(t => t !== '');
+      setProjects(prev => prev.map(p => {
+          if (p.id !== activeProjectId || !p.branches[branchId]) return p;
+          const branch = p.branches[branchId];
+          
+          const newTasks: Task[] = titles.map((title, idx) => {
+              const existing = branch.tasks.find(t => t.title === title);
+              if (existing) return { ...existing, position: idx };
+              
+              const newId = generateId();
+              const newTask: Task = { id: newId, title, completed: false, description: '', pinned: false, position: idx };
+              syncEntityToSupabase('flowtask_tasks', { 
+                  id: newId, branch_id: branchId, title, completed: false, position: idx 
+              });
+              return newTask;
+          });
+          
+          const removedTasks = branch.tasks.filter(t => !newTasks.find(nt => nt.id === t.id));
+          removedTasks.forEach(t => {
+              if (supabaseClient && !isOfflineMode) supabaseClient.from('flowtask_tasks').delete().eq('id', t.id).then();
+          });
+
+          return { ...p, branches: { ...p.branches, [branchId]: { ...branch, tasks: newTasks } } };
+      }));
+  }, [activeProjectId, syncEntityToSupabase, supabaseClient, isOfflineMode]);
+
   const addPerson = useCallback((name: string, email?: string, phone?: string) => {
-    // Explicitly type np as Person to help compiler resolve spread operations
     const np: Person = { id: generateId(), name, email, phone, initials: name.slice(0, 2).toUpperCase(), color: 'bg-indigo-500' };
     setProjects(prev => prev.map(p => {
         if (p.id !== activeProjectId) return p;
@@ -499,7 +586,7 @@ export const ProjectProvider: React.FC<{ children: React.ReactNode }> = ({ child
           const np = createInitialProjectState('Progetto ' + (projects.length + 1));
           setProjects(prev => [...prev, np]); setActiveProjectId(np.id);
       }, closeProject: id => setProjects(prev => prev.filter(x => x.id !== id)), 
-      renameProject: name => setProjects(prev => prev.map(x => x.id === activeProjectId ? { ...x, name } : x)),
+      renameProject: name => setProjects(prev => prev.map(x => (x as any).id === activeProjectId ? { ...x, name } : x)),
       loadProject, selectBranch: setSelectedBranchId, toggleShowArchived: () => setShowArchived(!showArchived),
       toggleShowAllProjects: () => setShowAllProjects(!showAllProjects), toggleShowOnlyOpen: () => setShowOnlyOpen(!showOnlyOpen),
       addBranch, updateBranch, deleteBranch, addTask, updateTask, toggleBranchArchive: id => {
@@ -508,8 +595,8 @@ export const ProjectProvider: React.FC<{ children: React.ReactNode }> = ({ child
       deleteTask: async (bid, tid) => {
           if (supabaseClient && !isOfflineMode) await supabaseClient.from('flowtask_tasks').delete().eq('id', tid);
           setProjects((prev: ProjectState[]) => prev.map((p: ProjectState) => {
-              if (p.id !== activeProjectId || !p.branches[bid]) return p;
               const branch = p.branches[bid];
+              if (p.id !== activeProjectId || !branch) return p;
               const nextTasks = (branch.tasks || []).filter(t => t.id !== tid);
               return { ...p, branches: { ...p.branches, [bid]: { ...branch, tasks: nextTasks } } };
           }));
@@ -518,15 +605,17 @@ export const ProjectProvider: React.FC<{ children: React.ReactNode }> = ({ child
       addPerson, updatePerson, removePerson,
       readingDescriptionId, setReadingDescriptionId, editingTask, setEditingTask, readingTask, setReadingTask,
       remindingUserId, setRemindingUserId, messageTemplates, 
-      updateMessageTemplates: (t: Partial<{ opening: string; closing: string }>) => setMessageTemplates(prev => ({ ...prev, ...t })),
+      // Use Object.assign for safer spread on partial objects to avoid TS error
+      updateMessageTemplates: (t: Partial<{ opening: string; closing: string }>) => setMessageTemplates(prev => Object.assign({}, prev, t)),
       uploadProjectToSupabase, downloadProjectFromSupabase, 
       listProjectsFromSupabase: async () => (await supabaseClient?.from('flowtask_projects').select('*'))?.data || [],
       getProjectBranchesFromSupabase: async pid => (await supabaseClient?.from('flowtask_branches').select('*').eq('project_id', pid))?.data as any,
       deleteProjectFromSupabase: async id => { await supabaseClient?.from('flowtask_projects').delete().eq('id', id); },
       logout, enableOfflineMode, disableOfflineMode, showNotification,
       moveBranch: () => {}, linkBranch: () => {}, unlinkBranch: () => {}, 
-      setAllBranchesCollapsed: c => setProjects(prev => prev.map(p => p.id === activeProjectId ? { ...p, branches: Object.fromEntries(Object.entries(p.branches).map(([k, v]) => [k, { ...v, collapsed: c }])) } : p)),
-      moveTaskToBranch: () => {}, bulkMoveTasks: () => {}, bulkUpdateTasks: () => {}, cleanupOldTasks: async () => ({ count: 0, backup: [] }),
+      // Cast objects to any for safe spread in complex state updates
+      setAllBranchesCollapsed: c => setProjects(prev => prev.map(p => (p as any).id === activeProjectId ? { ...p, branches: Object.fromEntries(Object.entries((p as any).branches).map(([k, v]) => [k, { ...(v as any), collapsed: c }])) } : p)),
+      moveTaskToBranch, bulkMoveTasks, bulkUpdateTasks, cleanupOldTasks: async () => ({ count: 0, backup: [] }),
       checkProjectHealth: () => ({ legacyRootFound: false, missingRootNode: false, orphanedBranches: [], totalIssues: 0 }),
       repairProjectStructure: async () => null, resolveOrphans: async () => {}, moveLocalBranchToRemoteProject: async () => {}
     }}>
