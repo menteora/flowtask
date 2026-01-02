@@ -1,5 +1,3 @@
-
-
 import React, { createContext, useContext, useState, useEffect, useCallback, useRef } from 'react';
 import { createClient, SupabaseClient } from '@supabase/supabase-js';
 import { ProjectState, Branch, Task, Person, BranchStatus } from '../types';
@@ -256,7 +254,6 @@ export const ProjectProvider: React.FC<{ children: React.ReactNode }> = ({ child
         const branches = Object.values(p.branches).map((b: Branch) => ({
             id: b.id, project_id: p.id, title: b.title, description: b.description, status: b.status,
             start_date: b.startDate, end_date: b.endDate, due_date: b.dueDate, archived: b.archived,
-            // Fix properties for database upsert: Branch uses camelCase, DB uses snake_case
             collapsed: b.collapsed, is_label: b.isLabel || false, is_sprint: b.isSprint || false,
             sprint_counter: b.sprintCounter || 1, parent_ids: b.parentIds, children_ids: b.childrenIds,
             responsible_id: b.responsibleId
@@ -377,6 +374,55 @@ export const ProjectProvider: React.FC<{ children: React.ReactNode }> = ({ child
       }));
       if (selectedBranchId === branchId) setSelectedBranchId(null);
   }, [activeProjectId, selectedBranchId, isOfflineMode, supabaseClient]);
+
+  const linkBranch = useCallback((childId: string, parentId: string) => {
+    setProjects(prev => prev.map(p => {
+      if (p.id !== activeProjectId) return p;
+      const child = p.branches[childId];
+      const parent = p.branches[parentId];
+      if (!child || !parent) return p;
+      if (child.parentIds.includes(parentId)) return p;
+
+      const nextChild = { ...child, parentIds: [...child.parentIds, parentId] };
+      const nextParent = { ...parent, childrenIds: [...parent.childrenIds, childId] };
+
+      syncEntityToSupabase('flowtask_branches', { 
+          id: childId, project_id: p.id, parent_ids: nextChild.parentIds 
+      });
+      syncEntityToSupabase('flowtask_branches', { 
+          id: parentId, project_id: p.id, children_ids: nextParent.childrenIds 
+      });
+
+      return {
+          ...p,
+          branches: { ...p.branches, [childId]: nextChild, [parentId]: nextParent }
+      };
+    }));
+  }, [activeProjectId, syncEntityToSupabase]);
+
+  const unlinkBranch = useCallback((childId: string, parentId: string) => {
+    setProjects(prev => prev.map(p => {
+      if (p.id !== activeProjectId) return p;
+      const child = p.branches[childId];
+      const parent = p.branches[parentId];
+      if (!child || !parent) return p;
+
+      const nextChild = { ...child, parentIds: child.parentIds.filter(id => id !== parentId) };
+      const nextParent = { ...parent, childrenIds: parent.childrenIds.filter(id => id !== childId) };
+
+      syncEntityToSupabase('flowtask_branches', { 
+          id: childId, project_id: p.id, parent_ids: nextChild.parentIds 
+      });
+      syncEntityToSupabase('flowtask_branches', { 
+          id: parentId, project_id: p.id, children_ids: nextParent.childrenIds 
+      });
+
+      return {
+          ...p,
+          branches: { ...p.branches, [childId]: nextChild, [parentId]: nextParent }
+      };
+    }));
+  }, [activeProjectId, syncEntityToSupabase]);
 
   const addTask = useCallback((branchId: string, title: string) => {
       const newId = generateId();
@@ -605,15 +651,13 @@ export const ProjectProvider: React.FC<{ children: React.ReactNode }> = ({ child
       addPerson, updatePerson, removePerson,
       readingDescriptionId, setReadingDescriptionId, editingTask, setEditingTask, readingTask, setReadingTask,
       remindingUserId, setRemindingUserId, messageTemplates, 
-      // Use Object.assign for safer spread on partial objects to avoid TS error
       updateMessageTemplates: (t: Partial<{ opening: string; closing: string }>) => setMessageTemplates(prev => Object.assign({}, prev, t)),
       uploadProjectToSupabase, downloadProjectFromSupabase, 
       listProjectsFromSupabase: async () => (await supabaseClient?.from('flowtask_projects').select('*'))?.data || [],
       getProjectBranchesFromSupabase: async pid => (await supabaseClient?.from('flowtask_branches').select('*').eq('project_id', pid))?.data as any,
       deleteProjectFromSupabase: async id => { await supabaseClient?.from('flowtask_projects').delete().eq('id', id); },
       logout, enableOfflineMode, disableOfflineMode, showNotification,
-      moveBranch: () => {}, linkBranch: () => {}, unlinkBranch: () => {}, 
-      // Cast objects to any for safe spread in complex state updates
+      moveBranch: () => {}, linkBranch, unlinkBranch, 
       setAllBranchesCollapsed: c => setProjects(prev => prev.map(p => (p as any).id === activeProjectId ? { ...p, branches: Object.fromEntries(Object.entries((p as any).branches).map(([k, v]) => [k, { ...(v as any), collapsed: c }])) } : p)),
       moveTaskToBranch, bulkMoveTasks, bulkUpdateTasks, cleanupOldTasks: async () => ({ count: 0, backup: [] }),
       checkProjectHealth: () => ({ legacyRootFound: false, missingRootNode: false, orphanedBranches: [], totalIssues: 0 }),
