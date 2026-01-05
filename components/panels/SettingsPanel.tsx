@@ -4,14 +4,14 @@ import { useProject } from '../../context/ProjectContext';
 import { useTask } from '../../context/TaskContext';
 import { 
   Database, Download, Key, Cloud, Loader2, User, LogOut, Code, DownloadCloud, Wifi, WifiOff,
-  Settings as SettingsIcon, MessageSquare, Copy, Upload, Trash2, RefreshCw
+  Settings as SettingsIcon, MessageSquare, Copy, Upload, Trash2, RefreshCw, FileJson
 } from 'lucide-react';
 
 const SettingsPanel: React.FC = () => {
   const { 
     supabaseConfig, setSupabaseConfig, uploadProjectToSupabase, listProjectsFromSupabase,
     downloadProjectFromSupabase, deleteProjectFromSupabase, syncAllFromSupabase, pullAllFromSupabase,
-    state, session, logout, disableOfflineMode, enableOfflineMode, showNotification,
+    exportAllToJSON, state, session, logout, disableOfflineMode, enableOfflineMode, showNotification,
     isOfflineMode
   } = useProject();
 
@@ -96,6 +96,9 @@ const SettingsPanel: React.FC = () => {
         </div>
         
         <div className="flex gap-2">
+            <button onClick={exportAllToJSON} className="px-4 py-2 bg-emerald-600 text-white rounded-xl text-xs font-bold flex items-center gap-2 shadow-sm hover:bg-emerald-700 transition-colors">
+                <FileJson className="w-4 h-4" /> Esporta Tutto (JSON)
+            </button>
             {isOfflineMode ? (
                 <button onClick={disableOfflineMode} className="px-4 py-2 bg-indigo-600 text-white rounded-xl text-xs font-bold flex items-center gap-2 shadow-sm">
                     <Wifi className="w-4 h-4" /> Passa a Cloud
@@ -144,10 +147,10 @@ const SettingsPanel: React.FC = () => {
                               </div>
                               <div className="flex flex-wrap gap-2">
                                   <button onClick={handleSyncAll} disabled={isSyncing} className="flex-1 px-4 py-3 bg-indigo-50 dark:bg-indigo-900/20 text-indigo-600 dark:text-indigo-300 rounded-xl text-xs font-black uppercase tracking-wider border border-indigo-100 dark:border-indigo-800 hover:bg-indigo-100 transition-colors flex items-center justify-center gap-2">
-                                      {isSyncing ? <Loader2 className="w-4 h-4 animate-spin" /> : <RefreshCw className="w-4 h-4" />} Sincronizza Tutto
+                                      {isSyncing ? <Loader2 className="w-4 h-4 animate-spin" /> : <RefreshCw className="w-4 h-4" />} Sincronizza (Push+Pull)
                                   </button>
                                   <button onClick={handlePullAll} disabled={isPulling} className="flex-1 px-4 py-3 bg-amber-50 dark:bg-amber-900/20 text-amber-700 dark:text-amber-400 rounded-xl text-xs font-black uppercase tracking-wider border border-amber-200 dark:border-amber-800 hover:bg-amber-100 transition-colors flex items-center justify-center gap-2">
-                                      {isPulling ? <Loader2 className="w-4 h-4 animate-spin" /> : <DownloadCloud className="w-4 h-4" />} Scarica Tutto
+                                      {isPulling ? <Loader2 className="w-4 h-4 animate-spin" /> : <DownloadCloud className="w-4 h-4" />} Scarica dal Cloud (Pull)
                                   </button>
                               </div>
                           </div>
