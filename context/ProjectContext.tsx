@@ -5,6 +5,7 @@ import { ProjectState, Branch } from '../types';
 import { createInitialProjectState } from '../constants';
 import { localStorageService } from '../services/localStorage';
 import { supabaseService } from '../services/supabase';
+import { dbService } from '../services/db';
 
 // Hooks decomposti
 import { useSyncEngine } from '../hooks/useSyncEngine';
@@ -42,6 +43,7 @@ interface ProjectContextType {
 
   uploadProjectToSupabase: () => Promise<void>;
   downloadProjectFromSupabase: (id: string, activate?: boolean) => Promise<void>;
+  downloadAllFromSupabase: () => Promise<void>;
   listProjectsFromSupabase: () => Promise<any[]>;
   deleteProjectFromSupabase: (id: string) => Promise<void>;
   getProjectBranchesFromSupabase: (projectId: string) => Promise<any[]>;
@@ -115,6 +117,47 @@ export const ProjectProvider: React.FC<{ children: React.ReactNode }> = ({ child
     }
   };
 
+  const downloadProjectFromSupabase = async (id: string, activate: boolean = true) => {
+    if (supabaseClient) {
+      try {
+        const p = await supabaseService.downloadFullProject(supabaseClient, id);
+        await dbService.saveProject(p);
+        setProjects(prev => [...prev.filter(x => x.id !== id), p]);
+        if (activate) switchProject(id);
+        showNotification(`Progetto "${p.name}" scaricato in locale.`, "success");
+      } catch (err) {
+        showNotification("Errore durante il download del progetto.", "error");
+      }
+    }
+  };
+
+  const downloadAllFromSupabase = async () => {
+    if (!supabaseClient || !session) return;
+    showNotification("Inizio sincronizzazione globale...", "success");
+    try {
+      const { data: remoteProjs } = await supabaseService.fetchProjects(supabaseClient);
+      if (remoteProjs && remoteProjs.length > 0) {
+        const downloaded: ProjectState[] = [];
+        for (const rp of remoteProjs) {
+          const p = await supabaseService.downloadFullProject(supabaseClient, rp.id);
+          await dbService.saveProject(p);
+          downloaded.push(p);
+        }
+        setProjects(prev => {
+          const downloadedIds = downloaded.map(d => d.id);
+          const remaining = prev.filter(p => !downloadedIds.includes(p.id));
+          return [...remaining, ...downloaded];
+        });
+        showNotification(`${downloaded.length} progetti sincronizzati dal cloud.`, "success");
+      } else {
+        showNotification("Nessun progetto trovato sul server.", "error");
+      }
+    } catch (err) {
+      console.error(err);
+      showNotification("Errore nella sincronizzazione globale.", "error");
+    }
+  };
+
   const contextValue: ProjectContextType = {
     state: activeProject, projects, setProjects, activeProjectId, setActiveProjectId,
     session, isOfflineMode, loadingAuth, isInitializing, autoSaveStatus, notification,
@@ -129,7 +172,8 @@ export const ProjectProvider: React.FC<{ children: React.ReactNode }> = ({ child
     disableOfflineMode: () => { setIsOfflineMode(false); localStorageService.saveOfflineMode(false); window.location.reload(); },
     showNotification,
     uploadProjectToSupabase: async () => { if (supabaseClient && session) await supabaseService.uploadFullProject(supabaseClient, activeProject, session.user.id); },
-    downloadProjectFromSupabase: async (id) => { if (supabaseClient) { const p = await supabaseService.downloadFullProject(supabaseClient, id); setProjects(prev => [...prev.filter(x => x.id !== id), p]); switchProject(id); } },
+    downloadProjectFromSupabase,
+    downloadAllFromSupabase,
     listProjectsFromSupabase: async () => supabaseClient ? (await supabaseService.fetchProjects(supabaseClient)).data || [] : [],
     deleteProjectFromSupabase: async (id) => { if (supabaseClient) await supabaseService.softDeleteProject(supabaseClient, id); },
     getProjectBranchesFromSupabase: async (id) => { if (supabaseClient) { const res = await supabaseService.fetchBranches(supabaseClient, id); return res.data || []; } return []; },
