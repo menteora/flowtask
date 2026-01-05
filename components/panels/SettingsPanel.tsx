@@ -1,7 +1,7 @@
 
 import React, { useState, useEffect, useRef, useMemo } from 'react';
 import { useProject } from '../../context/ProjectContext';
-import { Branch, Task, Person, ProjectState } from '../../types';
+import { Branch, Task, Person, ProjectState, DeletedRecord } from '../../types';
 import { 
   Database, Save, Download, Key, Check, Copy, Cloud, Loader2, Upload, 
   User, LogOut, X, Trash2, Eraser, AlertTriangle, Stethoscope, 
@@ -97,9 +97,10 @@ type TabType = 'cloud' | 'sync' | 'diagnostics' | 'maintenance' | 'preferences';
 
 interface DirtyRecordInfo {
     id: string;
-    type: 'Project' | 'Person' | 'Branch' | 'Task';
+    type: 'Project' | 'Person' | 'Branch' | 'Task' | 'Deletion';
     label: string;
     context?: string;
+    action?: 'update' | 'delete';
 }
 
 const SettingsPanel: React.FC = () => {
@@ -121,7 +122,6 @@ const SettingsPanel: React.FC = () => {
 
   // UI States
   const [isSaving, setIsSaving] = useState(false);
-  const [isExportingAll, setIsExportingAll] = useState(false);
   const [isLoadingList, setIsLoadingList] = useState(false);
   const [remoteProjects, setRemoteProjects] = useState<any[]>([]);
   const [cleanupMonths, setCleanupMonths] = useState(6);
@@ -137,14 +137,20 @@ const SettingsPanel: React.FC = () => {
   const dirtyItemsList = useMemo(() => {
     const list: DirtyRecordInfo[] = [];
     projects.forEach(p => {
-        if (p.isDirty) list.push({ id: p.id, type: 'Project', label: p.name });
+        // 1. Eliminazioni pendenti
+        p.pendingDeletions?.forEach(del => {
+            list.push({ id: del.id, type: 'Deletion', label: del.label, context: p.name, action: 'delete' });
+        });
+
+        // 2. Update pendenti
+        if (p.isDirty) list.push({ id: p.id, type: 'Project', label: p.name, action: 'update' });
         p.people.forEach(pe => {
-            if (pe.isDirty) list.push({ id: pe.id, type: 'Person', label: pe.name, context: p.name });
+            if (pe.isDirty) list.push({ id: pe.id, type: 'Person', label: pe.name, context: p.name, action: 'update' });
         });
         Object.values(p.branches).forEach((b: Branch) => {
-            if (b.isDirty) list.push({ id: b.id, type: 'Branch', label: b.title, context: p.name });
+            if (b.isDirty) list.push({ id: b.id, type: 'Branch', label: b.title, context: p.name, action: 'update' });
             b.tasks.forEach((t: Task) => {
-                if (t.isDirty) list.push({ id: t.id, type: 'Task', label: t.title, context: `${b.title} (${p.name})` });
+                if (t.isDirty) list.push({ id: t.id, type: 'Task', label: t.title, context: `${b.title} (${p.name})`, action: 'update' });
             });
         });
     });
@@ -216,22 +222,23 @@ const SettingsPanel: React.FC = () => {
         Project: <FolderOpen className="w-3.5 h-3.5 text-indigo-500" />,
         Person: <Users className="w-3.5 h-3.5 text-emerald-500" />,
         Branch: <GitBranch className="w-3.5 h-3.5 text-amber-500" />,
-        Task: <ListTodo className="w-3.5 h-3.5 text-rose-500" />
+        Task: <ListTodo className="w-3.5 h-3.5 text-rose-500" />,
+        Deletion: <Trash2 className="w-3.5 h-3.5 text-red-500" />
     };
 
     return (
-        <div className="flex items-center gap-3 p-2 bg-white dark:bg-slate-800/40 rounded-lg border border-slate-100 dark:border-slate-800/60 hover:bg-slate-50 dark:hover:bg-slate-800 transition-colors">
+        <div className={`flex items-center gap-3 p-2 rounded-lg border transition-colors ${item.action === 'delete' ? 'bg-red-50/30 border-red-100 dark:bg-red-900/10 dark:border-red-900/30' : 'bg-white dark:bg-slate-800/40 border-slate-100 dark:border-slate-800/60 hover:bg-slate-50 dark:hover:bg-slate-800'}`}>
             <div className="shrink-0">
                 {icons[item.type]}
             </div>
             <div className="min-w-0 flex-1">
-                <p className="text-[11px] font-black text-slate-700 dark:text-slate-200 truncate">{item.label || '(Senza nome)'}</p>
+                <p className={`text-[11px] font-black truncate ${item.action === 'delete' ? 'text-red-700 dark:text-red-400' : 'text-slate-700 dark:text-slate-200'}`}>{item.label || '(Senza nome)'}</p>
                 {item.context && (
                     <p className="text-[9px] text-slate-400 font-bold uppercase truncate">{item.context}</p>
                 )}
             </div>
-            <div className="shrink-0 px-1.5 py-0.5 rounded bg-amber-100 dark:bg-amber-900/30 text-amber-600 dark:text-amber-400 text-[8px] font-black uppercase">
-                Dirty
+            <div className={`shrink-0 px-1.5 py-0.5 rounded text-[8px] font-black uppercase ${item.action === 'delete' ? 'bg-red-100 dark:bg-red-900/40 text-red-600' : 'bg-amber-100 dark:bg-amber-900/30 text-amber-600 dark:text-amber-400'}`}>
+                {item.action === 'delete' ? 'Elimina' : 'Update'}
             </div>
         </div>
     );
