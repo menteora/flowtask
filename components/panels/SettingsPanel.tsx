@@ -4,7 +4,7 @@ import { useProject } from '../../context/ProjectContext';
 import { useTask } from '../../context/TaskContext';
 import { 
   Database, Download, Key, Cloud, Loader2, User, LogOut, Code, DownloadCloud, Wifi, WifiOff,
-  Settings as SettingsIcon, MessageSquare, Copy, Upload, Trash2
+  Settings as SettingsIcon, MessageSquare, Copy, Upload, Trash2, RefreshCw
 } from 'lucide-react';
 
 const SQL_SCHEMA = `-- SCHEMA SQL FLOWTASK AGGIORNATO
@@ -16,7 +16,7 @@ type TabType = 'cloud' | 'preferences';
 const SettingsPanel: React.FC = () => {
   const { 
     supabaseConfig, setSupabaseConfig, uploadProjectToSupabase, listProjectsFromSupabase,
-    downloadProjectFromSupabase, deleteProjectFromSupabase,
+    downloadProjectFromSupabase, deleteProjectFromSupabase, downloadAllFromSupabase,
     state, session, logout, disableOfflineMode, enableOfflineMode, showNotification,
     isOfflineMode
   } = useProject();
@@ -31,6 +31,7 @@ const SettingsPanel: React.FC = () => {
   const [msgClosing, setMsgClosing] = useState(messageTemplates.closing);
 
   const [isLoadingList, setIsLoadingList] = useState(false);
+  const [isSyncingAll, setIsSyncingAll] = useState(false);
   const [remoteProjects, setRemoteProjects] = useState<any[]>([]);
   const [showSql, setShowSql] = useState(false);
   const [isUploading, setIsUploading] = useState(false);
@@ -69,6 +70,16 @@ const SettingsPanel: React.FC = () => {
       } catch (e) {
           showNotification("Errore durante il caricamento.", 'error');
       } finally { setIsUploading(false); }
+  };
+
+  const handleSyncAll = async () => {
+    setIsSyncingAll(true);
+    try {
+      await downloadAllFromSupabase();
+      await handleListProjects();
+    } finally {
+      setIsSyncingAll(false);
+    }
   };
 
   return (
@@ -121,11 +132,16 @@ const SettingsPanel: React.FC = () => {
 
                   {!isOfflineMode && session && (
                       <div className="bg-white dark:bg-slate-800 rounded-2xl border border-slate-200 dark:border-slate-700 p-6">
-                          <div className="flex items-center justify-between mb-6">
+                          <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-4 mb-6">
                               <h3 className="text-lg font-bold flex items-center gap-2"><DownloadCloud className="w-5 h-5 text-indigo-500" /> Gestione Cloud</h3>
-                              <button onClick={handleUpload} disabled={isUploading} className="px-4 py-2 bg-indigo-600 text-white rounded-xl text-xs font-bold flex items-center gap-2 shadow-lg disabled:opacity-50">
-                                  {isUploading ? <Loader2 className="w-4 h-4 animate-spin" /> : <Upload className="w-4 h-4" />} Carica Progetto Corrente
-                              </button>
+                              <div className="flex gap-2">
+                                  <button onClick={handleSyncAll} disabled={isSyncingAll} className="px-4 py-2 bg-amber-600 text-white rounded-xl text-xs font-bold flex items-center gap-2 shadow-md disabled:opacity-50">
+                                      {isSyncingAll ? <Loader2 className="w-4 h-4 animate-spin" /> : <RefreshCw className="w-4 h-4" />} Sincronizza Tutto dal Cloud
+                                  </button>
+                                  <button onClick={handleUpload} disabled={isUploading} className="px-4 py-2 bg-indigo-600 text-white rounded-xl text-xs font-bold flex items-center gap-2 shadow-lg disabled:opacity-50">
+                                      {isUploading ? <Loader2 className="w-4 h-4 animate-spin" /> : <Upload className="w-4 h-4" />} Carica Corrente
+                                  </button>
+                              </div>
                           </div>
                           
                           <div className="space-y-2">
