@@ -1,4 +1,3 @@
-
 import React, { useState, useEffect, useRef, useMemo } from 'react';
 import { useProject } from '../../context/ProjectContext';
 import { useBranch } from '../../context/BranchContext';
@@ -8,6 +7,7 @@ import { STATUS_CONFIG } from '../../constants';
 import { X, Save, Trash2, CheckSquare, Square, Calendar, Plus, Link as LinkIcon, Unlink, FileText, ChevronUp, ChevronDown, Loader2, ArrowRight, Check, Move, CheckCircle2, UserPlus, Eye, Edit2, Archive, RefreshCw, CalendarDays, Bold, Italic, List, Zap, GitBranch, Search, Globe, LayoutGrid, Mail, Tag, Hash } from 'lucide-react';
 import Avatar from '../ui/Avatar';
 import DatePicker from '../ui/DatePicker';
+import Markdown from '../ui/Markdown';
 
 const BranchDetails: React.FC = () => {
   const { state, session, isOfflineMode, showNotification, listProjectsFromSupabase, getProjectBranchesFromSupabase, moveLocalBranchToRemoteProject } = useProject();
@@ -29,6 +29,9 @@ const BranchDetails: React.FC = () => {
   const [bulkText, setBulkText] = useState('');
   const [newTaskTitle, setNewTaskTitle] = useState('');
   const [showDeleteConfirm, setShowDeleteConfirm] = useState(false);
+  
+  // Markdown Preview State
+  const [isPreviewMode, setIsPreviewMode] = useState(false);
   
   // WYSIWYG State
   const [popupMode, setPopupMode] = useState<'link' | 'email' | null>(null);
@@ -67,6 +70,7 @@ const BranchDetails: React.FC = () => {
       setShowDeleteConfirm(false); setIsLinkMode(false); setIsMigrateMode(false);
       setSelectedTaskIds([]); setIsBulkMoveMode(false); setIsBulkMode(false);
       setPopupMode(null);
+      setIsPreviewMode(false);
     }
   }, [branch?.id]); 
 
@@ -159,20 +163,21 @@ const BranchDetails: React.FC = () => {
       }
   }, [selectedRemoteProj]);
 
+  // Fix: Explicitly cast Object.values to Branch[] to avoid 'unknown' type errors for b.id and b.title
+  const potentialParents = useMemo(() => {
+      return (Object.values(state.branches) as Branch[]).filter((b: Branch) => 
+          b.id !== branch?.id && 
+          !branch?.parentIds.includes(b.id) &&
+          b.title.toLowerCase().includes(linkSearch.toLowerCase())
+      );
+  }, [state.branches, branch, linkSearch]);
+
   const sortedTasks = useMemo(() => {
     if (!branch) return [];
     let list = [...branch.tasks];
     if (showOnlyOpen) list = list.filter(t => !t.completed);
     return list.sort((a, b) => a.completed === b.completed ? (a.position ?? 0) - (b.position ?? 0) : (a.completed ? 1 : -1));
   }, [branch?.tasks, showOnlyOpen]);
-
-  const potentialParents = useMemo(() => {
-      return Object.values(state.branches).filter(b => 
-          b.id !== branch?.id && 
-          !branch?.parentIds.includes(b.id) &&
-          b.title.toLowerCase().includes(linkSearch.toLowerCase())
-      );
-  }, [state.branches, branch, linkSearch]);
 
   if (!branch) return null;
 
@@ -259,7 +264,8 @@ const BranchDetails: React.FC = () => {
                             <input type="text" value={linkSearch} onChange={(e) => setLinkSearch(e.target.value)} placeholder="Cerca ramo..." className="w-full pl-8 pr-2 py-1.5 text-xs bg-white dark:bg-slate-900 border border-slate-200 dark:border-slate-700 rounded outline-none focus:ring-1 focus:ring-indigo-500" />
                         </div>
                         <div className="max-h-32 overflow-y-auto space-y-1">
-                            {potentialParents.map(p => (
+                            {/* Fix: Explicitly type 'p' as Branch to avoid 'unknown' type error */}
+                            {(potentialParents as Branch[]).map((p: Branch) => (
                                 <button key={p.id} onClick={() => handleLinkParent(p.id)} className="w-full text-left p-1.5 text-[11px] hover:bg-indigo-100 dark:hover:bg-indigo-800 rounded flex items-center justify-between group text-slate-700 dark:text-slate-300">
                                     <span className="truncate">{p.title}</span>
                                     <Plus className="w-3 h-3 opacity-0 group-hover:opacity-100 text-indigo-600" />
@@ -300,43 +306,59 @@ const BranchDetails: React.FC = () => {
             </div>
         </div>
 
-        {/* Descrizione con Toolbar WYSIWYG */}
+        {/* Descrizione con Toolbar WYSIWYG e Preview */}
         <div className="space-y-2">
-            <label className="text-[10px] font-black uppercase text-slate-400 pl-1">Descrizione</label>
-            <div className="border border-slate-200 dark:border-slate-700 rounded-xl overflow-hidden focus-within:ring-2 focus-within:ring-indigo-500/30 transition-all">
-                <div className="flex items-center gap-0.5 p-1 bg-slate-50 dark:bg-slate-800 border-b border-slate-200 dark:border-slate-700 overflow-x-auto">
-                    <button onClick={() => handleToolbarAction('bold')} className="p-1.5 rounded hover:bg-white dark:hover:bg-slate-700 text-slate-600 dark:text-slate-400" title="Grassetto"><Bold className="w-3.5 h-3.5" /></button>
-                    <button onClick={() => handleToolbarAction('italic')} className="p-1.5 rounded hover:bg-white dark:hover:bg-slate-700 text-slate-600 dark:text-slate-400" title="Corsivo"><Italic className="w-3.5 h-3.5" /></button>
-                    <button onClick={() => handleToolbarAction('link')} className="p-1.5 rounded hover:bg-white dark:hover:bg-slate-700 text-slate-600 dark:text-slate-400" title="Link"><LinkIcon className="w-3.5 h-3.5" /></button>
-                    <button onClick={() => handleToolbarAction('email')} className="p-1.5 rounded hover:bg-white dark:hover:bg-slate-700 text-slate-600 dark:text-slate-400" title="Gmail"><Mail className="w-3.5 h-3.5" /></button>
-                    <button onClick={() => handleToolbarAction('list')} className="p-1.5 rounded hover:bg-white dark:hover:bg-slate-700 text-slate-600 dark:text-slate-400" title="Lista"><List className="w-3.5 h-3.5" /></button>
-                    <button onClick={() => handleToolbarAction('today-date')} className="p-1.5 rounded hover:bg-white dark:hover:bg-slate-700 text-slate-600 dark:text-slate-400" title="Data"><CalendarDays className="w-3.5 h-3.5" /></button>
-                </div>
-
-                {popupMode && (
-                    <div className="p-2 bg-white dark:bg-slate-900 border-b border-slate-200 dark:border-slate-700 flex gap-2">
-                        <input 
-                            ref={popupInputRef}
-                            type="text"
-                            value={popupInput}
-                            onChange={(e) => setPopupInput(e.target.value)}
-                            onKeyDown={(e) => e.key === 'Enter' && applyPopupValue()}
-                            placeholder={popupMode === 'link' ? "URL..." : "Oggetto..."}
-                            className="flex-1 text-xs p-1.5 border rounded dark:bg-slate-800 dark:border-slate-600 dark:text-white"
-                            autoFocus
-                        />
-                        <button onClick={applyPopupValue} className="p-1.5 bg-indigo-600 text-white rounded"><Check className="w-3 h-3" /></button>
-                    </div>
-                )}
-
-                <textarea 
-                    ref={descriptionRef}
-                    value={localDescription} 
-                    onChange={(e) => setLocalDescription(e.target.value)} 
-                    className="w-full h-32 p-3 text-sm bg-white dark:bg-slate-950 text-slate-800 dark:text-slate-200 outline-none resize-none" 
-                    placeholder="Aggiungi dettagli..." 
-                />
+            <div className="flex items-center justify-between px-1">
+                <label className="text-[10px] font-black uppercase text-slate-400">Descrizione</label>
+                <button 
+                    onClick={() => setIsPreviewMode(!isPreviewMode)}
+                    className="text-[10px] font-bold text-indigo-600 dark:text-indigo-400 flex items-center gap-1 hover:underline"
+                >
+                    {isPreviewMode ? <Edit2 className="w-2.5 h-2.5" /> : <Eye className="w-2.5 h-2.5" />}
+                    {isPreviewMode ? 'Modifica' : 'Anteprima'}
+                </button>
             </div>
+            
+            {isPreviewMode ? (
+                <div className="p-3 bg-slate-50 dark:bg-slate-800/50 rounded-xl border border-slate-200 dark:border-slate-700 min-h-[128px]">
+                    <Markdown content={localDescription} />
+                </div>
+            ) : (
+                <div className="border border-slate-200 dark:border-slate-700 rounded-xl overflow-hidden focus-within:ring-2 focus-within:ring-indigo-500/30 transition-all">
+                    <div className="flex items-center gap-0.5 p-1 bg-slate-50 dark:bg-slate-800 border-b border-slate-200 dark:border-slate-700 overflow-x-auto">
+                        <button onClick={() => handleToolbarAction('bold')} className="p-1.5 rounded hover:bg-white dark:hover:bg-slate-700 text-slate-600 dark:text-slate-400" title="Grassetto"><Bold className="w-3.5 h-3.5" /></button>
+                        <button onClick={() => handleToolbarAction('italic')} className="p-1.5 rounded hover:bg-white dark:hover:bg-slate-700 text-slate-600 dark:text-slate-400" title="Corsivo"><Italic className="w-3.5 h-3.5" /></button>
+                        <button onClick={() => handleToolbarAction('link')} className="p-1.5 rounded hover:bg-white dark:hover:bg-slate-700 text-slate-600 dark:text-slate-400" title="Link"><LinkIcon className="w-3.5 h-3.5" /></button>
+                        <button onClick={() => handleToolbarAction('email')} className="p-1.5 rounded hover:bg-white dark:hover:bg-slate-700 text-slate-600 dark:text-slate-400" title="Gmail"><Mail className="w-3.5 h-3.5" /></button>
+                        <button onClick={() => handleToolbarAction('list')} className="p-1.5 rounded hover:bg-white dark:hover:bg-slate-700 text-slate-600 dark:text-slate-400" title="Lista"><List className="w-3.5 h-3.5" /></button>
+                        <button onClick={() => handleToolbarAction('today-date')} className="p-1.5 rounded hover:bg-white dark:hover:bg-slate-700 text-slate-600 dark:text-slate-400" title="Data"><CalendarDays className="w-3.5 h-3.5" /></button>
+                    </div>
+
+                    {popupMode && (
+                        <div className="p-2 bg-white dark:bg-slate-900 border-b border-slate-200 dark:border-slate-700 flex gap-2">
+                            <input 
+                                ref={popupInputRef}
+                                type="text"
+                                value={popupInput}
+                                onChange={(e) => setPopupInput(e.target.value)}
+                                onKeyDown={(e) => e.key === 'Enter' && applyPopupValue()}
+                                placeholder={popupMode === 'link' ? "URL..." : "Oggetto..."}
+                                className="flex-1 text-xs p-1.5 border rounded dark:bg-slate-800 dark:border-slate-600 dark:text-white"
+                                autoFocus
+                            />
+                            <button onClick={applyPopupValue} className="p-1.5 bg-indigo-600 text-white rounded"><Check className="w-3 h-3" /></button>
+                        </div>
+                    )}
+
+                    <textarea 
+                        ref={descriptionRef}
+                        value={localDescription} 
+                        onChange={(e) => setLocalDescription(e.target.value)} 
+                        className="w-full h-32 p-3 text-sm bg-white dark:bg-slate-950 text-slate-800 dark:text-slate-200 outline-none resize-none" 
+                        placeholder="Aggiungi dettagli..." 
+                    />
+                </div>
+            )}
         </div>
 
         {/* Tasks Section */}
@@ -449,7 +471,8 @@ const BranchDetails: React.FC = () => {
                                         <label className="text-[10px] font-black uppercase text-slate-400">2. Scegli Genitore</label>
                                         <select value={selectedRemoteParent} onChange={(e) => setSelectedRemoteParent(e.target.value)} className="w-full p-2 text-xs rounded border border-slate-200 dark:bg-slate-900 dark:border-slate-700 text-slate-800 dark:text-slate-200">
                                             <option value="">Seleziona...</option>
-                                            {remoteBranches.map(b => <option key={b.id} value={b.id}>{b.title}</option>)}
+                                            {/* Fix: Added explicit type b: Branch to resolve 'unknown' property access */}
+                                            {remoteBranches.map((b: Branch) => <option key={b.id} value={b.id}>{b.title}</option>)}
                                         </select>
                                     </div>
                                 )}
