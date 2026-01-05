@@ -1,5 +1,8 @@
+
 import React, { useMemo } from 'react';
 import { useProject } from '../../context/ProjectContext';
+import { useBranch } from '../../context/BranchContext';
+import { useTask } from '../../context/TaskContext';
 import { Branch } from '../../types';
 import { Target, Star, CheckSquare, Square, ArrowRight, Folder, Pin, FileText } from 'lucide-react';
 import Avatar from '../ui/Avatar';
@@ -18,7 +21,10 @@ interface PinnedTaskItem {
 }
 
 const FocusPanel: React.FC = () => {
-    const { state, projects, showAllProjects, updateTask, selectBranch, switchProject, setEditingTask, setReadingTask } = useProject();
+    const { state, projects, switchProject } = useProject();
+    // Using BranchContext and TaskContext for specific actions and state
+    const { showAllProjects, selectBranch } = useBranch();
+    const { updateTask, setEditingTask, setReadingTask } = useTask();
 
     // Gather pinned tasks based on toggle state
     const pinnedTasks = useMemo(() => {

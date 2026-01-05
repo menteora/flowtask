@@ -1,12 +1,18 @@
 
 import React, { useEffect, useState, useRef } from 'react';
 import { useProject } from '../../context/ProjectContext';
+import { useBranch } from '../../context/BranchContext';
+import { useTask } from '../../context/TaskContext';
 import { X, FileText, Calendar, Edit2, Save, Bold, Italic, List, Link as LinkIcon, Mail, Check, CalendarDays } from 'lucide-react';
 import { STATUS_CONFIG } from '../../constants';
 import Markdown from '../ui/Markdown';
 
 const DescriptionReader: React.FC = () => {
-  const { readingDescriptionId, setReadingDescriptionId, state, updateBranch } = useProject();
+  const { state } = useProject();
+  // Using BranchContext and TaskContext for respective actions and state
+  const { updateBranch } = useBranch();
+  const { readingDescriptionId, setReadingDescriptionId } = useTask();
+
   const [isVisible, setIsVisible] = useState(false);
   const [isEditing, setIsEditing] = useState(false);
   const [tempDescription, setTempDescription] = useState('');

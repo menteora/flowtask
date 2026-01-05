@@ -1,10 +1,15 @@
+
 import React, { useEffect, useState } from 'react';
 import { useProject } from '../../context/ProjectContext';
+import { useTask } from '../../context/TaskContext';
 import { X, Send, Mail, Smartphone, Copy } from 'lucide-react';
 import { Branch } from '../../types';
 
 const MessageComposer: React.FC = () => {
-  const { remindingUserId, setRemindingUserId, state, messageTemplates } = useProject();
+  const { state } = useProject();
+  // Using TaskContext for reminders and message templates
+  const { remindingUserId, setRemindingUserId, messageTemplates } = useTask();
+  
   const [isVisible, setIsVisible] = useState(false);
   
   const [preamble, setPreamble] = useState('');
@@ -106,7 +111,7 @@ const MessageComposer: React.FC = () => {
         onClick={handleClose}
     >
       <div 
-        className={`bg-white dark:bg-slate-900 w-full max-w-lg rounded-xl shadow-2xl border border-gray-200 dark:border-slate-700 flex flex-col transition-transform duration-200 max-h-[90vh] ${remindingUserId ? 'scale-100 translate-y-0' : 'scale-95 translate-y-4'}`}
+        className={`bg-white dark:bg-slate-900 w-full max-lg rounded-xl shadow-2xl border border-gray-200 dark:border-slate-700 flex flex-col transition-transform duration-200 max-h-[90vh] ${remindingUserId ? 'scale-100 translate-y-0' : 'scale-95 translate-y-4'}`}
         onClick={e => e.stopPropagation()}
       >
         <div className="flex items-center justify-between p-4 border-b border-gray-100 dark:border-slate-800">

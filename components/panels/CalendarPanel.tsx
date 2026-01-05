@@ -1,6 +1,8 @@
 
 import React, { useMemo } from 'react';
 import { useProject } from '../../context/ProjectContext';
+import { useBranch } from '../../context/BranchContext';
+import { useTask } from '../../context/TaskContext';
 import { BranchStatus, Branch, Task } from '../../types';
 import { Calendar, Clock, AlertCircle, CheckCircle2, FileText, PlayCircle, StopCircle, ArrowRight, Folder, TrendingUp, Globe } from 'lucide-react';
 import Avatar from '../ui/Avatar';
@@ -22,7 +24,9 @@ interface TimelineItem {
 }
 
 const CalendarPanel: React.FC = () => {
-  const { state, projects, showAllProjects, selectBranch, setEditingTask, switchProject } = useProject();
+  const { state, projects, switchProject } = useProject();
+  const { showAllProjects, selectBranch } = useBranch();
+  const { setEditingTask } = useTask();
 
   // Utility to get local YYYY-MM-DD string
   const getLocalDateString = (date: Date) => {

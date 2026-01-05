@@ -1,12 +1,16 @@
 
 import React, { useEffect, useState, useRef } from 'react';
 import { useProject } from '../../context/ProjectContext';
+import { useTask } from '../../context/TaskContext';
 import { X, FileText, Calendar, Edit2, Save, Bold, Italic, List, Link as LinkIcon, Mail, Check, CheckSquare, Square, CalendarDays, CheckCircle2 } from 'lucide-react';
 import Avatar from '../ui/Avatar';
 import Markdown from '../ui/Markdown';
 
 const TaskDescriptionReader: React.FC = () => {
-  const { readingTask, setReadingTask, state, updateTask } = useProject();
+  const { state } = useProject();
+  // Using TaskContext for reading and updating tasks
+  const { readingTask, setReadingTask, updateTask } = useTask();
+
   const [isVisible, setIsVisible] = useState(false);
   const [isEditing, setIsEditing] = useState(false);
   const [tempDescription, setTempDescription] = useState('');
@@ -149,11 +153,11 @@ const TaskDescriptionReader: React.FC = () => {
                         {assignee && (
                             <div className="flex items-center gap-1.5 bg-slate-100 dark:bg-slate-800 px-2 py-0.5 rounded-full">
                                 <Avatar person={assignee} size="sm" className="w-4 h-4 text-[9px]" />
-                                <span>{assignee.name}</span>
+                                <span className="text-slate-700 dark:text-slate-300">{assignee.name}</span>
                             </div>
                         )}
                         {task.dueDate && (
-                            <span className="flex items-center gap-1 bg-slate-100 dark:bg-slate-800 px-2 py-0.5 rounded-full">
+                            <span className="flex items-center gap-1 bg-slate-100 dark:bg-slate-800 px-2 py-0.5 rounded-full text-slate-700 dark:text-slate-300">
                                 <Calendar className="w-3 h-3" />
                                 <span>Scadenza: {new Date(task.dueDate).toLocaleDateString()}</span>
                             </span>
@@ -164,7 +168,7 @@ const TaskDescriptionReader: React.FC = () => {
                                 <span>Completato: {new Date(task.completedAt).toLocaleString()}</span>
                             </span>
                         )}
-                        <span className="opacity-60">{branch?.title}</span>
+                        <span className="opacity-60 text-slate-500 dark:text-slate-400">{branch?.title}</span>
                     </div>
                 </div>
             </div>
@@ -196,7 +200,7 @@ const TaskDescriptionReader: React.FC = () => {
             </div>
         </div>
 
-        <div className="p-6 overflow-y-auto custom-scrollbar flex-1 relative">
+        <div className="p-6 overflow-y-auto custom-scrollbar flex-1 relative bg-white dark:bg-slate-900">
             {isEditing ? (
                 <div className="h-full flex flex-col border border-slate-200 dark:border-slate-700 rounded-lg overflow-hidden">
                     <div className="flex items-center gap-1 p-1 bg-slate-50 dark:bg-slate-800 border-b border-slate-200 dark:border-slate-700">
@@ -230,7 +234,7 @@ const TaskDescriptionReader: React.FC = () => {
                         ref={textareaRef}
                         value={tempDescription}
                         onChange={(e) => setTempDescription(e.target.value)}
-                        className="flex-1 w-full p-3 text-sm bg-white dark:bg-slate-900 text-slate-800 dark:text-slate-200 focus:outline-none resize-none"
+                        className="flex-1 w-full p-3 text-sm bg-white dark:bg-slate-950 text-slate-800 dark:text-slate-200 focus:outline-none resize-none"
                         placeholder="Scrivi qui..."
                         autoFocus
                     />

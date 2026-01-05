@@ -1,6 +1,7 @@
 
 import React, { useMemo, useState, useRef } from 'react';
 import { useProject } from '../../context/ProjectContext';
+import { useBranch } from '../../context/BranchContext';
 import { Branch, BranchStatus, Task } from '../../types';
 import { STATUS_CONFIG } from '../../constants';
 import { GanttChart, ChevronRight, ZoomIn, ZoomOut, Folder } from 'lucide-react';
@@ -10,7 +11,10 @@ const HEADER_HEIGHT = 80;
 const SIDEBAR_WIDTH = 220;
 
 const TimelinePanel: React.FC = () => {
-  const { state, projects, selectBranch, showArchived, showAllProjects, switchProject } = useProject();
+  const { state, projects, switchProject } = useProject();
+  // Using BranchContext for specific branch-related actions and state
+  const { selectBranch, showArchived, showAllProjects } = useBranch();
+
   const [zoomLevel, setZoomLevel] = useState(1); 
 
   const sidebarRef = useRef<HTMLDivElement>(null);
@@ -213,7 +217,7 @@ const TimelinePanel: React.FC = () => {
           </div>
       </div>
 
-      <div className="flex flex-1 overflow-hidden relative">
+      <div className="flex-1 flex overflow-hidden relative">
           <div 
             ref={sidebarRef}
             className="flex-shrink-0 bg-white dark:bg-slate-900 border-r border-slate-200 dark:border-slate-800 z-10 shadow-lg overflow-hidden"

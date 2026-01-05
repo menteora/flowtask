@@ -1,6 +1,7 @@
 
 import React, { useState, useEffect, useMemo } from 'react';
 import { useProject } from '../../context/ProjectContext';
+import { useTask } from '../../context/TaskContext';
 import { 
   Database, Download, Key, Cloud, Loader2, User, LogOut, Code, DownloadCloud, Wifi, WifiOff,
   Settings as SettingsIcon, MessageSquare, Copy, Upload, Trash2
@@ -17,8 +18,11 @@ const SettingsPanel: React.FC = () => {
     supabaseConfig, setSupabaseConfig, uploadProjectToSupabase, listProjectsFromSupabase,
     downloadProjectFromSupabase, deleteProjectFromSupabase,
     state, session, logout, disableOfflineMode, enableOfflineMode, showNotification,
-    messageTemplates, updateMessageTemplates, isOfflineMode
+    isOfflineMode
   } = useProject();
+
+  // Using TaskContext for preferences
+  const { messageTemplates, updateMessageTemplates } = useTask();
 
   const [activeTab, setActiveTab] = useState<TabType>('cloud');
   const [url, setUrl] = useState(supabaseConfig.url);

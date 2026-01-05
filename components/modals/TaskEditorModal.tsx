@@ -1,6 +1,7 @@
 
 import React, { useEffect, useState, useRef } from 'react';
 import { useProject } from '../../context/ProjectContext';
+import { useTask } from '../../context/TaskContext';
 import { X, Calendar, User, Trash2, CheckSquare, Square, Save, ArrowRight, Bold, Italic, List, Link as LinkIcon, Mail, Check, Eye, Edit2, Pin, CalendarDays, CheckCircle2 } from 'lucide-react';
 import Avatar from '../ui/Avatar';
 import { Branch } from '../../types';
@@ -8,7 +9,10 @@ import DatePicker from '../ui/DatePicker';
 import Markdown from '../ui/Markdown';
 
 const TaskEditorModal: React.FC = () => {
-  const { editingTask, setEditingTask, state, updateTask, deleteTask, moveTaskToBranch } = useProject();
+  const { state } = useProject();
+  // Using TaskContext for task editing actions and state
+  const { editingTask, setEditingTask, updateTask, deleteTask, moveTaskToBranch } = useTask();
+
   const [isVisible, setIsVisible] = useState(false);
   const [title, setTitle] = useState('');
   const [description, setDescription] = useState('');
