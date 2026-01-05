@@ -1,5 +1,5 @@
-
-import { useCallback } from 'react';
+// Added React import to resolve missing namespace error
+import React, { useCallback } from 'react';
 import { SupabaseClient } from '@supabase/supabase-js';
 import { ProjectState, Task, Branch } from '../types';
 import { persistenceService } from '../services/persistence';
