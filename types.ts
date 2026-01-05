@@ -1,3 +1,4 @@
+
 export enum BranchStatus {
   PLANNED = 'PLANNED',
   ACTIVE = 'ACTIVE',
@@ -13,6 +14,10 @@ export interface Person {
   phone?: string; 
   initials: string;
   color: string;
+  version: number;
+  updatedAt?: string;
+  deletedAt?: string;
+  isDirty?: boolean; // Flag per sync client -> server
 }
 
 export interface Task {
@@ -25,6 +30,10 @@ export interface Task {
   completedAt?: string; 
   position?: number; 
   pinned?: boolean; 
+  version: number;
+  updatedAt?: string;
+  deletedAt?: string;
+  isDirty?: boolean; // Flag per sync client -> server
 }
 
 export interface Branch {
@@ -35,7 +44,7 @@ export interface Branch {
   isLabel?: boolean; 
   isSprint?: boolean; 
   sprintCounter?: number; 
-  responsibleId?: string; // Nuova proprietà per il responsabile del ramo
+  responsibleId?: string;
   startDate?: string; 
   endDate?: string;   
   dueDate?: string;   
@@ -45,6 +54,10 @@ export interface Branch {
   archived?: boolean;
   position?: number; 
   collapsed?: boolean; 
+  version: number;
+  updatedAt?: string;
+  deletedAt?: string;
+  isDirty?: boolean; // Flag per sync client -> server
 }
 
 export interface ProjectState {
@@ -53,6 +66,10 @@ export interface ProjectState {
   branches: Record<string, Branch>;
   people: Person[];
   rootBranchId: string;
+  version: number;
+  updatedAt?: string;
+  deletedAt?: string;
+  isDirty?: boolean; // Flag per sync client -> server
 }
 
 export type Theme = 'light' | 'dark';

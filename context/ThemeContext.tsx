@@ -1,5 +1,7 @@
+
 import React, { createContext, useContext, useEffect, useState } from 'react';
 import { Theme } from '../types';
+import { localStorageService } from '../services/localStorage';
 
 interface ThemeContextType {
   theme: Theme;
@@ -9,18 +11,13 @@ interface ThemeContextType {
 const ThemeContext = createContext<ThemeContextType | undefined>(undefined);
 
 export const ThemeProvider: React.FC<{ children: React.ReactNode }> = ({ children }) => {
-  const [theme, setTheme] = useState<Theme>(() => {
-    if (typeof window !== 'undefined') {
-      return window.localStorage.getItem('theme') as Theme || 'light';
-    }
-    return 'light';
-  });
+  const [theme, setTheme] = useState<Theme>(() => localStorageService.getTheme());
 
   useEffect(() => {
     const root = window.document.documentElement;
     root.classList.remove('light', 'dark');
     root.classList.add(theme);
-    localStorage.setItem('theme', theme);
+    localStorageService.saveTheme(theme);
   }, [theme]);
 
   const toggleTheme = () => {

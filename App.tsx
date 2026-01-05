@@ -18,6 +18,7 @@ import TaskDescriptionReader from './components/modals/TaskDescriptionReader';
 import TaskEditorModal from './components/modals/TaskEditorModal';
 import MessageComposer from './components/modals/MessageComposer';
 import { toPng } from 'html-to-image';
+import { localStorageService } from './services/localStorage';
 
 type View = 'workflow' | 'team' | 'calendar' | 'assignments' | 'settings' | 'timeline' | 'focus';
 
@@ -31,18 +32,19 @@ const App: React.FC = () => {
   } = useProject();
   
   const [currentView, setCurrentView] = useState<View>(() => {
-      const saved = localStorage.getItem('flowtask_current_view');
+      const saved = localStorageService.getView('workflow');
       const validViews: View[] = ['workflow', 'team', 'calendar', 'assignments', 'settings', 'timeline', 'focus'];
       return (validViews.includes(saved as View) ? saved as View : 'workflow');
   });
 
   useEffect(() => {
-      localStorage.setItem('flowtask_current_view', currentView);
+      localStorageService.saveView(currentView);
   }, [currentView]);
 
   const [isProjectMenuOpen, setIsProjectMenuOpen] = useState(false);
   const fileInputRef = useRef<HTMLInputElement>(null);
   const [editingNameId, setEditingNameId] = useState<string | null>(null);
+  const [tempProjectName, setTempProjectName] = useState('');
 
   const showSpinner = isInitializing || (!isOfflineMode && loadingAuth);
 
@@ -103,7 +105,7 @@ const App: React.FC = () => {
         const dataUrl = await toPng(node, {
             cacheBust: true,
             backgroundColor: bgColor,
-            style: style,
+            style: style as any,
             width: type === 'canvas' ? node.scrollWidth : undefined,
             height: type === 'canvas' ? node.scrollHeight : undefined 
         });
@@ -140,6 +142,18 @@ const App: React.FC = () => {
     };
     reader.readAsText(file);
     e.target.value = '';
+  };
+
+  const startEditingProject = (proj: any) => {
+      setEditingNameId(proj.id);
+      setTempProjectName(proj.name);
+  };
+
+  const saveProjectRename = () => {
+      if (editingNameId && tempProjectName.trim()) {
+          renameProject(tempProjectName.trim());
+          setEditingNameId(null);
+      }
   };
 
   const NavItem = ({ view, icon: Icon, label }: { view: View; icon: any; label: string }) => (
@@ -215,8 +229,10 @@ const App: React.FC = () => {
                                 <div 
                                     className="flex-1 flex items-center gap-3 min-w-0"
                                     onClick={() => {
-                                        switchProject(proj.id);
-                                        setIsProjectMenuOpen(false);
+                                        if(!isEditing) {
+                                            switchProject(proj.id);
+                                            setIsProjectMenuOpen(false);
+                                        }
                                     }}
                                 >
                                     <div className={`w-8 h-8 rounded-full flex items-center justify-center shrink-0 ${isActive ? 'bg-indigo-100 text-indigo-600 dark:bg-indigo-900 dark:text-indigo-400' : 'bg-slate-100 text-slate-500 dark:bg-slate-800 dark:text-slate-400'}`}>
@@ -224,23 +240,26 @@ const App: React.FC = () => {
                                     </div>
                                     
                                     {isEditing ? (
-                                        <input 
-                                            autoFocus
-                                            type="text"
-                                            defaultValue={proj.name}
-                                            onBlur={(e) => {
-                                                renameProject(e.target.value);
-                                                setEditingNameId(null);
-                                            }}
-                                            onKeyDown={(e) => {
-                                                if(e.key === 'Enter') {
-                                                    renameProject(e.currentTarget.value);
-                                                    setEditingNameId(null);
-                                                }
-                                            }}
-                                            className="bg-transparent border-b border-indigo-500 outline-none w-full text-sm p-1"
-                                            onClick={(e) => e.stopPropagation()}
-                                        />
+                                        <div className="flex-1 flex items-center gap-2">
+                                            <input 
+                                                autoFocus
+                                                type="text"
+                                                value={tempProjectName}
+                                                onChange={(e) => setTempProjectName(e.target.value)}
+                                                onKeyDown={(e) => {
+                                                    if(e.key === 'Enter') saveProjectRename();
+                                                    if(e.key === 'Escape') setEditingNameId(null);
+                                                }}
+                                                className="bg-transparent border-b border-indigo-500 outline-none w-full text-sm p-1"
+                                                onClick={(e) => e.stopPropagation()}
+                                            />
+                                            <button 
+                                                onClick={(e) => { e.stopPropagation(); saveProjectRename(); }}
+                                                className="p-1 bg-green-600 text-white rounded-md"
+                                            >
+                                                <Check className="w-3.5 h-3.5" />
+                                            </button>
+                                        </div>
                                     ) : (
                                         <div className="flex-1 min-w-0">
                                             <p className={`text-sm font-semibold truncate ${isActive ? 'text-indigo-900 dark:text-indigo-100' : 'text-slate-700 dark:text-slate-200'}`}>
@@ -256,7 +275,7 @@ const App: React.FC = () => {
                                 <div className="flex items-center gap-1">
                                     {isActive && !isEditing && (
                                         <button 
-                                            onClick={() => setEditingNameId(proj.id)}
+                                            onClick={() => startEditingProject(proj)}
                                             className="p-2 text-slate-400 hover:text-indigo-500 rounded-full"
                                         >
                                             <Edit2 className="w-4 h-4" />
@@ -436,7 +455,7 @@ const App: React.FC = () => {
               return (
                   <div 
                     key={proj.id}
-                    onClick={() => switchProject(proj.id)}
+                    onClick={() => { if(!isEditing) switchProject(proj.id); }}
                     className={`
                         group flex items-center gap-2 px-3 py-2 text-sm font-medium rounded-t-lg border-t border-x cursor-pointer min-w-[150px] max-w-[250px]
                         ${isActive 
@@ -445,25 +464,25 @@ const App: React.FC = () => {
                     `}
                   >
                       {isEditing ? (
-                          <input 
-                            autoFocus
-                            type="text"
-                            defaultValue={proj.name}
-                            onBlur={(e) => {
-                                renameProject(e.target.value);
-                                setEditingNameId(null);
-                            }}
-                            onKeyDown={(e) => {
-                                if(e.key === 'Enter') {
-                                    renameProject(e.currentTarget.value);
-                                    setEditingNameId(null);
-                                }
-                            }}
-                            className="bg-transparent border-b border-indigo-500 outline-none w-full text-xs"
-                            onClick={(e) => e.stopPropagation()}
-                          />
+                          <div className="flex-1 flex items-center gap-1.5 overflow-hidden">
+                              <input 
+                                autoFocus
+                                type="text"
+                                value={tempProjectName}
+                                onChange={(e) => setTempProjectName(e.target.value)}
+                                onKeyDown={(e) => {
+                                    if(e.key === 'Enter') saveProjectRename();
+                                    if(e.key === 'Escape') setEditingNameId(null);
+                                }}
+                                className="bg-transparent border-b border-indigo-500 outline-none w-full text-xs"
+                                onClick={(e) => e.stopPropagation()}
+                              />
+                              <button onClick={(e) => { e.stopPropagation(); saveProjectRename(); }} className="text-green-600 shrink-0">
+                                  <Check className="w-3.5 h-3.5" />
+                              </button>
+                          </div>
                       ) : (
-                          <span className="truncate flex-1" onDoubleClick={() => setEditingNameId(proj.id)}>
+                          <span className="truncate flex-1" onDoubleClick={() => startEditingProject(proj)}>
                               {proj.name}
                           </span>
                       )}
@@ -472,7 +491,7 @@ const App: React.FC = () => {
                           <button 
                              onClick={(e) => {
                                  e.stopPropagation();
-                                 setEditingNameId(proj.id);
+                                 startEditingProject(proj);
                              }}
                              className="opacity-0 group-hover:opacity-100 text-slate-400 hover:text-indigo-500 p-0.5"
                           >
@@ -514,7 +533,6 @@ const App: React.FC = () => {
                     <FolderTree />
                 </div>
 
-                {/* Floating Action Buttons (Desktop ONLY) */}
                 <div className="hidden md:flex absolute bottom-6 right-6 md:bottom-10 md:right-10 flex-col gap-2 z-30 pointer-events-none">
                     <div className="flex flex-col gap-2 pointer-events-auto bg-white dark:bg-slate-900 p-2 rounded-2xl shadow-xl border border-slate-200 dark:border-slate-800 animate-in slide-in-from-right-4">
                         <button 

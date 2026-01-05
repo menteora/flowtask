@@ -18,6 +18,7 @@ export const createInitialProjectState = (name: string = 'Nuovo Progetto'): Proj
     name: name,
     rootBranchId: rootBranchId,
     people: [],
+    version: 1,
     branches: {
       [rootBranchId]: {
         id: rootBranchId,
@@ -28,6 +29,7 @@ export const createInitialProjectState = (name: string = 'Nuovo Progetto'): Proj
         tasks: [],
         childrenIds: [],
         parentIds: [],
+        version: 1, // Fix: Added missing version property
       }
     }
   };
