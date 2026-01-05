@@ -35,7 +35,7 @@ export const persistenceService = {
                 archived: branch.archived, collapsed: branch.collapsed, is_label: branch.isLabel,
                 is_sprint: branch.isSprint, sprint_counter: branch.sprintCounter,
                 parent_ids: branch.parentIds, children_ids: branch.childrenIds, 
-                responsible_id: branch.responsibleId, version: branch.version 
+                responsible_id: branch.responsibleId, position: branch.position, version: branch.version 
             },
             timestamp: Date.now()
         });

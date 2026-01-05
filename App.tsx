@@ -4,7 +4,7 @@ import { useTheme } from './context/ThemeContext';
 import { useProject } from './context/ProjectContext';
 import { useBranch } from './context/BranchContext';
 import { useTask } from './context/TaskContext';
-import { Moon, Sun, GitBranch, Layers, Users, Download, Upload, Archive, Camera, Plus, X, Edit2, Calendar, ClipboardList, Settings, Cloud, Loader2, Check, AlertCircle, ChevronDown, Folder, GanttChart, Globe, Target, ChevronsDown, ChevronsUp, CheckCircle2, Trash2 } from 'lucide-react';
+import { Moon, Sun, GitBranch, Layers, Users, Download, Upload, Archive, Camera, Plus, X, Edit2, Calendar, ClipboardList, Settings, Cloud, Loader2, Check, AlertCircle, ChevronDown, Folder, GanttChart, Globe, Target, ChevronsDown, ChevronsUp, CheckCircle2, Trash2, ChevronLeft, ChevronRight } from 'lucide-react';
 import FlowCanvas from './components/flow/FlowCanvas';
 import FolderTree from './components/flow/FolderTree';
 import BranchDetails from './components/panels/BranchDetails';
@@ -27,7 +27,7 @@ type View = 'workflow' | 'team' | 'calendar' | 'assignments' | 'settings' | 'tim
 const App: React.FC = () => {
   const { theme, toggleTheme } = useTheme();
   const { 
-    state, projects, activeProjectId, switchProject, createProject, closeProject, deleteProject, renameProject,
+    state, projects, activeProjectId, switchProject, reorderProject, createProject, closeProject, deleteProject, renameProject,
     session, loadingAuth, isInitializing, isOfflineMode, autoSaveStatus, notification, loadProject
   } = useProject();
   
@@ -188,12 +188,12 @@ const App: React.FC = () => {
 
       {/* Barra dei Tab Progetti (Desktop Style IDE) */}
       <div className="hidden md:flex h-10 w-full bg-slate-100 dark:bg-slate-900/50 border-b dark:border-slate-800 items-center px-4 gap-1 z-30 flex-shrink-0 overflow-x-auto no-scrollbar">
-         {projects.map(proj => (
+         {projects.map((proj, idx) => (
               <div 
                 key={proj.id}
                 onClick={() => switchProject(proj.id)}
                 className={`
-                  group flex items-center gap-2 px-4 h-8 rounded-t-lg transition-all cursor-pointer relative min-w-[100px] max-w-[200px] text-xs font-bold border-t border-x
+                  group flex items-center gap-2 px-4 h-8 rounded-t-lg transition-all cursor-pointer relative min-w-[120px] max-w-[220px] text-xs font-bold border-t border-x
                   ${proj.id === activeProjectId 
                     ? 'bg-white dark:bg-slate-950 border-slate-200 dark:border-slate-800 text-indigo-600 dark:text-indigo-400 z-10' 
                     : 'bg-transparent border-transparent text-slate-400 hover:bg-white/50 dark:hover:bg-slate-800'}
@@ -201,14 +201,32 @@ const App: React.FC = () => {
               >
                 <Folder className={`w-3 h-3 shrink-0 ${proj.id === activeProjectId ? 'text-indigo-500' : 'text-slate-400'}`} />
                 <span className="truncate flex-1">{proj.name}</span>
-                {projects.length > 1 && (
-                  <button 
-                    onClick={(e) => { e.stopPropagation(); closeProject(proj.id); }}
-                    className={`p-0.5 rounded hover:bg-slate-200 dark:hover:bg-slate-700 transition-opacity ${proj.id === activeProjectId ? 'opacity-100' : 'opacity-0 group-hover:opacity-100'}`}
-                  >
-                    <X className="w-2.5 h-2.5" />
-                  </button>
-                )}
+                
+                <div className={`flex items-center gap-0.5 opacity-0 group-hover:opacity-100 transition-opacity ml-1 ${proj.id === activeProjectId ? 'opacity-100' : ''}`}>
+                    <button 
+                        onClick={(e) => { e.stopPropagation(); reorderProject(proj.id, 'left'); }}
+                        disabled={idx === 0}
+                        className={`p-0.5 rounded hover:bg-slate-200 dark:hover:bg-slate-700 ${idx === 0 ? 'hidden' : ''}`}
+                    >
+                        <ChevronLeft className="w-3 h-3" />
+                    </button>
+                    <button 
+                        onClick={(e) => { e.stopPropagation(); reorderProject(proj.id, 'right'); }}
+                        disabled={idx === projects.length - 1}
+                        className={`p-0.5 rounded hover:bg-slate-200 dark:hover:bg-slate-700 ${idx === projects.length - 1 ? 'hidden' : ''}`}
+                    >
+                        <ChevronRight className="w-3 h-3" />
+                    </button>
+                    {projects.length > 1 && (
+                    <button 
+                        onClick={(e) => { e.stopPropagation(); closeProject(proj.id); }}
+                        className={`p-0.5 rounded hover:bg-slate-200 dark:hover:bg-slate-700`}
+                    >
+                        <X className="w-2.5 h-2.5" />
+                    </button>
+                    )}
+                </div>
+                
                 {proj.id === activeProjectId && (
                   <div className="absolute -bottom-[1px] left-0 right-0 h-[2px] bg-white dark:bg-slate-950 z-20"></div>
                 )}

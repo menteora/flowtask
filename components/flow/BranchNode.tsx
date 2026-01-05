@@ -5,7 +5,7 @@ import { STATUS_CONFIG } from '../../constants';
 import { useProject } from '../../context/ProjectContext';
 import { useBranch } from '../../context/BranchContext';
 import { useTask } from '../../context/TaskContext';
-import { Plus, Calendar, Archive, FileText, ChevronDown, ChevronUp, GitMerge, Tag, Eye, CheckCircle2, Zap, RefreshCw } from 'lucide-react';
+import { Plus, Calendar, Archive, FileText, ChevronDown, ChevronUp, GitMerge, Tag, Eye, CheckCircle2, Zap, RefreshCw, ChevronLeft, ChevronRight } from 'lucide-react';
 import Avatar from '../ui/Avatar';
 
 interface BranchNodeProps {
@@ -14,9 +14,8 @@ interface BranchNodeProps {
 
 const BranchNode: React.FC<BranchNodeProps> = ({ branchId }) => {
   const { state, pendingSyncIds } = useProject();
-  // Using BranchContext and TaskContext for respective actions and state
-  const { addBranch, selectBranch, selectedBranchId, updateBranch } = useBranch();
-  const { setReadingDescriptionId, showOnlyOpen } = useTask();
+  const { addBranch, selectBranch, selectedBranchId, updateBranch, moveBranch } = useBranch();
+  const { setReadingDescriptionId, showOnlyOpen, updateTask, moveTask } = useTask();
   
   const [isTasksExpanded, setIsTasksExpanded] = useState(false);
   const branch = state.branches[branchId];
@@ -70,6 +69,13 @@ const BranchNode: React.FC<BranchNodeProps> = ({ branchId }) => {
   const hasChildren = branch.childrenIds.length > 0;
   const isMultiParent = branch.parentIds.length > 1;
 
+  // Trova fratelli per pulsanti spostamento ramo
+  const parentId = branch.parentIds[0];
+  const parent = parentId ? state.branches[parentId] : null;
+  const siblingIndex = parent ? parent.childrenIds.indexOf(branchId) : -1;
+  const canMoveLeft = siblingIndex > 0;
+  const canMoveRight = parent ? siblingIndex < parent.childrenIds.length - 1 : false;
+
   const visibleTasks = isTasksExpanded ? sortedTasks : sortedTasks.slice(0, 3);
   const hiddenTasksCount = sortedTasks.length > 3 ? sortedTasks.length - 3 : 0;
 
@@ -79,10 +85,31 @@ const BranchNode: React.FC<BranchNodeProps> = ({ branchId }) => {
     </div>
   ) : null;
 
+  const BranchMoveControls = () => branchId === state.rootBranchId ? null : (
+    <div className="absolute -top-8 left-1/2 -translate-x-1/2 flex items-center gap-1 opacity-0 group-hover/node:opacity-100 transition-opacity bg-white dark:bg-slate-800 p-1 rounded-lg border border-slate-200 dark:border-slate-700 shadow-sm z-30">
+        <button 
+            onClick={(e) => { e.stopPropagation(); moveBranch(branchId, 'prev'); }}
+            disabled={!canMoveLeft}
+            className={`p-1 rounded ${canMoveLeft ? 'text-slate-600 hover:bg-slate-100 dark:text-slate-300 dark:hover:bg-slate-700' : 'text-slate-300 dark:text-slate-600 cursor-not-allowed'}`}
+        >
+            <ChevronLeft className="w-3.5 h-3.5" />
+        </button>
+        <div className="w-px h-3 bg-slate-200 dark:bg-slate-700 mx-0.5" />
+        <button 
+            onClick={(e) => { e.stopPropagation(); moveBranch(branchId, 'next'); }}
+            disabled={!canMoveRight}
+            className={`p-1 rounded ${canMoveRight ? 'text-slate-600 hover:bg-slate-100 dark:text-slate-300 dark:hover:bg-slate-700' : 'text-slate-300 dark:text-slate-600 cursor-not-allowed'}`}
+        >
+            <ChevronRight className="w-3.5 h-3.5" />
+        </button>
+    </div>
+  );
+
   if (branch.isLabel || branch.isSprint) {
       const isSprint = branch.isSprint;
       return (
-        <div className="flex flex-col items-center group/node">
+        <div className="flex flex-col items-center group/node relative">
+            <BranchMoveControls />
             <div 
                 className={`
                   relative w-56 rounded-lg shadow-sm border-2 transition-all duration-200 cursor-pointer hover:shadow-md
@@ -155,14 +182,15 @@ const BranchNode: React.FC<BranchNodeProps> = ({ branchId }) => {
   const statusConfig = STATUS_CONFIG[branch.status];
 
   return (
-    <div className="flex flex-col items-center group/node">
+    <div className="flex flex-col items-center group/node relative">
+      <BranchMoveControls />
       <div 
         className={`
           relative w-72 bg-white dark:bg-slate-800 rounded-xl shadow-sm border-2 
           transition-all duration-200 cursor-pointer hover:shadow-md
           ${isSelected 
             ? 'border-indigo-500 ring-2 ring-indigo-500/20' 
-            : 'border-slate-200 dark:border-slate-700 hover:border-indigo-300 dark:hover:border-slate-500'}
+            : 'border-slate-200 dark:border-slate-700 hover:border-indigo-300 dark:hover:border-indigo-500'}
           ${branch.archived ? 'border-dashed opacity-80 grayscale-[0.5]' : ''}
         `}
         onClick={(e) => {
@@ -226,14 +254,22 @@ const BranchNode: React.FC<BranchNodeProps> = ({ branchId }) => {
                 </div>
                 
                 <ul className="mt-2 space-y-1.5">
-                    {visibleTasks.map(task => {
+                    {visibleTasks.map((task, taskIdx) => {
                         const assignee = task.assigneeId ? state.people.find(p => p.id === task.assigneeId) : null;
                         const taskSyncing = pendingSyncIds.has(task.id);
+                        
+                        // Determina se il task può essere spostato
+                        const canMoveUp = taskIdx > 0 && sortedTasks[taskIdx - 1].completed === task.completed;
+                        const canMoveDown = taskIdx < sortedTasks.length - 1 && sortedTasks[taskIdx + 1].completed === task.completed;
+
                         return (
-                            <li key={task.id} className={`text-[11px] flex items-center justify-between gap-2 py-0.5 relative ${taskSyncing ? 'opacity-70' : ''}`}>
+                            <li key={task.id} className={`group/task text-[11px] flex items-center justify-between gap-2 py-0.5 relative ${taskSyncing ? 'opacity-70' : ''}`}>
                                 <div className="flex items-center gap-1.5 flex-1 min-w-0">
                                     <div className={`flex-shrink-0 w-1.5 h-1.5 rounded-full ${task.completed ? 'bg-green-400' : 'bg-slate-300 dark:bg-slate-600'}`} />
-                                    <span className={`truncate text-slate-600 dark:text-slate-300 ${task.completed ? 'line-through opacity-60' : ''}`}>
+                                    <span 
+                                        onClick={(e) => { e.stopPropagation(); updateTask(branch.id, task.id, { completed: !task.completed }); }}
+                                        className={`truncate text-slate-600 dark:text-slate-300 cursor-pointer ${task.completed ? 'line-through opacity-60' : ''}`}
+                                    >
                                         {task.title}
                                     </span>
                                 </div>
@@ -243,6 +279,23 @@ const BranchNode: React.FC<BranchNodeProps> = ({ branchId }) => {
                                         <RefreshCw className="w-2.5 h-2.5 text-indigo-500 animate-spin" />
                                     ) : (
                                         <>
+                                            <div className="flex items-center opacity-0 group-hover/task:opacity-100 transition-opacity">
+                                                <button 
+                                                    onClick={(e) => { e.stopPropagation(); moveTask(branch.id, task.id, 'up'); }}
+                                                    disabled={!canMoveUp}
+                                                    className={`p-0.5 ${canMoveUp ? 'text-indigo-400 hover:text-indigo-600' : 'text-slate-200 dark:text-slate-800'}`}
+                                                >
+                                                    <ChevronUp className="w-3 h-3" />
+                                                </button>
+                                                <button 
+                                                    onClick={(e) => { e.stopPropagation(); moveTask(branch.id, task.id, 'down'); }}
+                                                    disabled={!canMoveDown}
+                                                    className={`p-0.5 ${canMoveDown ? 'text-indigo-400 hover:text-indigo-600' : 'text-slate-200 dark:text-slate-800'}`}
+                                                >
+                                                    <ChevronDown className="w-3 h-3" />
+                                                </button>
+                                            </div>
+
                                             {task.completed && task.completedAt ? (
                                                 <div className="flex items-center text-green-500">
                                                     <CheckCircle2 className="w-3 h-3" />

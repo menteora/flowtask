@@ -370,8 +370,11 @@ const BranchDetails: React.FC = () => {
                 <textarea value={bulkText} onChange={(e) => setBulkText(e.target.value)} onBlur={() => bulkUpdateTasks(branch.id, bulkText)} className="w-full h-48 p-3 text-sm bg-slate-50 dark:bg-slate-950 border border-slate-200 dark:border-slate-700 rounded-xl font-mono text-slate-800 dark:text-slate-200" placeholder="Un task per riga..." />
             ) : (
                 <div className="space-y-2">
-                    {sortedTasks.map(task => {
+                    {sortedTasks.map((task, idx) => {
                         const taskAssignee = task.assigneeId ? state.people.find(p => p.id === task.assigneeId) : null;
+                        const canMoveUp = idx > 0 && sortedTasks[idx - 1].completed === task.completed;
+                        const canMoveDown = idx < sortedTasks.length - 1 && sortedTasks[idx + 1].completed === task.completed;
+
                         return (
                             <div key={task.id} className="flex items-center gap-3 p-2.5 bg-slate-50 dark:bg-slate-800 border border-slate-200 dark:border-slate-700 rounded-xl group hover:border-indigo-300 transition-colors">
                                 <button onClick={() => updateTask(branch.id, task.id, { completed: !task.completed })} className={task.completed ? 'text-green-500' : 'text-slate-300 dark:text-slate-500 hover:text-indigo-500'}>{task.completed ? <CheckSquare className="w-5 h-5" /> : <Square className="w-5 h-5" />}</button>
@@ -383,7 +386,25 @@ const BranchDetails: React.FC = () => {
                                         </div>
                                     )}
                                 </div>
-                                <div className="flex items-center opacity-0 group-hover:opacity-100 transition-opacity">
+                                <div className="flex items-center gap-1 opacity-0 group-hover:opacity-100 transition-opacity">
+                                    {!task.completed && (
+                                        <div className="flex flex-col mr-1">
+                                            <button 
+                                                onClick={(e) => { e.stopPropagation(); moveTask(branch.id, task.id, 'up'); }}
+                                                disabled={!canMoveUp}
+                                                className={`p-0.5 ${canMoveUp ? 'text-indigo-400 hover:text-indigo-600' : 'text-slate-200 dark:text-slate-700 cursor-not-allowed'}`}
+                                            >
+                                                <ChevronUp className="w-3.5 h-3.5" />
+                                            </button>
+                                            <button 
+                                                onClick={(e) => { e.stopPropagation(); moveTask(branch.id, task.id, 'down'); }}
+                                                disabled={!canMoveDown}
+                                                className={`p-0.5 ${canMoveDown ? 'text-indigo-400 hover:text-indigo-600' : 'text-slate-200 dark:text-slate-700 cursor-not-allowed'}`}
+                                            >
+                                                <ChevronDown className="w-3.5 h-3.5" />
+                                            </button>
+                                        </div>
+                                    )}
                                     <input 
                                         type="checkbox" 
                                         checked={selectedTaskIds.includes(task.id)} 

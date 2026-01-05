@@ -7,33 +7,26 @@ import {
   Settings as SettingsIcon, MessageSquare, Copy, Upload, Trash2, RefreshCw
 } from 'lucide-react';
 
-const SQL_SCHEMA = `-- SCHEMA SQL FLOWTASK AGGIORNATO
--- Eseguire nell'SQL Editor di Supabase
-... (schema omesso per brevità, lo stesso dei file precedenti) ...`;
-
-type TabType = 'cloud' | 'preferences';
-
 const SettingsPanel: React.FC = () => {
   const { 
     supabaseConfig, setSupabaseConfig, uploadProjectToSupabase, listProjectsFromSupabase,
-    downloadProjectFromSupabase, deleteProjectFromSupabase, downloadAllFromSupabase,
+    downloadProjectFromSupabase, deleteProjectFromSupabase, syncAllFromSupabase, pullAllFromSupabase,
     state, session, logout, disableOfflineMode, enableOfflineMode, showNotification,
     isOfflineMode
   } = useProject();
 
-  // Using TaskContext for preferences
   const { messageTemplates, updateMessageTemplates } = useTask();
 
-  const [activeTab, setActiveTab] = useState<TabType>('cloud');
+  const [activeTab, setActiveTab] = useState<'cloud' | 'preferences'>('cloud');
   const [url, setUrl] = useState(supabaseConfig.url);
   const [key, setKey] = useState(supabaseConfig.key);
   const [msgOpening, setMsgOpening] = useState(messageTemplates.opening);
   const [msgClosing, setMsgClosing] = useState(messageTemplates.closing);
 
   const [isLoadingList, setIsLoadingList] = useState(false);
-  const [isSyncingAll, setIsSyncingAll] = useState(false);
+  const [isSyncing, setIsSyncing] = useState(false);
+  const [isPulling, setIsPulling] = useState(false);
   const [remoteProjects, setRemoteProjects] = useState<any[]>([]);
-  const [showSql, setShowSql] = useState(false);
   const [isUploading, setIsUploading] = useState(false);
 
   useEffect(() => {
@@ -73,12 +66,22 @@ const SettingsPanel: React.FC = () => {
   };
 
   const handleSyncAll = async () => {
-    setIsSyncingAll(true);
+    setIsSyncing(true);
     try {
-      await downloadAllFromSupabase();
+      await syncAllFromSupabase();
       await handleListProjects();
     } finally {
-      setIsSyncingAll(false);
+      setIsSyncing(false);
+    }
+  };
+
+  const handlePullAll = async () => {
+    setIsPulling(true);
+    try {
+      await pullAllFromSupabase();
+      await handleListProjects();
+    } finally {
+      setIsPulling(false);
     }
   };
 
@@ -94,16 +97,16 @@ const SettingsPanel: React.FC = () => {
         
         <div className="flex gap-2">
             {isOfflineMode ? (
-                <button onClick={disableOfflineMode} className="px-4 py-2 bg-indigo-600 text-white rounded-xl text-xs font-bold flex items-center gap-2">
+                <button onClick={disableOfflineMode} className="px-4 py-2 bg-indigo-600 text-white rounded-xl text-xs font-bold flex items-center gap-2 shadow-sm">
                     <Wifi className="w-4 h-4" /> Passa a Cloud
                 </button>
             ) : (
-                <button onClick={enableOfflineMode} className="px-4 py-2 bg-slate-200 dark:bg-slate-800 text-slate-700 dark:text-slate-200 rounded-xl text-xs font-bold flex items-center gap-2">
+                <button onClick={enableOfflineMode} className="px-4 py-2 bg-slate-200 dark:bg-slate-800 text-slate-700 dark:text-slate-200 rounded-xl text-xs font-bold flex items-center gap-2 shadow-sm">
                     <WifiOff className="w-4 h-4" /> Lavora in Locale
                 </button>
             )}
             {session && (
-                <button onClick={logout} className="p-2 text-slate-400 hover:text-red-500 rounded-lg border border-slate-200 dark:border-slate-800"><LogOut className="w-4 h-4" /></button>
+                <button onClick={logout} className="p-2 text-slate-400 hover:text-red-500 rounded-lg border border-slate-200 dark:border-slate-800 transition-colors"><LogOut className="w-4 h-4" /></button>
             )}
         </div>
       </div>
@@ -116,48 +119,54 @@ const SettingsPanel: React.FC = () => {
       <div className="flex-1 overflow-y-auto custom-scrollbar pb-20">
           {activeTab === 'cloud' && (
               <div className="space-y-6">
-                  <div className="bg-white dark:bg-slate-800 rounded-2xl border border-slate-200 dark:border-slate-700 p-6">
+                  <div className="bg-white dark:bg-slate-800 rounded-2xl border border-slate-200 dark:border-slate-700 p-6 shadow-sm">
                       <div className="flex items-center justify-between mb-6">
-                          <h3 className="text-lg font-bold flex items-center gap-2"><Key className="w-5 h-5 text-indigo-500" /> Configurazione Supabase</h3>
+                          <h3 className="text-lg font-bold flex items-center gap-2 text-slate-800 dark:text-white"><Key className="w-5 h-5 text-indigo-500" /> Configurazione Supabase</h3>
                           <div className={`px-3 py-1 rounded-full text-[10px] font-black uppercase flex items-center gap-1.5 ${isOfflineMode ? 'bg-slate-100 text-slate-500' : 'bg-emerald-50 text-emerald-600'}`}>
                               {isOfflineMode ? 'Offline (Locale)' : 'Online (Cloud)'}
                           </div>
                       </div>
                       <div className="space-y-4">
-                          <input type="text" value={url} onChange={(e) => setUrl(e.target.value)} placeholder="Supabase Project URL" className="w-full p-2.5 rounded-lg border border-slate-200 dark:border-slate-700 bg-slate-50 dark:bg-slate-900 text-xs font-mono" />
-                          <input type="password" value={key} onChange={(e) => setKey(e.target.value)} placeholder="Supabase Anon Key" className="w-full p-2.5 rounded-lg border border-slate-300 dark:border-slate-700 bg-slate-50 dark:bg-slate-900 text-xs font-mono" />
-                          <button onClick={handleSaveConfig} className="px-6 py-2 bg-indigo-600 text-white rounded-xl text-xs font-bold">Aggiorna Credenziali</button>
+                          <input type="text" value={url} onChange={(e) => setUrl(e.target.value)} placeholder="Supabase Project URL" className="w-full p-2.5 rounded-lg border border-slate-200 dark:border-slate-700 bg-slate-50 dark:bg-slate-900 text-xs font-mono outline-none focus:ring-1 focus:ring-indigo-500" />
+                          <input type="password" value={key} onChange={(e) => setKey(e.target.value)} placeholder="Supabase Anon Key" className="w-full p-2.5 rounded-lg border border-slate-300 dark:border-slate-700 bg-slate-50 dark:bg-slate-900 text-xs font-mono outline-none focus:ring-1 focus:ring-indigo-500" />
+                          <button onClick={handleSaveConfig} className="px-6 py-2 bg-indigo-600 text-white rounded-xl text-xs font-bold hover:bg-indigo-700 transition-colors shadow-md">Aggiorna Credenziali</button>
                       </div>
                   </div>
 
                   {!isOfflineMode && session && (
-                      <div className="bg-white dark:bg-slate-800 rounded-2xl border border-slate-200 dark:border-slate-700 p-6">
-                          <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-4 mb-6">
-                              <h3 className="text-lg font-bold flex items-center gap-2"><DownloadCloud className="w-5 h-5 text-indigo-500" /> Gestione Cloud</h3>
-                              <div className="flex gap-2">
-                                  <button onClick={handleSyncAll} disabled={isSyncingAll} className="px-4 py-2 bg-amber-600 text-white rounded-xl text-xs font-bold flex items-center gap-2 shadow-md disabled:opacity-50">
-                                      {isSyncingAll ? <Loader2 className="w-4 h-4 animate-spin" /> : <RefreshCw className="w-4 h-4" />} Sincronizza Tutto dal Cloud
-                                  </button>
-                                  <button onClick={handleUpload} disabled={isUploading} className="px-4 py-2 bg-indigo-600 text-white rounded-xl text-xs font-bold flex items-center gap-2 shadow-lg disabled:opacity-50">
+                      <div className="bg-white dark:bg-slate-800 rounded-2xl border border-slate-200 dark:border-slate-700 p-6 shadow-sm">
+                          <div className="flex flex-col gap-4 mb-6">
+                              <div className="flex items-center justify-between">
+                                  <h3 className="text-lg font-bold flex items-center gap-2 text-slate-800 dark:text-white"><DownloadCloud className="w-5 h-5 text-indigo-500" /> Gestione Cloud</h3>
+                                  <button onClick={handleUpload} disabled={isUploading} className="px-4 py-2 bg-indigo-600 text-white rounded-xl text-xs font-bold flex items-center gap-2 shadow-md disabled:opacity-50 hover:bg-indigo-700 transition-all">
                                       {isUploading ? <Loader2 className="w-4 h-4 animate-spin" /> : <Upload className="w-4 h-4" />} Carica Corrente
+                                  </button>
+                              </div>
+                              <div className="flex flex-wrap gap-2">
+                                  <button onClick={handleSyncAll} disabled={isSyncing} className="flex-1 px-4 py-3 bg-indigo-50 dark:bg-indigo-900/20 text-indigo-600 dark:text-indigo-300 rounded-xl text-xs font-black uppercase tracking-wider border border-indigo-100 dark:border-indigo-800 hover:bg-indigo-100 transition-colors flex items-center justify-center gap-2">
+                                      {isSyncing ? <Loader2 className="w-4 h-4 animate-spin" /> : <RefreshCw className="w-4 h-4" />} Sincronizza Tutto
+                                  </button>
+                                  <button onClick={handlePullAll} disabled={isPulling} className="flex-1 px-4 py-3 bg-amber-50 dark:bg-amber-900/20 text-amber-700 dark:text-amber-400 rounded-xl text-xs font-black uppercase tracking-wider border border-amber-200 dark:border-amber-800 hover:bg-amber-100 transition-colors flex items-center justify-center gap-2">
+                                      {isPulling ? <Loader2 className="w-4 h-4 animate-spin" /> : <DownloadCloud className="w-4 h-4" />} Scarica Tutto
                                   </button>
                               </div>
                           </div>
                           
-                          <div className="space-y-2">
+                          <div className="space-y-2 border-t dark:border-slate-700 pt-4">
+                              <label className="text-[10px] font-black uppercase text-slate-400 mb-2 block">Progetti Disponibili sul Cloud</label>
                               {isLoadingList ? (
                                   <div className="flex justify-center py-8"><Loader2 className="w-8 h-8 animate-spin text-slate-300" /></div>
                               ) : remoteProjects.length === 0 ? (
                                   <p className="text-xs text-slate-400 italic text-center py-4">Nessun progetto trovato nel cloud.</p>
                               ) : (
                                   remoteProjects.map(proj => (
-                                      <div key={proj.id} className="flex items-center justify-between p-3 rounded-xl border border-slate-100 dark:border-slate-700 bg-slate-50/50">
+                                      <div key={proj.id} className="flex items-center justify-between p-3 rounded-xl border border-slate-100 dark:border-slate-700 bg-slate-50/50 hover:bg-white dark:hover:bg-slate-700 transition-colors group">
                                           <div>
                                               <p className="text-xs font-black text-slate-700 dark:text-slate-200">{proj.name}</p>
                                               <p className="text-[9px] text-slate-400 uppercase font-bold">{new Date(proj.created_at).toLocaleDateString()}</p>
                                           </div>
-                                          <div className="flex gap-1">
-                                              <button onClick={() => downloadProjectFromSupabase(proj.id)} className="p-2 text-indigo-600 hover:bg-indigo-50 rounded-lg" title="Scarica"><Download className="w-4 h-4" /></button>
+                                          <div className="flex gap-1 opacity-0 group-hover:opacity-100 transition-opacity">
+                                              <button onClick={() => downloadProjectFromSupabase(proj.id)} className="p-2 text-indigo-600 hover:bg-indigo-50 dark:hover:bg-indigo-900/40 rounded-lg" title="Scarica"><Download className="w-4 h-4" /></button>
                                               <button onClick={() => deleteProjectFromSupabase(proj.id).then(handleListProjects)} className="p-2 text-slate-300 hover:text-red-500"><Trash2 className="w-4 h-4" /></button>
                                           </div>
                                       </div>
@@ -170,17 +179,17 @@ const SettingsPanel: React.FC = () => {
           )}
 
           {activeTab === 'preferences' && (
-              <div className="bg-white dark:bg-slate-800 rounded-2xl border border-slate-200 dark:border-slate-700 p-6 space-y-4">
-                  <h3 className="text-lg font-bold flex items-center gap-2"><MessageSquare className="w-5 h-5 text-indigo-500" /> Template Solleciti</h3>
+              <div className="bg-white dark:bg-slate-800 rounded-2xl border border-slate-200 dark:border-slate-700 p-6 space-y-4 shadow-sm">
+                  <h3 className="text-lg font-bold flex items-center gap-2 text-slate-800 dark:text-white"><MessageSquare className="w-5 h-5 text-indigo-500" /> Template Solleciti</h3>
                   <div>
                       <label className="text-[10px] font-black uppercase text-slate-400 mb-1.5 block">Apertura</label>
-                      <textarea value={msgOpening} onChange={(e) => setMsgOpening(e.target.value)} className="w-full p-3 rounded-xl border border-slate-200 dark:border-slate-700 bg-slate-50 dark:bg-slate-900 text-xs min-h-[80px]" />
+                      <textarea value={msgOpening} onChange={(e) => setMsgOpening(e.target.value)} className="w-full p-3 rounded-xl border border-slate-200 dark:border-slate-700 bg-slate-50 dark:bg-slate-900 text-xs min-h-[80px] outline-none focus:ring-1 focus:ring-indigo-500" />
                   </div>
                   <div>
                       <label className="text-[10px] font-black uppercase text-slate-400 mb-1.5 block">Chiusura</label>
-                      <textarea value={msgClosing} onChange={(e) => setMsgClosing(e.target.value)} className="w-full p-3 rounded-xl border border-slate-200 dark:border-slate-700 bg-slate-50 dark:bg-slate-900 text-xs min-h-[80px]" />
+                      <textarea value={msgClosing} onChange={(e) => setMsgClosing(e.target.value)} className="w-full p-3 rounded-xl border border-slate-200 dark:border-slate-700 bg-slate-50 dark:bg-slate-900 text-xs min-h-[80px] outline-none focus:ring-1 focus:ring-indigo-500" />
                   </div>
-                  <button onClick={handleSaveTemplates} className="w-full py-3 bg-indigo-600 text-white rounded-xl text-xs font-black shadow-lg">Salva Template</button>
+                  <button onClick={handleSaveTemplates} className="w-full py-3 bg-indigo-600 text-white rounded-xl text-xs font-black shadow-lg hover:bg-indigo-700 transition-all">Salva Template</button>
               </div>
           )}
       </div>
