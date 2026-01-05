@@ -130,12 +130,30 @@ const App: React.FC = () => {
                     {projects.map(proj => (
                         <div key={proj.id} className={`flex items-center justify-between p-3 rounded-xl ${proj.id === activeProjectId ? 'bg-indigo-50 dark:bg-indigo-900/20 border border-indigo-200' : 'hover:bg-slate-50 dark:hover:bg-slate-800'}`}>
                             <div className="flex-1 flex items-center gap-3 min-w-0 cursor-pointer" onClick={() => { switchProject(proj.id); setIsProjectMenuOpen(false); }}>
-                                <Folder className="w-4 h-4 shrink-0" />
-                                <div className="truncate"><p className="text-sm font-semibold truncate">{proj.name}</p></div>
+                                <Folder className="w-4 h-4 shrink-0 text-indigo-500" />
+                                <div className="truncate">
+                                    {editingNameId === proj.id ? (
+                                        <div className="flex items-center gap-1" onClick={e => e.stopPropagation()}>
+                                            <input 
+                                                autoFocus
+                                                type="text" 
+                                                value={tempProjectName} 
+                                                onChange={e => setTempProjectName(e.target.value)}
+                                                onBlur={saveProjectRename}
+                                                onKeyDown={e => e.key === 'Enter' && saveProjectRename()}
+                                                className="bg-white dark:bg-slate-950 border border-indigo-500 rounded px-1 text-sm outline-none w-full"
+                                            />
+                                        </div>
+                                    ) : (
+                                        <p className="text-sm font-semibold truncate">{proj.name}</p>
+                                    )}
+                                </div>
                             </div>
                             <div className="flex items-center gap-1">
                                 <button onClick={(e) => { e.stopPropagation(); startEditingProject(proj); }} className="p-2 text-slate-400 hover:text-indigo-500"><Edit2 className="w-4 h-4" /></button>
-                                <button onClick={(e) => { e.stopPropagation(); closeProject(proj.id); }} className="p-2 text-slate-400 hover:text-amber-500"><X className="w-4 h-4" /></button>
+                                {projects.length > 1 && (
+                                    <button onClick={(e) => { e.stopPropagation(); closeProject(proj.id); }} className="p-2 text-slate-400 hover:text-amber-500" title="Chiudi tab"><X className="w-4 h-4" /></button>
+                                )}
                                 <button onClick={(e) => { e.stopPropagation(); deleteProject(proj.id); }} className="p-2 text-slate-300 hover:text-red-500"><Trash2 className="w-4 h-4" /></button>
                             </div>
                         </div>
@@ -148,14 +166,20 @@ const App: React.FC = () => {
 
       {/* Header Principale */}
       <div className="flex w-full h-14 bg-white dark:bg-slate-900 border-b dark:border-slate-800 items-center justify-between px-4 z-40 shadow-sm flex-shrink-0">
-        <div className="flex items-center gap-3 min-w-0">
+        <div className="flex items-center gap-3 min-w-0 h-full">
           <div className="bg-indigo-600 p-1.5 rounded-lg shadow-sm shrink-0"><GitBranch className="w-5 h-5 text-white" /></div>
           
-          {/* Progetto Attivo (Mobile & Info) */}
-          <div className="flex flex-col leading-tight min-w-0 max-w-[150px] md:max-w-none">
+          {/* Progetto Attivo - Cliccabile per aprire il menu progetti anche su mobile */}
+          <button 
+            onClick={() => setIsProjectMenuOpen(true)}
+            className="flex flex-col items-start leading-tight min-w-0 max-w-[150px] md:max-w-none hover:bg-slate-50 dark:hover:bg-slate-800 px-2 py-1 rounded-lg transition-colors group"
+          >
              <span className="text-[9px] text-slate-400 font-bold uppercase tracking-tighter">FlowTask</span>
-             <span className="font-bold text-sm truncate">{state.name}</span>
-          </div>
+             <div className="flex items-center gap-1 w-full overflow-hidden">
+                <span className="font-bold text-sm truncate">{state.name}</span>
+                <ChevronDown className="w-3 h-3 text-slate-400 group-hover:text-indigo-500 transition-colors" />
+             </div>
+          </button>
 
           {session && !isOfflineMode && (
               <div className="hidden lg:flex items-center gap-1.5 px-2 py-0.5 bg-slate-50 dark:bg-slate-800 rounded text-[10px] transition-colors ml-2 shrink-0">
