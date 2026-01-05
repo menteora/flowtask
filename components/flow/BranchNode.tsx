@@ -3,7 +3,7 @@ import React, { useState, useEffect, useMemo, useCallback } from 'react';
 import { Branch, BranchStatus, Person } from '../../types';
 import { STATUS_CONFIG } from '../../constants';
 import { useProject } from '../../context/ProjectContext';
-import { Plus, Calendar, Archive, FileText, ChevronDown, ChevronUp, GitMerge, Tag, Eye, CheckCircle2, Zap } from 'lucide-react';
+import { Plus, Calendar, Archive, FileText, ChevronDown, ChevronUp, GitMerge, Tag, Eye, CheckCircle2, Zap, RefreshCw } from 'lucide-react';
 import Avatar from '../ui/Avatar';
 
 interface BranchNodeProps {
@@ -11,12 +11,13 @@ interface BranchNodeProps {
 }
 
 const BranchNode: React.FC<BranchNodeProps> = ({ branchId }) => {
-  const { state, addBranch, selectBranch, selectedBranchId, setReadingDescriptionId, updateBranch, showOnlyOpen } = useProject();
+  const { state, addBranch, selectBranch, selectedBranchId, setReadingDescriptionId, updateBranch, showOnlyOpen, pendingSyncIds } = useProject();
   const [isTasksExpanded, setIsTasksExpanded] = useState(false);
   const branch = state.branches[branchId];
   
   const isInactive = branch?.status === BranchStatus.CLOSED || branch?.status === BranchStatus.CANCELLED;
   const [isDetailsOpen, setIsDetailsOpen] = useState(!isInactive);
+  const isSyncing = pendingSyncIds.has(branchId);
 
   useEffect(() => {
       if (branch) {
@@ -66,6 +67,12 @@ const BranchNode: React.FC<BranchNodeProps> = ({ branchId }) => {
   const visibleTasks = isTasksExpanded ? sortedTasks : sortedTasks.slice(0, 3);
   const hiddenTasksCount = sortedTasks.length > 3 ? sortedTasks.length - 3 : 0;
 
+  const SyncIndicator = () => isSyncing ? (
+    <div className="absolute -top-2 -right-2 bg-indigo-600 text-white p-1 rounded-full shadow-lg animate-spin z-50">
+        <RefreshCw className="w-3 h-3" />
+    </div>
+  ) : null;
+
   if (branch.isLabel || branch.isSprint) {
       const isSprint = branch.isSprint;
       return (
@@ -84,6 +91,7 @@ const BranchNode: React.FC<BranchNodeProps> = ({ branchId }) => {
                   selectBranch(branchId);
                 }}
             >
+                <SyncIndicator />
                 <div className="p-2 flex items-center justify-between gap-2">
                     <div className="flex items-center gap-2 min-w-0">
                         {isSprint ? (
@@ -156,6 +164,7 @@ const BranchNode: React.FC<BranchNodeProps> = ({ branchId }) => {
           selectBranch(branchId);
         }}
       >
+        <SyncIndicator />
         <div className={`p-3 border-b border-slate-100 dark:border-slate-700 flex justify-between items-start ${branch.archived ? 'bg-slate-50 dark:bg-slate-800' : ''} relative`}>
           <div className="flex flex-col gap-1 overflow-hidden flex-1 min-w-0 pr-1">
              <h3 className="font-bold text-slate-800 dark:text-slate-100 truncate text-sm flex items-center gap-2" title={branch.title}>
@@ -213,8 +222,9 @@ const BranchNode: React.FC<BranchNodeProps> = ({ branchId }) => {
                 <ul className="mt-2 space-y-1.5">
                     {visibleTasks.map(task => {
                         const assignee = task.assigneeId ? state.people.find(p => p.id === task.assigneeId) : null;
+                        const taskSyncing = pendingSyncIds.has(task.id);
                         return (
-                            <li key={task.id} className="text-[11px] flex items-center justify-between gap-2 py-0.5 relative">
+                            <li key={task.id} className={`text-[11px] flex items-center justify-between gap-2 py-0.5 relative ${taskSyncing ? 'opacity-70' : ''}`}>
                                 <div className="flex items-center gap-1.5 flex-1 min-w-0">
                                     <div className={`flex-shrink-0 w-1.5 h-1.5 rounded-full ${task.completed ? 'bg-green-400' : 'bg-slate-300 dark:bg-slate-600'}`} />
                                     <span className={`truncate text-slate-600 dark:text-slate-300 ${task.completed ? 'line-through opacity-60' : ''}`}>
@@ -223,17 +233,23 @@ const BranchNode: React.FC<BranchNodeProps> = ({ branchId }) => {
                                 </div>
 
                                 <div className="flex items-center gap-1.5 flex-shrink-0">
-                                    {task.completed && task.completedAt ? (
-                                        <div className="flex items-center text-green-500">
-                                            <CheckCircle2 className="w-3 h-3" />
-                                        </div>
-                                    ) : task.dueDate ? (
-                                        <div className={`flex items-center gap-0.5 px-1 rounded-sm text-[8px] font-black ${new Date(task.dueDate) < new Date() ? 'bg-red-100 text-red-600' : 'bg-amber-100 text-amber-700'}`}>
-                                            <Calendar className="w-2.5 h-2.5" />
-                                            <span>{new Date(task.dueDate).getDate()}/{new Date(task.dueDate).getMonth() + 1}</span>
-                                        </div>
-                                    ) : null}
-                                    {assignee && <Avatar person={assignee} size="sm" className="w-4 h-4 text-[7px]" />}
+                                    {taskSyncing ? (
+                                        <RefreshCw className="w-2.5 h-2.5 text-indigo-500 animate-spin" />
+                                    ) : (
+                                        <>
+                                            {task.completed && task.completedAt ? (
+                                                <div className="flex items-center text-green-500">
+                                                    <CheckCircle2 className="w-3 h-3" />
+                                                </div>
+                                            ) : task.dueDate ? (
+                                                <div className={`flex items-center gap-0.5 px-1 rounded-sm text-[8px] font-black ${new Date(task.dueDate) < new Date() ? 'bg-red-100 text-red-600' : 'bg-amber-100 text-amber-700'}`}>
+                                                    <Calendar className="w-2.5 h-2.5" />
+                                                    <span>{new Date(task.dueDate).getDate()}/{new Date(task.dueDate).getMonth() + 1}</span>
+                                                </div>
+                                            ) : null}
+                                            {assignee && <Avatar person={assignee} size="sm" className="w-4 h-4 text-[7px]" />}
+                                        </>
+                                    )}
                                 </div>
                             </li>
                         );

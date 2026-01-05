@@ -1,11 +1,12 @@
 
-import { ProjectState } from '../types';
+import { ProjectState, SyncOperation } from '../types';
 
 const DB_NAME = 'FlowTaskDB';
-const DB_VERSION = 1;
+const DB_VERSION = 2; // Incrementato per nuova tabella sync_queue
 const STORES = {
   PROJECTS: 'projects',
-  SETTINGS: 'settings'
+  SETTINGS: 'settings',
+  SYNC_QUEUE: 'sync_queue'
 };
 
 class IndexedDBService {
@@ -23,6 +24,9 @@ class IndexedDBService {
         if (!db.objectStoreNames.contains(STORES.SETTINGS)) {
           db.createObjectStore(STORES.SETTINGS);
         }
+        if (!db.objectStoreNames.contains(STORES.SYNC_QUEUE)) {
+          db.createObjectStore(STORES.SYNC_QUEUE, { keyPath: 'id', autoIncrement: true });
+        }
       };
 
       request.onsuccess = (event: any) => {
@@ -30,10 +34,7 @@ class IndexedDBService {
         resolve();
       };
 
-      request.onerror = (event: any) => {
-        console.error('IndexedDB error:', event.target.error);
-        reject(event.target.error);
-      };
+      request.onerror = (event: any) => reject(event.target.error);
     });
   }
 
@@ -70,21 +71,45 @@ class IndexedDBService {
     });
   }
 
-  async setSetting(key: string, value: any): Promise<void> {
-    const store = await this.getStore(STORES.SETTINGS, 'readwrite');
+  // Sync Queue Methods
+  async addToSyncQueue(op: SyncOperation): Promise<void> {
+    const store = await this.getStore(STORES.SYNC_QUEUE, 'readwrite');
     return new Promise((resolve, reject) => {
-      const request = store.put(value, key);
+      const request = store.add(op);
       request.onsuccess = () => resolve();
       request.onerror = () => reject(request.error);
     });
   }
 
+  async getSyncQueue(): Promise<SyncOperation[]> {
+    const store = await this.getStore(STORES.SYNC_QUEUE, 'readonly');
+    return new Promise((resolve, reject) => {
+      const request = store.getAll();
+      request.onsuccess = () => resolve(request.result || []);
+      request.onerror = () => reject(request.error);
+    });
+  }
+
+  async removeFromSyncQueue(id: number): Promise<void> {
+    const store = await this.getStore(STORES.SYNC_QUEUE, 'readwrite');
+    return new Promise((resolve, reject) => {
+      const request = store.delete(id);
+      request.onsuccess = () => resolve();
+      request.onerror = () => reject(request.error);
+    });
+  }
+
+  async setSetting(key: string, value: any): Promise<void> {
+    const store = await this.getStore(STORES.SETTINGS, 'readwrite');
+    store.put(value, key);
+  }
+
   async getSetting<T>(key: string): Promise<T | null> {
     const store = await this.getStore(STORES.SETTINGS, 'readonly');
-    return new Promise((resolve, reject) => {
+    return new Promise((resolve) => {
       const request = store.get(key);
       request.onsuccess = () => resolve(request.result);
-      request.onerror = () => reject(request.error);
+      request.onerror = () => resolve(null);
     });
   }
 }

@@ -16,7 +16,6 @@ export interface Person {
   color: string;
   version: number;
   updatedAt?: string;
-  deletedAt?: string;
 }
 
 export interface Task {
@@ -31,7 +30,6 @@ export interface Task {
   pinned?: boolean; 
   version: number;
   updatedAt?: string;
-  deletedAt?: string;
 }
 
 export interface Branch {
@@ -50,11 +48,18 @@ export interface Branch {
   childrenIds: string[];
   parentIds: string[]; 
   archived?: boolean;
-  position?: number; 
   collapsed?: boolean; 
   version: number;
   updatedAt?: string;
-  deletedAt?: string;
+}
+
+export interface SyncOperation {
+    id?: number; // Auto-increment in IDB
+    entityId: string;
+    table: 'flowtask_projects' | 'flowtask_branches' | 'flowtask_tasks' | 'flowtask_people';
+    action: 'upsert' | 'delete';
+    payload: any;
+    timestamp: number;
 }
 
 export interface ProjectState {
@@ -65,7 +70,6 @@ export interface ProjectState {
   rootBranchId: string;
   version: number;
   updatedAt?: string;
-  deletedAt?: string;
 }
 
 export type Theme = 'light' | 'dark';

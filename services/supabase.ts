@@ -29,10 +29,9 @@ export const supabaseService = {
 
   /**
    * Implementazione OCC + Soft Delete Aware.
-   * Rimosso riferimento a 'isDirty' non più presente nei tipi.
    */
   async upsertEntity(client: SupabaseClient, table: string, payload: any) {
-    const { version, id, updatedAt, deletedAt, ...rest } = payload;
+    const { version, id, updatedAt, deletedAt, isDirty, ...rest } = payload;
     
     if (payload.deleted_at) {
         return client.from(table).update({ deleted_at: payload.deleted_at, version: (version || 1) + 1 }).eq('id', id);
@@ -114,7 +113,7 @@ export const supabaseService = {
     }
 
     for (const b of Object.values(project.branches)) {
-      // Fix: Use b.isLabel (camelCase) instead of b.is_label (snake_case) as defined in the Branch interface.
+      // Fixed: correctly accessed camelCase properties on Branch object
       await this.upsertEntity(client, 'flowtask_branches', {
           id: b.id, project_id: project.id, title: b.title, description: b.description, status: b.status,
           start_date: b.startDate, end_date: b.endDate, due_date: b.dueDate, archived: b.archived,
