@@ -17,7 +17,6 @@ export interface Person {
   version: number;
   updatedAt?: string;
   deletedAt?: string;
-  isDirty?: boolean;
 }
 
 export interface Task {
@@ -33,7 +32,6 @@ export interface Task {
   version: number;
   updatedAt?: string;
   deletedAt?: string;
-  isDirty?: boolean;
 }
 
 export interface Branch {
@@ -57,14 +55,6 @@ export interface Branch {
   version: number;
   updatedAt?: string;
   deletedAt?: string;
-  isDirty?: boolean;
-}
-
-export interface DeletedRecord {
-  id: string;
-  table: 'flowtask_projects' | 'flowtask_branches' | 'flowtask_tasks' | 'flowtask_people';
-  version: number;
-  label: string;
 }
 
 export interface ProjectState {
@@ -76,8 +66,6 @@ export interface ProjectState {
   version: number;
   updatedAt?: string;
   deletedAt?: string;
-  isDirty?: boolean;
-  pendingDeletions?: DeletedRecord[]; // Coda per sync eliminazioni
 }
 
 export type Theme = 'light' | 'dark';

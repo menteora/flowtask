@@ -27,7 +27,7 @@ const App: React.FC = () => {
   const { 
     selectedBranchId, state, loadProject, showArchived, toggleShowArchived,
     projects, activeProjectId, switchProject, createProject, closeProject, renameProject,
-    session, loadingAuth, isInitializing, isOfflineMode, autoSaveStatus, notification,
+    session, loadingAuth, isInitializing, isOfflineMode, notification,
     showAllProjects, toggleShowAllProjects, showOnlyOpen, toggleShowOnlyOpen, setAllBranchesCollapsed
   } = useProject();
   
@@ -337,32 +337,6 @@ const App: React.FC = () => {
                  </div>
              </div>
           </button>
-
-          {session && !isOfflineMode && (
-              <div className="hidden sm:flex items-center gap-1.5 px-2 py-1 bg-slate-50 dark:bg-slate-800 rounded text-xs transition-colors ml-2 md:ml-0 md:absolute md:left-full md:top-1/2 md:-translate-y-1/2 md:ml-6 w-max">
-                  {autoSaveStatus === 'saving' && (
-                      <>
-                        <Loader2 className="w-3 h-3 animate-spin text-indigo-500" />
-                        <span className="text-indigo-500 hidden sm:inline">Salvataggio...</span>
-                      </>
-                  )}
-                  {autoSaveStatus === 'saved' && (
-                      <>
-                        <Cloud className="w-3 h-3 text-green-500" />
-                        <span className="text-green-500 hidden sm:inline">Salvato</span>
-                      </>
-                  )}
-                  {autoSaveStatus === 'error' && (
-                      <>
-                        <AlertCircle className="w-3 h-3 text-red-500" />
-                        <span className="text-red-500 hidden sm:inline">Errore Sync</span>
-                      </>
-                  )}
-                  {autoSaveStatus === 'idle' && (
-                      <span className="text-slate-400 hidden sm:inline">Pronto</span>
-                  )}
-              </div>
-          )}
         </div>
 
         <div className="hidden md:flex items-center gap-1">
