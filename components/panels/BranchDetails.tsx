@@ -58,6 +58,7 @@ const BranchDetails: React.FC = () => {
       setLocalIsSprint(branch.isSprint || false);
       setLocalSprintCounter(branch.sprintCounter || 1);
       
+      // Inizializziamo il bulk text ma lo aggiorneremo anche esplicitamente al toggle
       setBulkText(branch.tasks.map(t => t.title).join('\n'));
       setShowDeleteConfirm(false);
       setParentToAdd('');
@@ -66,8 +67,18 @@ const BranchDetails: React.FC = () => {
       setPopupMode(null);
       setSelectedTaskIds([]);
       setIsBulkMoveMode(false);
+      setIsBulkMode(false);
     }
   }, [branch?.id]); 
+
+  // Funzione per entrare in modalità bulk ricaricando i task reali
+  const handleToggleBulkMode = () => {
+      if (!isBulkMode && branch) {
+          // Quando attiviamo, prendiamo i titoli correnti dallo stato (include task aggiunti singolarmente)
+          setBulkText(branch.tasks.map(t => t.title).join('\n'));
+      }
+      setIsBulkMode(!isBulkMode);
+  };
 
   // Verifica se ci sono cambiamenti non salvati
   const isDirty = useMemo(() => {
@@ -558,7 +569,7 @@ const BranchDetails: React.FC = () => {
                         {sortedTasks.length > 0 && (
                             <button onClick={() => setIsBulkMoveMode(!isBulkMoveMode)} className={`text-xs flex items-center gap-1 transition-colors ${isBulkMoveMode ? 'text-indigo-600 font-bold' : 'text-slate-500 hover:text-indigo-600'}`}><Move className="w-3 h-3" />{isBulkMoveMode ? 'Annulla' : 'Sposta Bulk'}</button>
                         )}
-                        <button onClick={() => setIsBulkMode(!isBulkMode)} className="text-xs text-indigo-600 dark:text-indigo-400 hover:underline font-bold">{isBulkMode ? 'Lista Singola' : 'Bulk Edit'}</button>
+                        <button onClick={handleToggleBulkMode} className="text-xs text-indigo-600 dark:text-indigo-400 hover:underline font-bold">{isBulkMode ? 'Lista Singola' : 'Bulk Edit'}</button>
                     </div>
                 </div>
                 {isBulkMode ? (

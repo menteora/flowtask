@@ -29,7 +29,6 @@ export const supabaseService = {
 
   /**
    * Implementazione OCC + Soft Delete Aware.
-   * Rimuove 'isDirty' dal payload perché è una proprietà puramente locale del client.
    */
   async upsertEntity(client: SupabaseClient, table: string, payload: any) {
     const { version, id, updatedAt, deletedAt, isDirty, ...rest } = payload;
@@ -53,11 +52,7 @@ export const supabaseService = {
       return { data };
     }
 
-    // In fase di creazione (upsert) rimuoviamo anche isDirty
-    const cleanPayload = { ...payload };
-    delete cleanPayload.isDirty;
-
-    return client.from(table).upsert(cleanPayload);
+    return client.from(table).upsert(payload);
   },
 
   async downloadFullProject(client: SupabaseClient, id: string): Promise<ProjectState> {
@@ -81,7 +76,7 @@ export const supabaseService = {
 
     const people: Person[] = (peopleRes.data || []).map(p => ({
       id: p.id, name: p.name, email: p.email, phone: p.phone, initials: p.initials, color: p.color, 
-      version: p.version || 1, updatedAt: p.updated_at, isDirty: false
+      version: p.version || 1, updatedAt: p.updated_at
     }));
 
     const branches: Record<string, Branch> = {};
@@ -92,7 +87,7 @@ export const supabaseService = {
         .map(t => ({
           id: t.id, title: t.title, description: t.description, completed: t.completed,
           completedAt: t.completed_at, assigneeId: t.assignee_id, dueDate: t.due_date, pinned: t.pinned || false,
-          position: t.position || 0, version: t.version || 1, updatedAt: t.updated_at, isDirty: false
+          position: t.position || 0, version: t.version || 1, updatedAt: t.updated_at
         }));
 
       branches[b.id] = {
@@ -101,11 +96,11 @@ export const supabaseService = {
         startDate: b.start_date, endDate: b.end_date, dueDate: b.due_date,
         archived: b.archived, collapsed: b.collapsed, isLabel: b.is_label,
         isSprint: b.is_sprint || false, sprintCounter: b.sprint_counter || 1,
-        responsibleId: b.responsible_id, version: b.version || 1, updatedAt: b.updated_at, isDirty: false
+        responsibleId: b.responsible_id, version: b.version || 1, updatedAt: b.updated_at
       };
     });
 
-    return { id: p.id, name: p.name, rootBranchId: p.root_branch_id, branches, people, version: p.version || 1, updatedAt: p.updated_at, isDirty: false };
+    return { id: p.id, name: p.name, rootBranchId: p.root_branch_id, branches, people, version: p.version || 1, updatedAt: p.updated_at };
   },
 
   async uploadFullProject(client: SupabaseClient, project: ProjectState, userId: string) {
@@ -118,10 +113,11 @@ export const supabaseService = {
     }
 
     for (const b of Object.values(project.branches)) {
+      // Fixed: correctly accessed camelCase properties on Branch object
       await this.upsertEntity(client, 'flowtask_branches', {
           id: b.id, project_id: project.id, title: b.title, description: b.description, status: b.status,
           start_date: b.startDate, end_date: b.endDate, due_date: b.dueDate, archived: b.archived,
-          collapsed: b.collapsed, is_label: b.isLabel || false, is_sprint: b.isSprint || false,
+          collapsed: b.collapsed, is_label: b.isLabel, is_sprint: b.isSprint || false,
           sprint_counter: b.sprintCounter || 1, parent_ids: b.parentIds, children_ids: b.childrenIds,
           responsible_id: b.responsibleId, version: b.version
       });

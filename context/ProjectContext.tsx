@@ -1,16 +1,12 @@
 
 import React, { createContext, useContext, useState, useEffect, useCallback, useMemo } from 'react';
 import { createClient, SupabaseClient } from '@supabase/supabase-js';
-import { ProjectState, Branch, Task, Person, BranchStatus, DeletedRecord } from '../types';
+import { ProjectState, Branch, Task, Person, BranchStatus, SyncOperation } from '../types';
 import { createInitialProjectState } from '../constants';
 import { localStorageService } from '../services/localStorage';
 import { supabaseService } from '../services/supabase';
 import { dbService } from '../services/db';
-
-export interface SyncStatus {
-    dirtyCount: number;
-    isSyncing: boolean;
-}
+import { persistenceService } from '../services/persistence';
 
 interface ProjectContextType {
   state: ProjectState;
@@ -25,7 +21,6 @@ interface ProjectContextType {
   loadingAuth: boolean;
   isInitializing: boolean;
   autoSaveStatus: 'idle' | 'saving' | 'saved' | 'error';
-  syncStatus: SyncStatus;
   notification: { type: 'success' | 'error'; message: string } | null;
   supabaseConfig: { url: string; key: string };
   supabaseClient: SupabaseClient | null;
@@ -48,7 +43,6 @@ interface ProjectContextType {
   linkBranch: (childId: string, parentId: string) => void;
   unlinkBranch: (childId: string, parentId: string) => void;
   setAllBranchesCollapsed: (collapsed: boolean) => void;
-  moveBranch: (branchId: string, direction: 'up' | 'down') => void;
   toggleBranchArchive: (branchId: string) => void;
 
   addTask: (branchId: string, title: string) => void;
@@ -63,9 +57,8 @@ interface ProjectContextType {
   updatePerson: (id: string, updates: Partial<Person>) => void;
   removePerson: (id: string) => void;
 
-  syncDirtyRecords: () => Promise<void>;
   uploadProjectToSupabase: () => Promise<void>;
-  downloadProjectFromSupabase: (id: string, activate?: boolean, force?: boolean) => Promise<void>;
+  downloadProjectFromSupabase: (id: string, activate?: boolean) => Promise<void>;
   listProjectsFromSupabase: () => Promise<any[]>;
   deleteProjectFromSupabase: (id: string) => Promise<void>;
   getProjectBranchesFromSupabase: (projectId: string) => Promise<Branch[]>;
@@ -76,11 +69,7 @@ interface ProjectContextType {
   disableOfflineMode: () => void;
   showNotification: (message: string, type: 'success' | 'error') => void;
 
-  cleanupOldTasks: (months: number) => Promise<void>;
-  checkProjectHealth: () => any;
-  repairProjectStructure: () => void;
-  resolveOrphans: (branchIds: string[]) => void;
-
+  // View state modals
   readingDescriptionId: string | null;
   setReadingDescriptionId: (id: string | null) => void;
   editingTask: { branchId: string; taskId: string } | null;
@@ -101,8 +90,6 @@ export const ProjectProvider: React.FC<{ children: React.ReactNode }> = ({ child
   const [projects, setProjects] = useState<ProjectState[]>([]);
   const [activeProjectId, setActiveProjectId] = useState<string>('');
   const [isInitializing, setIsInitializing] = useState(true);
-  const [isSyncingGlobal, setIsSyncingGlobal] = useState(false);
-  const [pendingSyncIds, setPendingSyncIds] = useState<Set<string>>(new Set());
 
   const [selectedBranchId, setSelectedBranchId] = useState<string | null>(null);
   const [showArchived, setShowArchived] = useState(false);
@@ -117,6 +104,7 @@ export const ProjectProvider: React.FC<{ children: React.ReactNode }> = ({ child
   const [session, setSession] = useState<any>(null);
   const [isOfflineMode, setIsOfflineMode] = useState(() => localStorageService.getOfflineMode());
   const [loadingAuth, setLoadingAuth] = useState(true);
+  const [pendingSyncIds, setPendingSyncIds] = useState<Set<string>>(new Set());
 
   // Modals state
   const [readingDescriptionId, setReadingDescriptionId] = useState<string | null>(null);
@@ -132,105 +120,7 @@ export const ProjectProvider: React.FC<{ children: React.ReactNode }> = ({ child
       setTimeout(() => setNotification(null), 3000);
   }, []);
 
-  const syncStatus = useMemo(() => {
-    let dirtyCount = 0;
-    projects.forEach(p => {
-        if (p.isDirty) dirtyCount++;
-        dirtyCount += (p.pendingDeletions?.length || 0);
-        p.people.forEach(pe => { if (pe.isDirty) dirtyCount++; });
-        Object.values(p.branches).forEach(b => {
-            if (b.isDirty) dirtyCount++;
-            b.tasks.forEach(t => { if (t.isDirty) dirtyCount++; });
-        });
-    });
-    return { dirtyCount, isSyncing: isSyncingGlobal };
-  }, [projects, isSyncingGlobal]);
-
-  const syncEntity = useCallback(async (table: string, payload: any): Promise<boolean> => {
-      if (!supabaseClient || !session || isOfflineMode) return false;
-      try {
-          const { error } = await supabaseService.upsertEntity(supabaseClient, table, payload);
-          if (error) {
-              if (error.message === 'CONCURRENCY_CONFLICT') {
-                  showNotification("Conflitto di versione. Ricarico dati...", "error");
-                  return false;
-              }
-              throw error;
-          }
-          return true;
-      } catch (e) {
-          console.error("Sync error:", e);
-          return false;
-      }
-  }, [supabaseClient, session, isOfflineMode, showNotification]);
-
-  const syncDirtyRecords = useCallback(async () => {
-    if (!supabaseClient || !session || isOfflineMode || isSyncingGlobal) return;
-    setIsSyncingGlobal(true);
-    setAutoSaveStatus('saving');
-
-    try {
-        const nextProjects = [...projects];
-        let anySuccess = false;
-
-        for (const p of nextProjects) {
-            // 0. Eliminazioni Pendenti (Processate per prime)
-            if (p.pendingDeletions && p.pendingDeletions.length > 0) {
-                const stillPending: DeletedRecord[] = [];
-                for (const del of p.pendingDeletions) {
-                    const ok = await syncEntity(del.table, { id: del.id, deleted_at: new Date().toISOString(), version: del.version });
-                    if (ok) { anySuccess = true; } 
-                    else { stillPending.push(del); }
-                }
-                p.pendingDeletions = stillPending;
-            }
-
-            // 1. Progetto
-            if (p.isDirty) {
-                const ok = await syncEntity('flowtask_projects', { id: p.id, name: p.name, root_branch_id: p.rootBranchId, version: p.version, owner_id: session.user.id });
-                if (ok) { p.isDirty = false; p.version++; anySuccess = true; }
-            }
-            // 2. Persone
-            for (const pe of p.people) {
-                if (pe.isDirty) {
-                    const ok = await syncEntity('flowtask_people', { ...pe, project_id: p.id });
-                    if (ok) { pe.isDirty = false; pe.version++; anySuccess = true; }
-                }
-            }
-            // 3. Rami e Task
-            for (const b of Object.values(p.branches)) {
-                if (b.isDirty) {
-                    const ok = await syncEntity('flowtask_branches', { 
-                        id: b.id, project_id: p.id, title: b.title, status: b.status, description: b.description,
-                        start_date: b.startDate, due_date: b.dueDate, archived: b.archived, collapsed: b.collapsed,
-                        parent_ids: b.parentIds, children_ids: b.childrenIds, responsible_id: b.responsibleId, version: b.version 
-                    });
-                    if (ok) { b.isDirty = false; b.version++; anySuccess = true; }
-                }
-                for (const t of b.tasks) {
-                    if (t.isDirty) {
-                        const ok = await syncEntity('flowtask_tasks', { 
-                            id: t.id, branch_id: b.id, title: t.title, completed: t.completed, completed_at: t.completedAt,
-                            assignee_id: t.assigneeId, due_date: t.dueDate, pinned: t.pinned, position: t.position, version: t.version 
-                        });
-                        if (ok) { t.isDirty = false; t.version++; anySuccess = true; }
-                    }
-                }
-            }
-        }
-
-        if (anySuccess) {
-            setProjects([...nextProjects]);
-            setAutoSaveStatus('saved');
-            setTimeout(() => setAutoSaveStatus('idle'), 2000);
-        } else {
-            setAutoSaveStatus('idle');
-        }
-    } finally {
-        setIsSyncingGlobal(false);
-    }
-  }, [projects, supabaseClient, session, isOfflineMode, isSyncingGlobal, syncEntity]);
-
+  // Inizializzazione dati (IndexedDB)
   useEffect(() => {
     const init = async () => {
         try {
@@ -238,11 +128,11 @@ export const ProjectProvider: React.FC<{ children: React.ReactNode }> = ({ child
             const stored = await dbService.getAllProjects();
             const activeId = await dbService.getSetting<string>('active_project_id');
             if (stored.length > 0) {
-                setProjects(stored.map(p => ({ ...p, pendingDeletions: p.pendingDeletions || [] })));
+                setProjects(stored);
                 setActiveProjectId(activeId && stored.some(x => x.id === activeId) ? activeId : stored[0].id);
             } else {
                 const def = createInitialProjectState();
-                setProjects([{ ...def, pendingDeletions: [] }]);
+                setProjects([def]);
                 setActiveProjectId(def.id);
             }
         } finally { setIsInitializing(false); }
@@ -250,20 +140,12 @@ export const ProjectProvider: React.FC<{ children: React.ReactNode }> = ({ child
     init();
   }, []);
 
+  // Sync active project setting only
   useEffect(() => {
-    if (!isInitializing) {
-        dbService.setSetting('active_project_id', activeProjectId);
-        projects.forEach(p => dbService.saveProject(p));
-    }
-  }, [projects, activeProjectId, isInitializing]);
+    if (!isInitializing) dbService.setSetting('active_project_id', activeProjectId);
+  }, [activeProjectId, isInitializing]);
 
-  useEffect(() => {
-    const timer = setInterval(() => {
-        if (syncStatus.dirtyCount > 0 && !isSyncingGlobal) syncDirtyRecords();
-    }, 30000);
-    return () => clearInterval(timer);
-  }, [syncStatus.dirtyCount, isSyncingGlobal, syncDirtyRecords]);
-
+  // Auth Supabase
   useEffect(() => {
     if (supabaseConfig.url && supabaseConfig.key) {
         const client = createClient(supabaseConfig.url, supabaseConfig.key);
@@ -274,204 +156,368 @@ export const ProjectProvider: React.FC<{ children: React.ReactNode }> = ({ child
     } else { setLoadingAuth(false); }
   }, [supabaseConfig]);
 
-  const addBranch = useCallback((parentId: string) => {
-      setProjects(prev => prev.map(p => {
-          if (p.id !== activeProjectId) return p;
-          const newId = generateId();
+  // --- BACKGROUND SYNC ENGINE ---
+  useEffect(() => {
+    let isProcessing = false;
+    const processQueue = async () => {
+        if (isProcessing || isOfflineMode || !supabaseClient || !session) return;
+        
+        const queue = await dbService.getSyncQueue();
+        if (queue.length === 0) {
+            if (autoSaveStatus !== 'idle') setAutoSaveStatus('idle');
+            return;
+        }
+
+        isProcessing = true;
+        setAutoSaveStatus('saving');
+        
+        const currentBatchIds = new Set(queue.map(q => q.entityId));
+        setPendingSyncIds(currentBatchIds);
+
+        for (const op of queue) {
+            try {
+                let error;
+                if (op.action === 'upsert') {
+                    const res = await supabaseService.upsertEntity(supabaseClient, op.table, op.payload);
+                    error = res.error;
+                } else {
+                    const deleteTableMap: Record<string, any> = {
+                        flowtask_projects: supabaseService.softDeleteProject,
+                        flowtask_branches: supabaseService.softDeleteBranch,
+                        flowtask_tasks: supabaseService.softDeleteTask,
+                        flowtask_people: supabaseService.softDeletePerson
+                    };
+                    const res = await deleteTableMap[op.table](supabaseClient, op.entityId);
+                    error = res.error;
+                }
+
+                if (!error) {
+                    await dbService.removeFromSyncQueue(op.id!);
+                } else if (error.message === 'CONCURRENCY_CONFLICT') {
+                    await dbService.removeFromSyncQueue(op.id!);
+                    showNotification("Conflitto rilevato. Dati sincronizzati dal server.", "error");
+                }
+            } catch (e) {
+                console.error("Sync error for operation", op, e);
+            }
+        }
+        
+        setPendingSyncIds(new Set());
+        setAutoSaveStatus('saved');
+        isProcessing = false;
+    };
+
+    const interval = setInterval(processQueue, 5000);
+    return () => clearInterval(interval);
+  }, [isOfflineMode, supabaseClient, session, autoSaveStatus, showNotification]);
+
+  // --- AZIONI ---
+
+  const addBranch = useCallback(async (parentId: string) => {
+      const newId = generateId();
+      const now = new Date().toISOString();
+      let newBranch: Branch | null = null;
+
+      setProjects(prev => {
+          const p = prev.find(x => x.id === activeProjectId)!;
           const parent = p.branches[parentId];
-          const newBranch: Branch = { 
+          newBranch = { 
               id: newId, title: 'Nuovo Ramo', status: BranchStatus.PLANNED, tasks: [], childrenIds: [], parentIds: [parentId], 
-              version: 1, isDirty: true, updatedAt: new Date().toISOString() 
+              version: 1, updatedAt: now 
           };
-          return {
+          const nextState = {
               ...p,
               branches: {
                   ...p.branches,
                   [newId]: newBranch,
-                  [parentId]: { ...parent, childrenIds: [...parent.childrenIds, newId], isDirty: true, updatedAt: new Date().toISOString() }
+                  [parentId]: { ...parent, childrenIds: [...parent.childrenIds, newId], updatedAt: now }
               }
           };
-      }));
-  }, [activeProjectId]);
+          persistenceService.saveBranch(p.id, newBranch!, isOfflineMode, supabaseClient, nextState);
+          persistenceService.saveBranch(p.id, nextState.branches[parentId], isOfflineMode, supabaseClient, nextState);
+          return prev.map(x => x.id === activeProjectId ? nextState : x);
+      });
+  }, [activeProjectId, isOfflineMode, supabaseClient]);
 
   const updateBranch = useCallback((branchId: string, updates: Partial<Branch>) => {
-      setProjects(prev => prev.map(p => {
-          if (p.id !== activeProjectId || !p.branches[branchId]) return p;
+      setProjects(prev => {
+          const p = prev.find(x => x.id === activeProjectId)!;
           const b = p.branches[branchId];
-          return { ...p, branches: { ...p.branches, [branchId]: { ...b, ...updates, isDirty: true, updatedAt: new Date().toISOString() } } };
-      }));
-  }, [activeProjectId]);
-
-  const addTask = useCallback((branchId: string, title: string) => {
-    setProjects(prev => prev.map(p => {
-        if (p.id !== activeProjectId || !p.branches[branchId]) return p;
-        const b = p.branches[branchId];
-        const newId = generateId();
-        const newTask: Task = { id: newId, title, completed: false, version: 1, isDirty: true, updatedAt: new Date().toISOString() };
-        return { ...p, branches: { ...p.branches, [branchId]: { ...b, tasks: [...b.tasks, newTask], isDirty: true } } };
-    }));
-  }, [activeProjectId]);
-
-  const updateTask = useCallback((branchId: string, taskId: string, updates: Partial<Task>) => {
-    setProjects(prev => prev.map(p => {
-        if (p.id !== activeProjectId || !p.branches[branchId]) return p;
-        const b = p.branches[branchId];
-        const nextTasks = b.tasks.map(t => t.id === taskId ? { ...t, ...updates, isDirty: true, updatedAt: new Date().toISOString() } : t);
-        return { ...p, branches: { ...p.branches, [branchId]: { ...b, tasks: nextTasks } } };
-    }));
-  }, [activeProjectId]);
-
-  const deleteBranch = useCallback((bid: string) => {
-    setProjects(prev => prev.map(p => {
-        if (p.id !== activeProjectId) return p;
-        const target = p.branches[bid];
-        if (!target) return p;
-
-        const deletion: DeletedRecord = { id: bid, table: 'flowtask_branches', version: target.version, label: target.title };
-        const nextBranches = { ...p.branches };
-        target.parentIds.forEach(pid => { if (nextBranches[pid]) nextBranches[pid] = { ...nextBranches[pid], childrenIds: nextBranches[pid].childrenIds.filter(id => id !== bid), isDirty: true }; });
-        delete nextBranches[bid];
-
-        return { ...p, branches: nextBranches, pendingDeletions: [...(p.pendingDeletions || []), deletion], isDirty: true };
-    }));
-  }, [activeProjectId]);
-
-  const deleteTask = useCallback((bid: string, tid: string) => {
-    setProjects(prev => prev.map(p => {
-        if (p.id !== activeProjectId || !p.branches[bid]) return p;
-        const b = p.branches[bid];
-        const target = b.tasks.find(x => x.id === tid);
-        if (!target) return p;
-
-        const deletion: DeletedRecord = { id: tid, table: 'flowtask_tasks', version: target.version, label: target.title };
-        return { ...p, branches: { ...p.branches, [bid]: { ...b, tasks: b.tasks.filter(x => x.id !== tid), isDirty: true } }, pendingDeletions: [...(p.pendingDeletions || []), deletion], isDirty: true };
-    }));
-  }, [activeProjectId]);
+          const nextBranch = { ...b, ...updates, updatedAt: new Date().toISOString() };
+          const nextState = { ...p, branches: { ...p.branches, [branchId]: nextBranch } };
+          persistenceService.saveBranch(p.id, nextBranch, isOfflineMode, supabaseClient, nextState);
+          return prev.map(x => x.id === activeProjectId ? nextState : x);
+      });
+  }, [activeProjectId, isOfflineMode, supabaseClient]);
 
   const toggleBranchArchive = useCallback((branchId: string) => {
-    setProjects(prev => prev.map(p => {
-        if (p.id !== activeProjectId || !p.branches[branchId]) return p;
+      setProjects(prev => {
+          const p = prev.find(x => x.id === activeProjectId)!;
+          const b = p.branches[branchId];
+          const nextBranch = { ...b, archived: !b.archived, updatedAt: new Date().toISOString() };
+          const nextState = { ...p, branches: { ...p.branches, [branchId]: nextBranch } };
+          persistenceService.saveBranch(p.id, nextBranch, isOfflineMode, supabaseClient, nextState);
+          return prev.map(x => x.id === activeProjectId ? nextState : x);
+      });
+  }, [activeProjectId, isOfflineMode, supabaseClient]);
+
+  const addTask = useCallback((branchId: string, title: string) => {
+    const newId = generateId();
+    const now = new Date().toISOString();
+    setProjects(prev => {
+        const p = prev.find(x => x.id === activeProjectId)!;
         const b = p.branches[branchId];
-        return { ...p, branches: { ...p.branches, [branchId]: { ...b, archived: !b.archived, isDirty: true, updatedAt: new Date().toISOString() } } };
-    }));
-  }, [activeProjectId]);
+        const newTask: Task = { id: newId, title, completed: false, version: 1, updatedAt: now, position: b.tasks.length };
+        const nextBranch = { ...b, tasks: [...b.tasks, newTask] };
+        const nextState = { ...p, branches: { ...p.branches, [branchId]: nextBranch } };
+        persistenceService.saveTask(branchId, newTask, isOfflineMode, supabaseClient, nextState);
+        return prev.map(x => x.id === activeProjectId ? nextState : x);
+    });
+  }, [activeProjectId, isOfflineMode, supabaseClient]);
+
+  const updateTask = useCallback((branchId: string, taskId: string, updates: Partial<Task>) => {
+    setProjects(prev => {
+        const p = prev.find(x => x.id === activeProjectId)!;
+        const b = p.branches[branchId];
+        const task = b.tasks.find(t => t.id === taskId)!;
+        const nextTask = { ...task, ...updates, updatedAt: new Date().toISOString() };
+        const nextState = { ...p, branches: { ...p.branches, [branchId]: { ...b, tasks: b.tasks.map(t => t.id === taskId ? nextTask : t) } } };
+        persistenceService.saveTask(branchId, nextTask, isOfflineMode, supabaseClient, nextState);
+        return prev.map(x => x.id === activeProjectId ? nextState : x);
+    });
+  }, [activeProjectId, isOfflineMode, supabaseClient]);
+
+  const moveTask = useCallback((branchId: string, taskId: string, direction: 'up' | 'down') => {
+      setProjects(prev => {
+          const p = prev.find(x => x.id === activeProjectId)!;
+          const b = p.branches[branchId];
+          const newTasks = [...b.tasks];
+          const idx = newTasks.findIndex(t => t.id === taskId);
+          if (idx === -1) return prev;
+          
+          const targetIdx = direction === 'up' ? idx - 1 : idx + 1;
+          if (targetIdx < 0 || targetIdx >= newTasks.length) return prev;
+
+          [newTasks[idx], newTasks[targetIdx]] = [newTasks[targetIdx], newTasks[idx]];
+          
+          const nextState = { 
+              ...p, 
+              branches: { 
+                  ...p.branches, 
+                  [branchId]: { 
+                      ...b, 
+                      tasks: newTasks.map((t, i) => ({ ...t, position: i, updatedAt: new Date().toISOString() })) 
+                  } 
+              } 
+          };
+          
+          nextState.branches[branchId].tasks.forEach(t => {
+              persistenceService.saveTask(branchId, t, isOfflineMode, supabaseClient, nextState);
+          });
+
+          return prev.map(x => x.id === activeProjectId ? nextState : x);
+      });
+  }, [activeProjectId, isOfflineMode, supabaseClient]);
 
   const bulkUpdateTasks = useCallback((branchId: string, text: string) => {
-      const lines = text.split('\n').map(l => l.trim()).filter(l => l !== '');
-      setProjects(prev => prev.map(p => {
-          if (p.id !== activeProjectId || !p.branches[branchId]) return p;
+      const titles = text.split('\n').map(t => t.trim()).filter(t => t.length > 0);
+      const now = new Date().toISOString();
+      
+      setProjects(prev => {
+          const p = prev.find(x => x.id === activeProjectId)!;
           const b = p.branches[branchId];
-          const newTasks: Task[] = lines.map((lineTitle, idx) => ({
-              id: generateId(),
-              title: lineTitle,
-              completed: false,
-              version: 1,
-              isDirty: true,
-              position: idx,
-              updatedAt: new Date().toISOString()
-          }));
-          return { ...p, branches: { ...p.branches, [branchId]: { ...b, tasks: newTasks, isDirty: true } } };
-      }));
-  }, [activeProjectId]);
+          
+          // Tasks da mantenere/aggiornare e quelli da rimuovere
+          const nextTasks: Task[] = [];
+          const tasksToRemove = [...b.tasks];
+
+          titles.forEach((title, index) => {
+              const existingIdx = tasksToRemove.findIndex(t => t.title === title);
+              if (existingIdx !== -1) {
+                  // Trovato un task esistente con lo stesso titolo, lo manteniamo
+                  const existing = tasksToRemove.splice(existingIdx, 1)[0];
+                  nextTasks.push({ ...existing, position: index, updatedAt: now });
+              } else {
+                  // Nuovo task
+                  nextTasks.push({ id: generateId(), title, completed: false, version: 1, updatedAt: now, position: index });
+              }
+          });
+
+          const nextState = { ...p, branches: { ...p.branches, [branchId]: { ...b, tasks: nextTasks } } };
+          
+          // 1. Sincronizza le rimozioni (quelle rimaste in tasksToRemove non erano nella nuova lista)
+          tasksToRemove.forEach(t => {
+              persistenceService.deleteTask(t.id, isOfflineMode, supabaseClient, nextState);
+          });
+
+          // 2. Sincronizza aggiunte o aggiornamenti di posizione
+          nextTasks.forEach(t => {
+              persistenceService.saveTask(branchId, t, isOfflineMode, supabaseClient, nextState);
+          });
+
+          return prev.map(x => x.id === activeProjectId ? nextState : x);
+      });
+  }, [activeProjectId, isOfflineMode, supabaseClient]);
 
   const bulkMoveTasks = useCallback((taskIds: string[], sourceBranchId: string, targetBranchId: string) => {
-      setProjects(prev => prev.map(p => {
-          if (p.id !== activeProjectId || !p.branches[sourceBranchId] || !p.branches[targetBranchId]) return p;
-          const src = p.branches[sourceBranchId];
-          const dst = p.branches[targetBranchId];
-          const movingTasks = src.tasks.filter(t => taskIds.includes(t.id)).map(t => ({ ...t, isDirty: true }));
-          return {
+      setProjects(prev => {
+          const p = prev.find(x => x.id === activeProjectId)!;
+          const source = p.branches[sourceBranchId];
+          const target = p.branches[targetBranchId];
+          
+          const movedTasks = source.tasks.filter(t => taskIds.includes(t.id));
+          const remainingTasks = source.tasks.filter(t => !taskIds.includes(t.id));
+          
+          const nextState = {
               ...p,
               branches: {
                   ...p.branches,
-                  [sourceBranchId]: { ...src, tasks: src.tasks.filter(t => !taskIds.includes(t.id)), isDirty: true },
-                  [targetBranchId]: { ...dst, tasks: [...dst.tasks, ...movingTasks], isDirty: true }
+                  [sourceBranchId]: { ...source, tasks: remainingTasks },
+                  [targetBranchId]: { ...target, tasks: [...target.tasks, ...movedTasks] }
               }
           };
-      }));
-  }, [activeProjectId]);
 
-  const addPerson = (n: string, e?: string, ph?: string) => setProjects(prev => prev.map(p => p.id === activeProjectId ? { ...p, people: [...p.people, { id: generateId(), name: n, email: e, phone: ph, initials: n.slice(0,2).toUpperCase(), color: 'bg-indigo-500', version: 1, isDirty: true }], isDirty: true } : p));
-  const updatePerson = (id: string, ups: Partial<Person>) => setProjects(prev => prev.map(p => p.id === activeProjectId ? { ...p, people: p.people.map(pe => pe.id === id ? { ...pe, ...ups, isDirty: true } : pe) } : p));
-  const removePerson = (id: string) => setProjects(prev => prev.map(p => {
-      if (p.id !== activeProjectId) return p;
-      const target = p.people.find(x => x.id === id);
-      if (!target) return p;
-      const deletion: DeletedRecord = { id, table: 'flowtask_people', version: target.version, label: target.name };
-      return { ...p, people: p.people.filter(x => x.id !== id), pendingDeletions: [...(p.pendingDeletions || []), deletion], isDirty: true };
-  }));
+          movedTasks.forEach(t => {
+              persistenceService.saveTask(targetBranchId, t, isOfflineMode, supabaseClient, nextState);
+          });
+
+          return prev.map(x => x.id === activeProjectId ? nextState : x);
+      });
+  }, [activeProjectId, isOfflineMode, supabaseClient]);
+
+  const deleteBranch = useCallback((bid: string) => {
+    setProjects(prev => {
+        const p = prev.find(x => x.id === activeProjectId)!;
+        const target = p.branches[bid];
+        if (!target) return prev;
+        const nextBranches = { ...p.branches };
+        target.parentIds.forEach(pid => { if (nextBranches[pid]) nextBranches[pid] = { ...nextBranches[pid], childrenIds: nextBranches[pid].childrenIds.filter(id => id !== bid) }; });
+        delete nextBranches[bid];
+        const nextState = { ...p, branches: nextBranches };
+        persistenceService.deleteBranch(bid, isOfflineMode, supabaseClient, nextState);
+        return prev.map(x => x.id === activeProjectId ? nextState : x);
+    });
+  }, [activeProjectId, isOfflineMode, supabaseClient]);
+
+  const deleteTask = useCallback((bid: string, tid: string) => {
+    setProjects(prev => {
+        const p = prev.find(x => x.id === activeProjectId)!;
+        const b = p.branches[bid];
+        const nextState = { ...p, branches: { ...p.branches, [bid]: { ...b, tasks: b.tasks.filter(x => x.id !== tid) } } };
+        persistenceService.deleteTask(tid, isOfflineMode, supabaseClient, nextState);
+        return prev.map(x => x.id === activeProjectId ? nextState : x);
+    });
+  }, [activeProjectId, isOfflineMode, supabaseClient]);
+
+  const addPerson = (n: string, e?: string, ph?: string) => {
+    const newId = generateId();
+    setProjects(prev => {
+      const p = prev.find(x => x.id === activeProjectId)!;
+      const newPerson: Person = { id: newId, name: n, email: e, phone: ph, initials: n.slice(0,2).toUpperCase(), color: 'bg-indigo-500', version: 1 };
+      const nextState = { ...p, people: [...p.people, newPerson] };
+      persistenceService.savePerson(p.id, newPerson, isOfflineMode, supabaseClient, nextState);
+      return prev.map(x => x.id === activeProjectId ? nextState : x);
+    });
+  };
+
+  const updatePerson = (id: string, updates: Partial<Person>) => {
+    setProjects(prev => {
+        const p = prev.find(x => x.id === activeProjectId)!;
+        const person = p.people.find(pe => pe.id === id)!;
+        const nextPerson = { ...person, ...updates, updatedAt: new Date().toISOString() };
+        const nextState = { ...p, people: p.people.map(pe => pe.id === id ? nextPerson : pe) };
+        persistenceService.savePerson(p.id, nextPerson, isOfflineMode, supabaseClient, nextState);
+        return prev.map(x => x.id === activeProjectId ? nextState : x);
+    });
+  };
+
+  const removePerson = (id: string) => {
+    setProjects(prev => {
+      const p = prev.find(x => x.id === activeProjectId)!;
+      const nextState = { ...p, people: p.people.filter(x => x.id !== id) };
+      persistenceService.deletePerson(id, isOfflineMode, supabaseClient, nextState);
+      return prev.map(x => x.id === activeProjectId ? nextState : x);
+    });
+  };
 
   return (
     <ProjectContext.Provider value={{
       state: activeProject, projects, activeProjectId, selectedBranchId, showArchived, showAllProjects, showOnlyOpen,
-      session, isOfflineMode, loadingAuth, isInitializing, autoSaveStatus, syncStatus, notification, supabaseConfig, supabaseClient,
+      session, isOfflineMode, loadingAuth, isInitializing, autoSaveStatus, notification, supabaseConfig, supabaseClient,
       pendingSyncIds,
       setSupabaseConfig: (u, k) => { setSupabaseConfigState({url:u, key:k}); localStorageService.saveSupabaseConfig({url:u, key:k}); },
       switchProject: id => setActiveProjectId(id),
-      createProject: () => { const np = { ...createInitialProjectState('Nuovo Progetto ' + projects.length), pendingDeletions: [] }; setProjects([...projects, np]); setActiveProjectId(np.id); },
-      closeProject: id => { 
-          const target = projects.find(x => x.id === id);
-          if (target && !isOfflineMode) {
-              syncEntity('flowtask_projects', { id, deleted_at: new Date().toISOString(), version: target.version });
-          }
-          setProjects(projects.filter(x => x.id !== id)); dbService.deleteProject(id); 
+      createProject: () => { const np = createInitialProjectState(); setProjects([...projects, np]); setActiveProjectId(np.id); if(isOfflineMode) dbService.saveProject(np); },
+      closeProject: id => { setProjects(projects.filter(x => x.id !== id)); dbService.deleteProject(id); },
+      renameProject: name => {
+          setProjects(prev => {
+              const nextState = { ...prev.find(x => x.id === activeProjectId)!, name };
+              persistenceService.saveProject(nextState, isOfflineMode, supabaseClient);
+              return prev.map(x => x.id === activeProjectId ? nextState : x);
+          });
       },
-      renameProject: name => setProjects(projects.map(x => x.id === activeProjectId ? { ...x, name, isDirty: true, updatedAt: new Date().toISOString() } : x)),
-      loadProject: (ns, act = true) => { setProjects(prev => [...prev.filter(x => x.id !== ns.id), { ...ns, pendingDeletions: ns.pendingDeletions || [] }]); if (act) setActiveProjectId(ns.id); },
+      loadProject: (ns, act = true) => { setProjects(prev => [...prev.filter(x => x.id !== ns.id), ns]); if (act) setActiveProjectId(ns.id); },
       selectBranch: setSelectedBranchId,
       toggleShowArchived: () => setShowArchived(!showArchived),
       toggleShowAllProjects: () => setShowAllProjects(!showAllProjects),
       toggleShowOnlyOpen: () => setShowOnlyOpen(!showOnlyOpen),
-      addBranch, updateBranch, deleteBranch,
+      addBranch, updateBranch, deleteBranch, toggleBranchArchive,
       linkBranch: (cid, pid) => {
-          setProjects(prev => prev.map(p => {
-            if (p.id !== activeProjectId) return p;
+          setProjects(prev => {
+            const p = prev.find(x => x.id === activeProjectId)!;
             const child = p.branches[cid]; const parent = p.branches[pid];
-            return { ...p, branches: { ...p.branches, [cid]: { ...child, parentIds: [...child.parentIds, pid], isDirty: true }, [pid]: { ...parent, childrenIds: [...parent.childrenIds, cid], isDirty: true } } };
-          }));
+            const nextState = { ...p, branches: { ...p.branches, [cid]: { ...child, parentIds: [...child.parentIds, pid] }, [pid]: { ...parent, childrenIds: [...parent.childrenIds, cid] } } };
+            persistenceService.saveBranch(p.id, nextState.branches[cid], isOfflineMode, supabaseClient, nextState);
+            persistenceService.saveBranch(p.id, nextState.branches[pid], isOfflineMode, supabaseClient, nextState);
+            return prev.map(x => x.id === activeProjectId ? nextState : x);
+          });
       },
       unlinkBranch: (cid, pid) => {
-          setProjects(prev => prev.map(p => {
-            if (p.id !== activeProjectId) return p;
+          setProjects(prev => {
+            const p = prev.find(x => x.id === activeProjectId)!;
             const child = p.branches[cid]; const parent = p.branches[pid];
-            return { ...p, branches: { ...p.branches, [cid]: { ...child, parentIds: child.parentIds.filter(x => x !== pid), isDirty: true }, [pid]: { ...parent, childrenIds: parent.childrenIds.filter(x => x !== cid), isDirty: true } } };
-          }));
+            const nextState = { ...p, branches: { ...p.branches, [cid]: { ...child, parentIds: child.parentIds.filter(x => x !== pid) }, [pid]: { ...parent, childrenIds: parent.childrenIds.filter(x => x !== cid) } } };
+            persistenceService.saveBranch(p.id, nextState.branches[cid], isOfflineMode, supabaseClient, nextState);
+            persistenceService.saveBranch(p.id, nextState.branches[pid], isOfflineMode, supabaseClient, nextState);
+            return prev.map(x => x.id === activeProjectId ? nextState : x);
+          });
       },
-      setAllBranchesCollapsed: c => setProjects(prev => prev.map(p => p.id === activeProjectId ? { ...p, branches: Object.fromEntries(Object.entries(p.branches).map(([k,v]) => [k, { ...v, collapsed: c }])) } : p)),
-      moveBranch: (bid, dir) => { /* Mock */ },
-      toggleBranchArchive,
-      addTask, updateTask, deleteTask, moveTask: () => {},
+      setAllBranchesCollapsed: c => setProjects(prev => prev.map(p => p.id === activeProjectId ? { ...p, branches: Object.fromEntries(Object.entries(p.branches).map(([k,v]) => [k, { ...(v as Branch), collapsed: c }])) } : p)),
+      addTask, updateTask, deleteTask, moveTask, bulkUpdateTasks, bulkMoveTasks,
       moveTaskToBranch: (tid, sbid, tbid) => {
-          const task = activeProject.branches[sbid]?.tasks.find(x => x.id === tid);
-          if (!task) return;
-          setProjects(prev => prev.map(p => {
-            if (p.id !== activeProjectId) return p;
-            const src = p.branches[sbid]; const dst = p.branches[tbid];
-            return { ...p, branches: { ...p.branches, [sbid]: { ...src, tasks: src.tasks.filter(x => x.id !== tid), isDirty: true }, [tbid]: { ...dst, tasks: [...dst.tasks, { ...task, isDirty: true }], isDirty: true } } };
-          }));
+          setProjects(prev => {
+            const p = prev.find(x => x.id === activeProjectId)!;
+            const task = p.branches[sbid]?.tasks.find(x => x.id === tid)!;
+            const nextState = { ...p, branches: { ...p.branches, [sbid]: { ...p.branches[sbid], tasks: p.branches[sbid].tasks.filter(x => x.id !== tid) }, [tbid]: { ...p.branches[tbid], tasks: [...p.branches[tbid].tasks, task] } } };
+            persistenceService.saveTask(tbid, task, isOfflineMode, supabaseClient, nextState);
+            return prev.map(x => x.id === activeProjectId ? nextState : x);
+          });
       },
-      bulkUpdateTasks,
-      bulkMoveTasks,
-      addPerson,
-      updatePerson,
-      removePerson,
-      syncDirtyRecords,
+      addPerson, updatePerson, removePerson,
       uploadProjectToSupabase: async () => { if (supabaseClient && session) await supabaseService.uploadFullProject(supabaseClient, activeProject, session.user.id); },
-      downloadProjectFromSupabase: async (id) => { if (supabaseClient) { const p = await supabaseService.downloadFullProject(supabaseClient, id); setProjects(prev => [...prev.filter(x => x.id !== id), { ...p, pendingDeletions: [] }]); setActiveProjectId(id); } },
+      downloadProjectFromSupabase: async (id) => { if (supabaseClient) { const p = await supabaseService.downloadFullProject(supabaseClient, id); setProjects(prev => [...prev.filter(x => x.id !== id), p]); setActiveProjectId(id); } },
       listProjectsFromSupabase: async () => supabaseClient ? (await supabaseService.fetchProjects(supabaseClient)).data || [] : [],
-      deleteProjectFromSupabase: async id => { if (supabaseClient) await supabaseService.softDeleteProject(supabaseClient, id); },
-      getProjectBranchesFromSupabase: async (pid) => { if (supabaseClient) { const res = await supabaseService.fetchBranches(supabaseClient, pid); return res.data || []; } return []; },
-      moveLocalBranchToRemoteProject: async (bid, tpid, tparid) => { /* Mock */ },
+      getProjectBranchesFromSupabase: async (id) => { if (supabaseClient) { const res = await supabaseService.fetchBranches(supabaseClient, id); return res.data || []; } return []; },
+      moveLocalBranchToRemoteProject: async (bid, tid, tpid) => {
+          const branch = activeProject.branches[bid];
+          if (!branch || isOfflineMode || !supabaseClient) return;
+          // Operazione sincrona via sync_queue
+          await dbService.addToSyncQueue({
+              entityId: bid,
+              table: 'flowtask_branches',
+              action: 'upsert',
+              payload: { ...branch, project_id: tid, parent_ids: [tpid] },
+              timestamp: Date.now()
+          });
+          deleteBranch(bid);
+          showNotification("Spostamento ramo accodato per la sincronizzazione.", "success");
+      },
       logout: async () => { if (supabaseClient) await supabaseClient.auth.signOut(); setSession(null); window.location.reload(); },
       enableOfflineMode: () => { setIsOfflineMode(true); localStorageService.saveOfflineMode(true); window.location.reload(); },
-      disableOfflineMode: () => { setIsOfflineMode(false); localStorageService.saveOfflineMode(false); },
+      disableOfflineMode: () => { setIsOfflineMode(false); localStorageService.saveOfflineMode(false); window.location.reload(); },
       showNotification,
-      cleanupOldTasks: async (m) => { /* Mock */ },
-      checkProjectHealth: () => ({ orphanedBranches: [] }),
-      repairProjectStructure: () => { /* Mock */ },
-      resolveOrphans: (ids) => { /* Mock */ },
       readingDescriptionId, setReadingDescriptionId, editingTask, setEditingTask, readingTask, setReadingTask, remindingUserId, setRemindingUserId, messageTemplates,
-      updateMessageTemplates: ts => setMessageTemplates(p => ({ ...p, ...ts }))
+      updateMessageTemplates: (ts: Partial<{ opening: string; closing: string }>) => setMessageTemplates(p => ({ ...p, ...ts }))
     }}>
       {children}
     </ProjectContext.Provider>
