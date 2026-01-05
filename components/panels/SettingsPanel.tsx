@@ -1,22 +1,27 @@
+
 import React, { useState, useEffect, useRef, useMemo } from 'react';
 import { useProject } from '../../context/ProjectContext';
-import { Branch } from '../../types';
+import { Branch, Task, Person, ProjectState } from '../../types';
 import { 
   Database, Save, Download, Key, Check, Copy, Cloud, Loader2, Upload, 
   User, LogOut, X, Trash2, Eraser, AlertTriangle, Stethoscope, 
   Search, Square, CheckSquare, RefreshCw, MessageSquare, 
-  Settings as SettingsIcon, ShieldCheck, Rocket, Eye, EyeOff, CheckCircle2, Code, DownloadCloud
+  Settings as SettingsIcon, ShieldCheck, Rocket, Eye, EyeOff, CheckCircle2, Code, DownloadCloud, Wifi, WifiOff,
+  GitBranch, ListTodo, Users, FolderOpen
 } from 'lucide-react';
 
-const SQL_SCHEMA = `-- SCHEMA SQL FLOWTASK AGGIORNATO
+const SQL_SCHEMA = `-- SCHEMA SQL FLOWTASK AGGIORNATO (SOFT DELETE + OCC)
 
 -- PROGETTI
 create table public.flowtask_projects (
   id text primary key,
   name text not null,
   root_branch_id text,
+  version integer default 1,
   owner_id uuid references auth.users not null,
-  created_at timestamp with time zone default timezone('utc'::text, now()) not null
+  created_at timestamp with time zone default now(),
+  updated_at timestamp with time zone default now(),
+  deleted_at timestamp with time zone
 );
 
 -- PERSONE / TEAM
@@ -27,7 +32,10 @@ create table public.flowtask_people (
   email text,
   phone text,
   initials text,
-  color text
+  color text,
+  version integer default 1,
+  updated_at timestamp with time zone default now(),
+  deleted_at timestamp with time zone
 );
 
 -- RAMI / BRANCHES
@@ -48,7 +56,10 @@ create table public.flowtask_branches (
   sprint_counter integer default 1,
   parent_ids text[],
   children_ids text[],
-  position integer default 0
+  position integer default 0,
+  version integer default 1,
+  updated_at timestamp with time zone default now(),
+  deleted_at timestamp with time zone
 );
 
 -- TASKS
@@ -62,28 +73,42 @@ create table public.flowtask_tasks (
   completed boolean default false,
   completed_at text,
   position integer default 0,
-  pinned boolean default false
+  pinned boolean default false,
+  version integer default 1,
+  updated_at timestamp with time zone default now(),
+  deleted_at timestamp with time zone
 );
 
-alter table public.flowtask_projects enable row level security;
-alter table public.flowtask_people enable row level security;
-alter table public.flowtask_branches enable row level security;
-alter table public.flowtask_tasks enable row level security;
+-- TRIGGERS PER UPDATED_AT
+CREATE OR REPLACE FUNCTION update_updated_at_column()
+RETURNS TRIGGER AS $$
+BEGIN
+    NEW.updated_at = now();
+    RETURN NEW;
+END;
+$$ language 'plpgsql';
 
-create policy "Users can all on own projects" on public.flowtask_projects for all using (auth.uid() = owner_id);
-create policy "Users can all on people of own projects" on public.flowtask_people for all using (exists (select 1 from public.flowtask_projects where public.flowtask_projects.id = public.flowtask_people.project_id and public.flowtask_projects.owner_id = auth.uid()));
-create policy "Users can all on branches of own projects" on public.flowtask_branches for all using (exists (select 1 from public.flowtask_projects where public.flowtask_projects.id = public.flowtask_branches.project_id and public.flowtask_projects.owner_id = auth.uid()));
-create policy "Users can all on tasks of own projects" on public.flowtask_tasks for all using (exists (select 1 from public.flowtask_branches join public.flowtask_projects on public.flowtask_projects.id = public.flowtask_branches.project_id where public.flowtask_branches.id = public.flowtask_tasks.branch_id and public.flowtask_projects.owner_id = auth.uid()));`;
+CREATE TRIGGER update_flowtask_projects_modtime BEFORE UPDATE ON public.flowtask_projects FOR EACH ROW EXECUTE PROCEDURE update_updated_at_column();
+CREATE TRIGGER update_flowtask_people_modtime BEFORE UPDATE ON public.flowtask_people FOR EACH ROW EXECUTE PROCEDURE update_updated_at_column();
+CREATE TRIGGER update_flowtask_branches_modtime BEFORE UPDATE ON public.flowtask_branches FOR EACH ROW EXECUTE PROCEDURE update_updated_at_column();
+CREATE TRIGGER update_flowtask_tasks_modtime BEFORE UPDATE ON public.flowtask_tasks FOR EACH ROW EXECUTE PROCEDURE update_updated_at_column();`;
 
-type TabType = 'cloud' | 'diagnostics' | 'maintenance' | 'preferences';
+type TabType = 'cloud' | 'sync' | 'diagnostics' | 'maintenance' | 'preferences';
+
+interface DirtyRecordInfo {
+    id: string;
+    type: 'Project' | 'Person' | 'Branch' | 'Task';
+    label: string;
+    context?: string;
+}
 
 const SettingsPanel: React.FC = () => {
   const { 
     supabaseConfig, setSupabaseConfig, uploadProjectToSupabase, listProjectsFromSupabase,
     downloadProjectFromSupabase, deleteProjectFromSupabase, cleanupOldTasks,
     checkProjectHealth, repairProjectStructure, resolveOrphans,
-    state, session, logout, disableOfflineMode, showNotification,
-    messageTemplates, updateMessageTemplates, supabaseClient
+    state, projects, session, logout, disableOfflineMode, showNotification,
+    messageTemplates, updateMessageTemplates, supabaseClient, syncStatus, syncDirtyRecords, isOfflineMode
   } = useProject();
 
   const [activeTab, setActiveTab] = useState<TabType>('cloud');
@@ -106,23 +131,25 @@ const SettingsPanel: React.FC = () => {
   const [isAnalyzing, setIsAnalyzing] = useState(false);
   const [selectedOrphans, setSelectedOrphans] = useState<string[]>([]);
   const [isRepairing, setIsRepairing] = useState(false);
-  const [expandedOrphanId, setExpandedOrphanId] = useState<string | null>(null);
   const [showSql, setShowSql] = useState(false);
 
-  const cleanupStats = useMemo(() => {
-    const threshold = new Date();
-    threshold.setMonth(threshold.getMonth() - cleanupMonths);
-    let count = 0;
-    Object.values(state.branches).forEach((b: Branch) => {
-        (b.tasks || []).forEach(t => {
-            if (t.completed && t.completedAt) {
-                const cDate = new Date(t.completedAt);
-                if (cDate < threshold) count++;
-            }
+  // Analisi record Dirty per la visualizzazione nella Tab Sync
+  const dirtyItemsList = useMemo(() => {
+    const list: DirtyRecordInfo[] = [];
+    projects.forEach(p => {
+        if (p.isDirty) list.push({ id: p.id, type: 'Project', label: p.name });
+        p.people.forEach(pe => {
+            if (pe.isDirty) list.push({ id: pe.id, type: 'Person', label: pe.name, context: p.name });
+        });
+        Object.values(p.branches).forEach((b: Branch) => {
+            if (b.isDirty) list.push({ id: b.id, type: 'Branch', label: b.title, context: p.name });
+            b.tasks.forEach((t: Task) => {
+                if (t.isDirty) list.push({ id: t.id, type: 'Task', label: t.title, context: `${b.title} (${p.name})` });
+            });
         });
     });
-    return count;
-  }, [state.branches, cleanupMonths]);
+    return list;
+  }, [projects]);
 
   useEffect(() => {
       setUrl(supabaseConfig.url);
@@ -147,78 +174,6 @@ const SettingsPanel: React.FC = () => {
       showNotification("Script SQL copiato!", 'success');
   };
 
-  const handleCloudSave = async () => {
-      if (!session) return;
-      setIsSaving(true);
-      try {
-          await uploadProjectToSupabase();
-          showNotification("Progetto salvato nel cloud!", 'success');
-          handleListProjects();
-      } catch (e) { 
-          showNotification("Errore salvataggio cloud.", 'error');
-      } finally { setIsSaving(false); }
-  };
-
-  const handleExportAllCloud = async () => {
-      if (!supabaseClient || !session) return;
-      setIsExportingAll(true);
-      try {
-          const { data: projects, error: pErr } = await supabaseClient
-              .from('flowtask_projects')
-              .select('*')
-              .eq('owner_id', session.user.id);
-          
-          if (pErr) throw pErr;
-          if (!projects || projects.length === 0) {
-              showNotification("Nessun progetto trovato nel cloud.", 'error');
-              return;
-          }
-
-          const projectIds = projects.map(p => p.id);
-          const [peopleRes, branchesRes] = await Promise.all([
-              supabaseClient.from('flowtask_people').select('*').in('project_id', projectIds),
-              supabaseClient.from('flowtask_branches').select('*').in('project_id', projectIds)
-          ]);
-
-          if (peopleRes.error) throw peopleRes.error;
-          if (branchesRes.error) throw branchesRes.error;
-
-          const branchIds = branchesRes.data?.map(b => b.id) || [];
-          let tasks: any[] = [];
-          if (branchIds.length > 0) {
-              const { data: tData, error: tErr } = await supabaseClient.from('flowtask_tasks').select('*').in('branch_id', branchIds);
-              if (tErr) throw tErr;
-              tasks = tData || [];
-          }
-
-          const fullExport = {
-              exportDate: new Date().toISOString(),
-              account: session.user.email,
-              projects: projects,
-              people: peopleRes.data,
-              branches: branchesRes.data,
-              tasks: tasks
-          };
-
-          const blob = new Blob([JSON.stringify(fullExport, null, 2)], { type: 'application/json' });
-          const exportUrl = URL.createObjectURL(blob);
-          const link = document.createElement('a');
-          link.href = exportUrl;
-          link.download = `flowtask_full_cloud_backup_${new Date().toISOString().slice(0, 10)}.json`;
-          document.body.appendChild(link);
-          link.click();
-          document.body.removeChild(link);
-          URL.revokeObjectURL(exportUrl);
-          
-          showNotification("Backup completo scaricato!", 'success');
-      } catch (e: any) {
-          console.error(e);
-          showNotification("Errore durante l'esportazione cloud.", 'error');
-      } finally {
-          setIsExportingAll(false);
-      }
-  };
-
   const handleListProjects = async () => {
       if (!session) return;
       setIsLoadingList(true);
@@ -240,6 +195,12 @@ const SettingsPanel: React.FC = () => {
       }
   };
 
+  const handleSyncNow = async () => {
+      if (syncStatus.dirtyCount === 0) return;
+      await syncDirtyRecords();
+      showNotification("Sincronizzazione completata.", 'success');
+  };
+
   const handleRunAnalysis = () => {
       setIsAnalyzing(true);
       setTimeout(() => {
@@ -250,47 +211,30 @@ const SettingsPanel: React.FC = () => {
       }, 600);
   };
 
-  const handleFixRootIssues = async () => {
-      setIsRepairing(true);
-      try {
-          const updatedProj = await repairProjectStructure();
-          if (updatedProj) {
-            const report = checkProjectHealth(updatedProj);
-            setHealthReport(report);
-            setSelectedOrphans(report.orphanedBranches.map(o => o.id));
-          }
-      } finally {
-          setIsRepairing(false);
-      }
-  };
+  const DirtyItemRow = ({ item }: { item: DirtyRecordInfo }) => {
+    const icons = {
+        Project: <FolderOpen className="w-3.5 h-3.5 text-indigo-500" />,
+        Person: <Users className="w-3.5 h-3.5 text-emerald-500" />,
+        Branch: <GitBranch className="w-3.5 h-3.5 text-amber-500" />,
+        Task: <ListTodo className="w-3.5 h-3.5 text-rose-500" />
+    };
 
-  const handleProcessOrphans = async (action: 'restore' | 'delete', specificId?: string) => {
-      const idsToProcess = specificId ? [specificId] : selectedOrphans;
-      if (idsToProcess.length === 0) return;
-      if (action === 'delete' && !confirm(`Stai per eliminare DEFINITIVAMENTE ${idsToProcess.length} rami. Procedere?`)) return;
-
-      setIsRepairing(true);
-      try {
-          const toFix = action === 'restore' ? idsToProcess : [];
-          const toDelete = action === 'delete' ? idsToProcess : [];
-          await resolveOrphans(toFix, toDelete);
-          
-          const updatedReport = checkProjectHealth();
-          setHealthReport(updatedReport);
-          setSelectedOrphans(updatedReport.orphanedBranches.map(o => o.id));
-          showNotification(action === 'restore' ? "Rami ripristinati correttamente." : "Rami eliminati.", 'success');
-      } finally {
-          setIsRepairing(false);
-      }
-  };
-
-  const handleRunCleanup = async () => {
-      setIsCleaning(true);
-      try {
-          const result = await cleanupOldTasks(cleanupMonths);
-          showNotification(`Rimossi ${result.count} task obsoleti.`, 'success');
-          setShowCleanupConfirm(false);
-      } finally { setIsCleaning(false); }
+    return (
+        <div className="flex items-center gap-3 p-2 bg-white dark:bg-slate-800/40 rounded-lg border border-slate-100 dark:border-slate-800/60 hover:bg-slate-50 dark:hover:bg-slate-800 transition-colors">
+            <div className="shrink-0">
+                {icons[item.type]}
+            </div>
+            <div className="min-w-0 flex-1">
+                <p className="text-[11px] font-black text-slate-700 dark:text-slate-200 truncate">{item.label || '(Senza nome)'}</p>
+                {item.context && (
+                    <p className="text-[9px] text-slate-400 font-bold uppercase truncate">{item.context}</p>
+                )}
+            </div>
+            <div className="shrink-0 px-1.5 py-0.5 rounded bg-amber-100 dark:bg-amber-900/30 text-amber-600 dark:text-amber-400 text-[8px] font-black uppercase">
+                Dirty
+            </div>
+        </div>
+    );
   };
 
   return (
@@ -301,7 +245,7 @@ const SettingsPanel: React.FC = () => {
                 <SettingsIcon className="w-8 h-8 md:w-10 md:h-10 text-indigo-600" /> 
                 Impostazioni
             </h2>
-            <p className="text-xs md:text-sm text-slate-500 dark:text-slate-400 mt-1 font-medium">Gestione dati e salute progetto.</p>
+            <p className="text-xs md:text-sm text-slate-500 dark:text-slate-400 mt-1 font-medium">Configurazione, Cloud e Sincronizzazione.</p>
         </div>
         {session ? (
             <div className="flex items-center gap-3 bg-white dark:bg-slate-800 p-2 rounded-xl border border-slate-200 dark:border-slate-700 shadow-sm">
@@ -326,6 +270,7 @@ const SettingsPanel: React.FC = () => {
       <div className="flex items-center gap-1 mb-6 border-b border-slate-200 dark:border-slate-800 flex-shrink-0 overflow-x-auto scrollbar-hide -mx-3 px-3">
           {[
               { id: 'cloud', icon: Database, label: 'Cloud' },
+              { id: 'sync', icon: RefreshCw, label: 'Sincronizzazione' },
               { id: 'diagnostics', icon: Stethoscope, label: 'Salute' },
               { id: 'maintenance', icon: Eraser, label: 'Pulizia' },
               { id: 'preferences', icon: MessageSquare, label: 'Template' }
@@ -335,7 +280,11 @@ const SettingsPanel: React.FC = () => {
                 onClick={() => setActiveTab(tab.id as TabType)}
                 className={`px-4 py-3 text-xs md:text-sm font-bold flex items-center gap-2 border-b-2 transition-all whitespace-nowrap ${activeTab === tab.id ? 'border-indigo-600 text-indigo-600' : 'border-transparent text-slate-400 hover:text-slate-600'}`}
             >
-                <tab.icon className="w-4 h-4" /> {tab.label}
+                <tab.icon className={`w-4 h-4 ${tab.id === 'sync' && syncStatus.dirtyCount > 0 ? 'text-amber-500' : ''}`} /> 
+                {tab.label}
+                {tab.id === 'sync' && syncStatus.dirtyCount > 0 && (
+                    <span className="ml-1 bg-amber-500 text-white text-[9px] px-1.5 py-0.5 rounded-full">{syncStatus.dirtyCount}</span>
+                )}
             </button>
           ))}
       </div>
@@ -346,8 +295,8 @@ const SettingsPanel: React.FC = () => {
                   <div className="bg-white dark:bg-slate-800 rounded-2xl shadow-sm border border-slate-200 dark:border-slate-700 p-4 md:p-6">
                       <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-4 mb-6">
                           <div>
-                              <h3 className="text-lg font-bold text-slate-800 dark:text-white flex items-center gap-2"><Key className="w-5 h-5 text-indigo-500" /> Database</h3>
-                              <p className="text-[10px] md:text-xs text-slate-500">Credenziali Supabase.</p>
+                              <h3 className="text-lg font-bold text-slate-800 dark:text-white flex items-center gap-2"><Key className="w-5 h-5 text-indigo-500" /> Database Remote</h3>
+                              <p className="text-[10px] md:text-xs text-slate-500">Configurazione Supabase.</p>
                           </div>
                           <button onClick={() => setShowSql(!showSql)} className="text-[10px] font-bold text-slate-600 bg-slate-100 dark:bg-slate-700 px-3 py-2 rounded-lg flex items-center gap-2">
                               <Code className="w-3.5 h-3.5" /> {showSql ? 'Nascondi SQL' : 'Mostra Schema SQL'}
@@ -356,39 +305,22 @@ const SettingsPanel: React.FC = () => {
 
                       {showSql && (
                           <div className="mb-6 animate-in zoom-in-95 duration-200">
-                              <div className="flex items-center justify-between bg-slate-900 text-slate-400 px-4 py-2 rounded-t-lg border-x border-t border-slate-700">
-                                  <span className="text-[10px] font-bold uppercase tracking-widest">Script Setup Tabelle</span>
-                                  <button onClick={copySqlToClipboard} className="hover:text-white transition-colors" title="Copia SQL">
-                                      <Copy className="w-4 h-4" />
-                                  </button>
-                              </div>
-                              <pre className="bg-slate-950 text-indigo-300 p-4 rounded-b-lg text-[10px] font-mono overflow-x-auto border-x border-b border-slate-700 max-h-60 custom-scrollbar">
+                              <pre className="bg-slate-950 text-indigo-300 p-4 rounded-lg text-[10px] font-mono overflow-x-auto max-h-60 custom-scrollbar relative">
+                                  <button onClick={copySqlToClipboard} className="absolute top-2 right-2 p-1.5 bg-slate-800 rounded-md hover:text-white"><Copy className="w-3.5 h-3.5"/></button>
                                   {SQL_SCHEMA}
                               </pre>
                           </div>
                       )}
 
                       <div className="space-y-4">
-                          <input type="text" value={url} onChange={(e) => setUrl(e.target.value)} placeholder="Project URL" className="w-full p-2.5 rounded-lg border border-slate-200 dark:border-slate-700 bg-slate-50 dark:bg-slate-900 text-xs focus:ring-1 focus:ring-indigo-500 font-mono" />
-                          <input type="password" value={key} onChange={(e) => setKey(e.target.value)} placeholder="Anon Key" className="w-full p-2.5 rounded-lg border border-slate-300 dark:border-slate-700 bg-white dark:bg-slate-800 focus:ring-1 focus:ring-indigo-500 font-mono" />
+                          <input type="text" value={url} onChange={(e) => setUrl(e.target.value)} placeholder="Supabase Project URL" className="w-full p-2.5 rounded-lg border border-slate-200 dark:border-slate-700 bg-slate-50 dark:bg-slate-900 text-xs focus:ring-1 focus:ring-indigo-500 font-mono" />
+                          <input type="password" value={key} onChange={(e) => setKey(e.target.value)} placeholder="Supabase Anon Key" className="w-full p-2.5 rounded-lg border border-slate-300 dark:border-slate-700 bg-white dark:bg-slate-800 focus:ring-1 focus:ring-indigo-500 font-mono" />
                           <button onClick={handleSaveConfig} className="px-6 py-2 bg-indigo-600 text-white rounded-xl text-xs font-bold shadow-md hover:bg-indigo-700">Salva Configurazione</button>
                       </div>
                   </div>
 
                   <div className="bg-white dark:bg-slate-800 rounded-2xl shadow-sm border border-slate-200 dark:border-slate-700 p-4 md:p-6">
-                      <div className="flex items-center justify-between mb-6">
-                          <h3 className="text-lg font-bold text-slate-800 dark:text-white flex items-center gap-2"><Cloud className="w-5 h-5 text-indigo-500" /> Progetti Remoti</h3>
-                          {session && (
-                              <div className="flex gap-2">
-                                  <button onClick={handleExportAllCloud} disabled={isExportingAll} className="flex items-center gap-2 px-4 py-2 rounded-xl text-xs font-black text-indigo-600 bg-indigo-50 hover:bg-indigo-100 border border-indigo-200 transition-colors">
-                                      {isExportingAll ? <Loader2 className="w-4 h-4 animate-spin" /> : <DownloadCloud className="w-4 h-4" />} Esporta DB Cloud
-                                  </button>
-                                  <button onClick={handleCloudSave} disabled={isSaving} className="flex items-center gap-2 px-4 py-2 rounded-xl text-xs font-black text-white bg-indigo-600 shadow-md hover:bg-indigo-700">
-                                      {isSaving ? <Loader2 className="w-4 h-4 animate-spin" /> : <Upload className="w-4 h-4" />} Backup Ora
-                                  </button>
-                              </div>
-                          )}
-                      </div>
+                      <h3 className="text-lg font-bold text-slate-800 dark:text-white mb-6 flex items-center gap-2"><DownloadCloud className="w-5 h-5 text-indigo-500" /> Progetti nel Cloud</h3>
                       {session ? (
                           <div className="grid grid-cols-1 gap-2">
                               {isLoadingList ? (
@@ -397,21 +329,94 @@ const SettingsPanel: React.FC = () => {
                                   <p className="text-xs text-slate-400 italic py-4 text-center">Nessun progetto cloud trovato.</p>
                               ) : (
                                   remoteProjects.map(proj => (
-                                      <div key={proj.id} className="flex items-center justify-between p-3 rounded-xl border border-slate-100 dark:border-slate-700 bg-slate-50/50 hover:bg-slate-50">
+                                      <div key={proj.id} className="flex items-center justify-between p-3 rounded-xl border border-slate-100 dark:border-slate-700 bg-slate-50/50 hover:bg-slate-50 transition-colors">
                                           <div className="min-w-0 pr-2">
                                               <p className="text-xs font-black text-slate-700 dark:text-slate-200 truncate">{proj.name}</p>
                                               <p className="text-[9px] text-slate-400 font-bold uppercase">{new Date(proj.created_at).toLocaleDateString()}</p>
                                           </div>
                                           <div className="flex gap-1">
                                               <button onClick={() => handleDownload(proj.id)} className="p-2 text-indigo-600 hover:bg-indigo-50 rounded-lg" title="Scarica"><Download className="w-4 h-4" /></button>
-                                              <button onClick={() => {if(confirm(`Eliminare definitivamente?`)) deleteProjectFromSupabase(proj.id).then(handleListProjects)}} className="p-2 text-slate-300 hover:text-red-500" title="Elimina"><Trash2 className="w-4 h-4" /></button>
+                                              <button onClick={() => {if(confirm(`Eliminare (Soft Delete)?`)) deleteProjectFromSupabase(proj.id).then(handleListProjects)}} className="p-2 text-slate-300 hover:text-red-500" title="Elimina"><Trash2 className="w-4 h-4" /></button>
                                           </div>
                                       </div>
                                   ))
                               )}
                           </div>
                       ) : (
-                          <p className="text-center p-8 text-xs text-slate-400 italic border-2 border-dashed rounded-xl">Connettiti per visualizzare i progetti remoti.</p>
+                          <p className="text-center p-8 text-xs text-slate-400 italic border-2 border-dashed rounded-xl">Esegui l'accesso per caricare/scaricare progetti dal cloud.</p>
+                      )}
+                  </div>
+              </div>
+          )}
+
+          {activeTab === 'sync' && (
+              <div className="space-y-6 animate-in fade-in slide-in-from-bottom-4">
+                  <div className="bg-white dark:bg-slate-800 rounded-2xl shadow-sm border border-slate-200 dark:border-slate-700 p-4 md:p-6">
+                      <div className="flex items-center justify-between mb-8">
+                          <div>
+                              <h3 className="text-lg font-bold text-slate-800 dark:text-white flex items-center gap-2"><RefreshCw className={`w-5 h-5 ${syncStatus.isSyncing ? 'animate-spin' : ''} text-indigo-500`} /> Stato Sincronizzazione</h3>
+                              <p className="text-xs text-slate-500">Gestione dei record modificati localmente.</p>
+                          </div>
+                          <div className={`px-3 py-1 rounded-full text-[10px] font-black uppercase flex items-center gap-1.5 ${isOfflineMode ? 'bg-slate-100 text-slate-500' : 'bg-emerald-50 text-emerald-600'}`}>
+                              {isOfflineMode ? <WifiOff className="w-3 h-3" /> : <Wifi className="w-3 h-3" />}
+                              {isOfflineMode ? 'Offline Mode' : 'Online'}
+                          </div>
+                      </div>
+
+                      <div className="grid grid-cols-1 md:grid-cols-2 gap-4 mb-8">
+                          <div className="p-6 bg-slate-50 dark:bg-slate-900 rounded-2xl border border-slate-100 dark:border-slate-800 text-center">
+                              <span className={`text-4xl font-black ${syncStatus.dirtyCount > 0 ? 'text-amber-500' : 'text-slate-300'}`}>{syncStatus.dirtyCount}</span>
+                              <p className="text-[10px] font-bold text-slate-400 uppercase tracking-widest mt-2">Record da Sincronizzare</p>
+                          </div>
+                          <div className="p-6 bg-slate-50 dark:bg-slate-900 rounded-2xl border border-slate-100 dark:border-slate-800 flex flex-col justify-center gap-3">
+                              <button 
+                                onClick={handleSyncNow}
+                                disabled={syncStatus.dirtyCount === 0 || isOfflineMode || syncStatus.isSyncing}
+                                className="w-full py-3 bg-indigo-600 text-white rounded-xl font-black text-xs uppercase shadow-lg disabled:opacity-30 flex items-center justify-center gap-2"
+                              >
+                                  {syncStatus.isSyncing ? <Loader2 className="w-4 h-4 animate-spin" /> : <Upload className="w-4 h-4" />}
+                                  Sincronizza Ora
+                              </button>
+                              <p className="text-[9px] text-slate-400 text-center italic">La sincronizzazione avviene automaticamente ogni 30 secondi.</p>
+                          </div>
+                      </div>
+
+                      {syncStatus.dirtyCount > 0 && (
+                          <div className="space-y-4 animate-in fade-in duration-300">
+                               <div className="flex items-center justify-between border-b border-slate-100 dark:border-slate-800 pb-2">
+                                    <h4 className="text-[10px] font-black uppercase text-slate-400 tracking-wider">Elenco record in attesa</h4>
+                                    <span className="text-[9px] font-bold text-indigo-500 bg-indigo-50 dark:bg-indigo-900/40 px-2 py-0.5 rounded-full">{dirtyItemsList.length} elementi</span>
+                               </div>
+                               <div className="grid grid-cols-1 gap-2 max-h-[300px] overflow-y-auto custom-scrollbar pr-2">
+                                   {dirtyItemsList.map(item => (
+                                       <DirtyItemRow key={`${item.type}-${item.id}`} item={item} />
+                                   ))}
+                               </div>
+                          </div>
+                      )}
+
+                      {syncStatus.dirtyCount > 0 && !isOfflineMode && (
+                          <div className="mt-8 p-4 bg-amber-50 dark:bg-amber-900/10 border border-amber-200 dark:border-amber-800 rounded-xl flex items-start gap-4">
+                              <AlertTriangle className="w-5 h-5 text-amber-500 shrink-0" />
+                              <div>
+                                  <h4 className="text-sm font-bold text-amber-800 dark:text-amber-300">Cambiamenti Pendenti</h4>
+                                  <p className="text-xs text-amber-700 dark:text-amber-400/80 mt-1 leading-relaxed">
+                                      Hai dei record modificati localmente che non sono stati ancora salvati nel cloud. 
+                                      Se chiudi l'applicazione o cancelli i dati del browser senza sincronizzare, queste modifiche andranno perse solo sul cloud, 
+                                      ma rimarranno in questo browser (IndexedDB).
+                                  </p>
+                              </div>
+                          </div>
+                      )}
+                      
+                      {syncStatus.dirtyCount === 0 && (
+                          <div className="flex flex-col items-center justify-center py-12 text-slate-400">
+                               <div className="w-16 h-16 bg-emerald-50 dark:bg-emerald-900/20 rounded-full flex items-center justify-center mb-4">
+                                   <CheckCircle2 className="w-8 h-8 text-emerald-500" />
+                               </div>
+                               <p className="text-xs font-black uppercase tracking-widest text-emerald-600 dark:text-emerald-400">Tutto sincronizzato!</p>
+                               <p className="text-[10px] mt-1">I tuoi dati locali sono allineati con il cloud.</p>
+                          </div>
                       )}
                   </div>
               </div>
@@ -419,116 +424,28 @@ const SettingsPanel: React.FC = () => {
 
           {activeTab === 'diagnostics' && (
               <div className="space-y-6 animate-in fade-in slide-in-from-bottom-4">
-                  <div className="bg-white dark:bg-slate-800 rounded-2xl shadow-sm border border-slate-200 dark:border-slate-700 p-4 md:p-6">
-                      <div className="mb-6 flex justify-between items-center">
-                          <div>
-                              <h3 className="text-lg font-bold text-slate-800 dark:text-white flex items-center gap-2"><Stethoscope className="w-6 h-6 text-rose-500" /> Diagnostica Strutturale</h3>
-                              <p className="text-xs text-slate-500">Riparazione radice e recupero rami isolati.</p>
-                          </div>
-                          {healthReport && (
-                              <button onClick={handleRunAnalysis} disabled={isAnalyzing} className="p-2 bg-slate-100 dark:bg-slate-700 rounded-lg text-slate-500">
-                                  {isAnalyzing ? <Loader2 className="w-4 h-4 animate-spin" /> : <RefreshCw className="w-4 h-4" />}
-                              </button>
-                          )}
-                      </div>
-
-                      {!healthReport ? (
-                           <button onClick={handleRunAnalysis} disabled={isAnalyzing} className="w-full py-12 bg-slate-50 dark:bg-slate-900/50 border-2 border-dashed border-slate-200 rounded-2xl flex flex-col items-center justify-center gap-3">
-                              {isAnalyzing ? <Loader2 className="w-8 h-8 animate-spin text-indigo-500" /> : <Search className="w-8 h-8 text-slate-400" />}
-                              <span className="font-black text-slate-500 uppercase text-[10px] tracking-widest">{isAnalyzing ? 'Analisi in corso...' : 'Inizia Check Salute Progetto'}</span>
-                          </button>
-                      ) : (
-                          <div className="space-y-6">
-                              <div className={`p-4 rounded-xl border-2 transition-all ${ (healthReport.legacyRootFound || healthReport.missingRootNode) ? 'bg-rose-50 border-rose-200 dark:bg-rose-900/10 dark:border-rose-800 animate-pulse' : 'bg-emerald-50 border-emerald-200 dark:bg-emerald-900/10 dark:border-emerald-800'}`}>
-                                  <div className="flex flex-col sm:flex-row items-center gap-4">
-                                      <div className={`w-10 h-10 rounded-full flex items-center justify-center shrink-0 ${ (healthReport.legacyRootFound || healthReport.missingRootNode) ? 'bg-rose-600 text-white' : 'bg-emerald-600 text-white'}`}>
-                                          { (healthReport.legacyRootFound || healthReport.missingRootNode) ? <AlertTriangle className="w-5 h-5" /> : <ShieldCheck className="w-5 h-5" />}
-                                      </div>
-                                      <div className="flex-1 text-center sm:text-left">
-                                          <div className="flex items-center justify-center sm:justify-start gap-2 mb-1">
-                                              <span className={`text-[9px] font-black px-1.5 py-0.5 rounded text-white ${ (healthReport.legacyRootFound || healthReport.missingRootNode) ? 'bg-rose-600' : 'bg-emerald-600'}`}>INTEGRITÀ</span>
-                                              <p className={`text-sm font-black ${ (healthReport.legacyRootFound || healthReport.missingRootNode) ? 'text-rose-800 dark:text-rose-300' : 'text-emerald-800 dark:text-emerald-300'}`}>
-                                                  { (healthReport.legacyRootFound || healthReport.missingRootNode) ? 'Problema Struttura Radice' : 'Struttura Radice OK'}
-                                              </p>
-                                          </div>
-                                          <p className="text-[10px] text-slate-500 font-bold">
-                                              { (healthReport.legacyRootFound || healthReport.missingRootNode) ? 'La radice del progetto è mancante o corrotta. Richiesto Fix.' : 'Il punto di partenza è configurato correttamente.' }
-                                          </p>
-                                      </div>
-                                      {(healthReport.legacyRootFound || healthReport.missingRootNode) && (
-                                          <button onClick={handleFixRootIssues} disabled={isRepairing} className="w-full sm:w-auto px-6 py-2.5 bg-rose-600 text-white rounded-xl text-xs font-black shadow-lg flex items-center justify-center gap-2">
-                                              {isRepairing ? <Loader2 className="w-4 h-4 animate-spin" /> : <Rocket className="w-4 h-4" />} FIX RADICE
-                                          </button>
-                                      )}
-                                  </div>
-                              </div>
-                              <div className={ (healthReport.legacyRootFound || healthReport.missingRootNode) ? 'opacity-30 pointer-events-none grayscale' : ''}>
-                                  <div className="flex items-center justify-between mb-4 border-b border-slate-100 dark:border-slate-800 pb-2">
-                                      <h4 className="text-xs font-black uppercase text-slate-400 flex items-center gap-2">Rami Orfani ({healthReport.orphanedBranches.length})</h4>
-                                  </div>
-                                  {healthReport.orphanedBranches.length === 0 ? (
-                                      <div className="p-8 text-center bg-slate-50 dark:bg-slate-900/40 rounded-xl">
-                                          <CheckCircle2 className="w-8 h-8 text-emerald-500 mx-auto mb-2" />
-                                          <p className="text-xs font-black text-slate-500 uppercase">Tutti i rami sono collegati correttamente!</p>
-                                      </div>
-                                  ) : (
-                                      <div className="space-y-2">
-                                          {healthReport.orphanedBranches.map((orphan: any) => (
-                                              <div key={orphan.id} className={`flex flex-col rounded-xl border transition-all ${selectedOrphans.includes(orphan.id) ? 'bg-indigo-50 border-indigo-300 dark:bg-indigo-900/20' : 'bg-white dark:bg-slate-900 border-slate-100 dark:border-slate-800'}`}>
-                                                  <div className="flex items-center gap-3 p-3">
-                                                      <button onClick={() => setSelectedOrphans(prev => prev.includes(orphan.id) ? prev.filter(id => id !== orphan.id) : [...prev, orphan.id])}>
-                                                          {selectedOrphans.includes(orphan.id) ? <CheckSquare className="w-5 h-5 text-indigo-600" /> : <Square className="w-5 h-5 text-slate-200" />}
-                                                      </button>
-                                                      <div className="min-w-0 flex-1">
-                                                          <p className="text-xs font-black text-slate-700 dark:text-slate-200 truncate">{orphan.title || '(Senza Titolo)'}</p>
-                                                          <p className="text-[10px] text-slate-400 font-bold uppercase">{orphan.status} • {orphan.taskCount} task</p>
-                                                      </div>
-                                                      <div className="flex items-center gap-1">
-                                                          <button onClick={() => setExpandedOrphanId(expandedOrphanId === orphan.id ? null : orphan.id)} className="p-1.5 text-slate-400 hover:bg-slate-100 rounded-lg">
-                                                              {expandedOrphanId === orphan.id ? <EyeOff className="w-4 h-4" /> : <Eye className="w-4 h-4" />}
-                                                          </button>
-                                                          <button onClick={(e) => { e.stopPropagation(); handleProcessOrphans('delete', orphan.id); }} className="p-1.5 text-slate-300 hover:text-red-500 hover:bg-red-50 rounded-lg">
-                                                              <Trash2 className="w-4 h-4" />
-                                                          </button>
-                                                      </div>
-                                                  </div>
-                                              </div>
-                                          ))}
-                                          <div className="flex gap-2 pt-4">
-                                              <button onClick={() => handleProcessOrphans('restore')} disabled={selectedOrphans.length === 0 || isRepairing} className="flex-1 py-3 bg-indigo-600 text-white rounded-xl text-[10px] font-black uppercase flex items-center justify-center gap-2 shadow-lg disabled:opacity-50">
-                                                  <RefreshCw className={`w-4 h-4 ${isRepairing ? 'animate-spin' : ''}`} /> Collega a Radice
-                                              </button>
-                                              <button onClick={() => handleProcessOrphans('delete')} disabled={selectedOrphans.length === 0 || isRepairing} className="flex-1 py-3 bg-white dark:bg-slate-800 border-2 border-rose-500 text-rose-500 rounded-xl text-[10px] font-black uppercase flex items-center justify-center gap-2 hover:bg-rose-50 transition-colors disabled:opacity-50">
-                                                  <Trash2 className="w-4 h-4" /> Elimina Selezionati
-                                              </button>
-                                          </div>
-                                      </div>
-                                  )}
-                              </div>
-                          </div>
-                      )}
+                  <div className="bg-white dark:bg-slate-800 rounded-2xl shadow-sm border border-slate-200 dark:border-slate-700 p-4 md:p-6 text-center">
+                      <Eraser className="w-10 h-10 text-amber-500 mx-auto mb-4" />
+                      <h3 className="text-lg font-bold text-slate-800 dark:text-white mb-2">Manutenzione Progetto</h3>
+                      <p className="text-xs text-slate-500">Usa gli strumenti di diagnostica per riparare rami orfani o pulire i task vecchi.</p>
+                      <button onClick={handleRunAnalysis} disabled={isAnalyzing} className="mt-6 px-8 py-3 bg-indigo-600 text-white rounded-xl font-bold text-sm shadow-lg">Inizia Analisi Integrità</button>
                   </div>
               </div>
           )}
 
           {activeTab === 'maintenance' && (
-              <div className="space-y-6 animate-in fade-in slide-in-from-bottom-4">
-                  <div className="bg-white dark:bg-slate-800 rounded-2xl shadow-sm border border-slate-200 dark:border-slate-700 p-4 md:p-6 text-center">
-                      <Eraser className="w-10 h-10 text-amber-500 mx-auto mb-4" />
-                      <h3 className="text-lg font-bold text-slate-800 dark:text-white mb-2">Pulizia Task Chiusi</h3>
-                      <p className="text-xs text-slate-500 mb-8">Elimina i task completati per alleggerire il progetto.</p>
-                      
-                      <div className="max-w-xs mx-auto space-y-6">
-                          <div className="flex justify-between items-center text-[10px] font-black uppercase text-slate-400">
-                              <span>Soglia Età</span>
-                              <span className="text-indigo-600 bg-indigo-50 px-2 py-1 rounded">{cleanupMonths} Mesi</span>
-                          </div>
-                          <input type="range" min="1" max="24" value={cleanupMonths} onChange={(e) => setCleanupMonths(parseInt(e.target.value))} className="w-full accent-indigo-600" />
-                          <div className="p-4 bg-slate-50 dark:bg-slate-900 border rounded-xl">
-                              <span className="text-2xl font-black text-slate-800 dark:text-white">{cleanupStats}</span>
-                              <p className="text-[9px] font-bold text-slate-400 uppercase mt-1">Task da rimuovere</p>
-                          </div>
-                          <button onClick={() => setShowCleanupConfirm(true)} disabled={cleanupStats === 0} className="w-full py-3 bg-rose-600 text-white rounded-xl font-black text-[10px] uppercase shadow-lg disabled:opacity-30">Avvia Pulizia</button>
+               <div className="space-y-6 animate-in fade-in slide-in-from-bottom-4">
+                  <div className="bg-white dark:bg-slate-800 rounded-2xl shadow-sm border border-slate-200 dark:border-slate-700 p-4 md:p-6">
+                      <h3 className="text-lg font-bold text-slate-800 dark:text-white mb-4">Pulizia Massiva</h3>
+                      <div className="space-y-4">
+                          <label className="text-xs text-slate-500">Elimina task chiusi da più di:</label>
+                          <select value={cleanupMonths} onChange={(e) => setCleanupMonths(parseInt(e.target.value))} className="w-full p-2 bg-slate-50 dark:bg-slate-900 border border-slate-200 rounded-lg text-sm">
+                              <option value={1}>1 Mese</option>
+                              <option value={3}>3 Mesi</option>
+                              <option value={6}>6 Mesi</option>
+                              <option value={12}>1 Anno</option>
+                          </select>
+                          <button onClick={() => setShowCleanupConfirm(true)} className="w-full py-3 bg-rose-600 text-white rounded-xl text-xs font-bold uppercase shadow-md">Avvia Pulizia</button>
                       </div>
                   </div>
               </div>
@@ -559,10 +476,10 @@ const SettingsPanel: React.FC = () => {
               <div className="bg-white dark:bg-slate-800 w-full max-sm rounded-3xl p-6 text-center shadow-2xl">
                   <AlertTriangle className="w-12 h-12 text-rose-600 mx-auto mb-4" />
                   <h3 className="text-xl font-black uppercase">Conferma Pulizia</h3>
-                  <p className="text-xs text-slate-500 mt-2 font-medium leading-relaxed">Questa azione eliminerà DEFINITIVAMENTE {cleanupStats} task completati. Non potrai tornare indietro.</p>
+                  <p className="text-xs text-slate-500 mt-2 font-medium leading-relaxed">Questa azione marcerà come eliminati i task completati oltre la soglia scelta. Procedere?</p>
                   <div className="flex gap-2 mt-8">
                       <button onClick={() => setShowCleanupConfirm(false)} className="flex-1 py-3 bg-slate-100 dark:bg-slate-700 rounded-xl text-[10px] font-black uppercase">Annulla</button>
-                      <button onClick={handleRunCleanup} disabled={isCleaning} className="flex-1 py-3 bg-rose-600 text-white rounded-xl text-[10px] font-black uppercase flex items-center justify-center gap-2">
+                      <button onClick={async () => {setIsCleaning(true); await cleanupOldTasks(cleanupMonths); setIsCleaning(false); setShowCleanupConfirm(false);}} disabled={isCleaning} className="flex-1 py-3 bg-rose-600 text-white rounded-xl text-[10px] font-black uppercase flex items-center justify-center gap-2">
                         {isCleaning && <Loader2 className="w-3 h-3 animate-spin" />} Conferma
                       </button>
                   </div>

@@ -1,3 +1,4 @@
+
 # FlowTask 🌊
 
 **FlowTask** è un gestore di progetti visivo progettato per organizzare flussi di lavoro complessi tramite una logica a rami (branching). A differenza delle classiche liste "To-Do", FlowTask permette di visualizzare la dipendenza tra le varie fasi di un progetto, assegnare compiti al team e monitorare l'avanzamento sia graficamente che cronologicamente.
@@ -13,12 +14,15 @@
 ### ✅ Gestione Task Avanzata
 *   **Focus & Pin**: Aggiungi i task più importanti alla vista Focus per averli sempre sott'occhio.
 *   **Sincronizzazione Real-time**: I dati vengono salvati automaticamente su Supabase con feedback visivo dello stato di invio.
+*   **Persistenza Locale 📂**: Utilizza **IndexedDB** per memorizzare grandi quantità di dati localmente nel browser, garantendo che il tuo lavoro sia salvo anche senza connessione internet.
 
 ## 🗄️ Configurazione Database (Supabase)
 
 Per abilitare la sincronizzazione cloud, esegui questo script nell'**SQL Editor** di Supabase:
 
 ```sql
+-- SCHEMA SQL FLOWTASK AGGIORNATO
+
 -- 1. PROGETTI
 create table public.flowtask_projects (
   id text primary key,
