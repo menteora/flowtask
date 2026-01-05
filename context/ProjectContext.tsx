@@ -29,6 +29,7 @@ interface ProjectContextType {
   pendingSyncIds: Set<string>;
 
   switchProject: (id: string) => void;
+  reorderProject: (id: string, direction: 'left' | 'right') => void;
   createProject: () => void;
   deleteProject: (id: string) => Promise<void>;
   renameProject: (name: string) => void;
@@ -43,7 +44,8 @@ interface ProjectContextType {
 
   uploadProjectToSupabase: () => Promise<void>;
   downloadProjectFromSupabase: (id: string, activate?: boolean) => Promise<void>;
-  downloadAllFromSupabase: () => Promise<void>;
+  syncAllFromSupabase: () => Promise<void>;
+  pullAllFromSupabase: () => Promise<void>;
   listProjectsFromSupabase: () => Promise<any[]>;
   deleteProjectFromSupabase: (id: string) => Promise<void>;
   getProjectBranchesFromSupabase: (projectId: string) => Promise<any[]>;
@@ -76,19 +78,29 @@ export const ProjectProvider: React.FC<{ children: React.ReactNode }> = ({ child
   }, [supabaseConfig]);
 
   const { projects, setProjects, activeProjectId, setActiveProjectId, isInitializing, switchProject } = useWorkspace();
-  const { autoSaveStatus, pendingSyncIds } = useSyncEngine(supabaseClient, session, isOfflineMode, showNotification);
+  const { autoSaveStatus, pendingSyncIds, processSyncQueue } = useSyncEngine(supabaseClient, session, isOfflineMode, showNotification);
   const projActions = useProjectActions(setProjects, activeProjectId, setActiveProjectId, isOfflineMode, supabaseClient);
 
   const activeProject = projects.find(p => p.id === activeProjectId) || projects[0] || createInitialProjectState();
 
+  const reorderProject = useCallback((id: string, direction: 'left' | 'right') => {
+    setProjects(prev => {
+        const next = [...prev];
+        const idx = next.findIndex(p => p.id === id);
+        if (idx === -1) return prev;
+        const targetIdx = direction === 'left' ? idx - 1 : idx + 1;
+        if (targetIdx < 0 || targetIdx >= next.length) return prev;
+        [next[idx], next[targetIdx]] = [next[targetIdx], next[idx]];
+        localStorageService.saveOpenProjectIds(next.map(p => p.id));
+        return next;
+    });
+  }, [setProjects]);
+
   const moveLocalBranchToRemoteProject = async (branchId: string, targetProjectId: string, targetParentId: string) => {
     if (!supabaseClient || !session) return;
-    
     try {
         const branch = activeProject.branches[branchId];
         if (!branch) return;
-
-        // 1. Carica il ramo e i suoi task nel nuovo progetto remoto
         await supabaseService.upsertEntity(supabaseClient, 'flowtask_branches', {
             id: branch.id, project_id: targetProjectId, title: branch.title, status: branch.status,
             description: branch.description, start_date: branch.startDate, due_date: branch.dueDate,
@@ -97,23 +109,18 @@ export const ProjectProvider: React.FC<{ children: React.ReactNode }> = ({ child
             parent_ids: [targetParentId], children_ids: branch.childrenIds,
             responsible_id: branch.responsibleId, version: 1
         });
-
         for (const t of branch.tasks) {
             await supabaseService.upsertEntity(supabaseClient, 'flowtask_tasks', {
                 id: t.id, branch_id: branch.id, title: t.title, description: t.description, assignee_id: t.assigneeId,
                 due_date: t.dueDate, completed: t.completed, completed_at: t.completedAt, position: t.position, version: 1
             });
         }
-
-        // 2. Aggiorna il genitore remoto
         const { data: targetParentData } = await supabaseClient.from('flowtask_branches').select('children_ids').eq('id', targetParentId).single();
         const nextChildren = Array.from(new Set([...(targetParentData?.children_ids || []), branchId]));
         await supabaseClient.from('flowtask_branches').update({ children_ids: nextChildren }).eq('id', targetParentId);
-
-        showNotification("Ramo migrato correttamente nel progetto remoto.", "success");
+        showNotification("Ramo migrato correttamente.", "success");
     } catch (err) {
-        console.error(err);
-        showNotification("Errore durante la migrazione remota.", "error");
+        showNotification("Errore durante la migrazione.", "error");
     }
   };
 
@@ -122,18 +129,22 @@ export const ProjectProvider: React.FC<{ children: React.ReactNode }> = ({ child
       try {
         const p = await supabaseService.downloadFullProject(supabaseClient, id);
         await dbService.saveProject(p);
-        setProjects(prev => [...prev.filter(x => x.id !== id), p]);
+        setProjects(prev => {
+            const exists = prev.some(x => x.id === id);
+            if (exists) return prev.map(x => x.id === id ? p : x);
+            return [...prev, p];
+        });
         if (activate) switchProject(id);
-        showNotification(`Progetto "${p.name}" scaricato in locale.`, "success");
+        showNotification(`Progetto "${p.name}" pronto.`, "success");
       } catch (err) {
-        showNotification("Errore durante il download del progetto.", "error");
+        showNotification("Errore download.", "error");
       }
     }
   };
 
-  const downloadAllFromSupabase = async () => {
+  const pullAllFromSupabase = async () => {
     if (!supabaseClient || !session) return;
-    showNotification("Inizio sincronizzazione globale...", "success");
+    showNotification("Scaricamento dati dal cloud...", "success");
     try {
       const { data: remoteProjs } = await supabaseService.fetchProjects(supabaseClient);
       if (remoteProjs && remoteProjs.length > 0) {
@@ -146,15 +157,27 @@ export const ProjectProvider: React.FC<{ children: React.ReactNode }> = ({ child
         setProjects(prev => {
           const downloadedIds = downloaded.map(d => d.id);
           const remaining = prev.filter(p => !downloadedIds.includes(p.id));
-          return [...remaining, ...downloaded];
+          const newState = [...remaining, ...downloaded];
+          localStorageService.saveOpenProjectIds(newState.map(n => n.id));
+          return newState;
         });
-        showNotification(`${downloaded.length} progetti sincronizzati dal cloud.`, "success");
+        showNotification(`${downloaded.length} progetti scaricati correttamente.`, "success");
       } else {
-        showNotification("Nessun progetto trovato sul server.", "error");
+        showNotification("Nessun progetto sul server.", "error");
       }
     } catch (err) {
-      console.error(err);
-      showNotification("Errore nella sincronizzazione globale.", "error");
+      showNotification("Errore scaricamento globale.", "error");
+    }
+  };
+
+  const syncAllFromSupabase = async () => {
+    if (!supabaseClient || !session) return;
+    showNotification("Sincronizzazione in corso...", "success");
+    try {
+      await processSyncQueue(); // Spinge prima i cambiamenti locali
+      await pullAllFromSupabase(); // Poi scarica le novità
+    } catch (err) {
+      showNotification("Errore sincronizzazione.", "error");
     }
   };
 
@@ -164,6 +187,7 @@ export const ProjectProvider: React.FC<{ children: React.ReactNode }> = ({ child
     supabaseConfig, supabaseClient, pendingSyncIds,
     ...projActions,
     switchProject,
+    reorderProject,
     closeProject: (id) => setProjects(p => p.filter(x => x.id !== id)),
     loadProject: (ns, act = true) => { setProjects(prev => [...prev.filter(x => x.id !== ns.id), ns]); if (act) switchProject(ns.id); },
     setSupabaseConfig: (u, k) => { setSupabaseConfigState({url:u, key:k}); localStorageService.saveSupabaseConfig({url:u, key:k}); },
@@ -173,7 +197,8 @@ export const ProjectProvider: React.FC<{ children: React.ReactNode }> = ({ child
     showNotification,
     uploadProjectToSupabase: async () => { if (supabaseClient && session) await supabaseService.uploadFullProject(supabaseClient, activeProject, session.user.id); },
     downloadProjectFromSupabase,
-    downloadAllFromSupabase,
+    syncAllFromSupabase,
+    pullAllFromSupabase,
     listProjectsFromSupabase: async () => supabaseClient ? (await supabaseService.fetchProjects(supabaseClient)).data || [] : [],
     deleteProjectFromSupabase: async (id) => { if (supabaseClient) await supabaseService.softDeleteProject(supabaseClient, id); },
     getProjectBranchesFromSupabase: async (id) => { if (supabaseClient) { const res = await supabaseService.fetchBranches(supabaseClient, id); return res.data || []; } return []; },

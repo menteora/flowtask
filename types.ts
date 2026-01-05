@@ -49,6 +49,7 @@ export interface Branch {
   parentIds: string[]; 
   archived?: boolean;
   collapsed?: boolean; 
+  position?: number;
   version: number;
   updatedAt?: string;
 }

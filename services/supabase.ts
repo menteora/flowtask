@@ -8,7 +8,7 @@ export const supabaseService = {
   },
 
   async fetchBranches(client: SupabaseClient, projectId: string) {
-    return client.from('flowtask_branches').select('*').eq('project_id', projectId).is('deleted_at', null);
+    return client.from('flowtask_branches').select('*').eq('project_id', projectId).is('deleted_at', null).order('position', { ascending: true });
   },
 
   async softDeleteProject(client: SupabaseClient, id: string) {
@@ -61,7 +61,7 @@ export const supabaseService = {
 
     const [peopleRes, branchesRes] = await Promise.all([
       client.from('flowtask_people').select('*').eq('project_id', id).is('deleted_at', null),
-      client.from('flowtask_branches').select('*').eq('project_id', id).is('deleted_at', null)
+      client.from('flowtask_branches').select('*').eq('project_id', id).is('deleted_at', null).order('position', { ascending: true })
     ]);
 
     const branchIds = branchesRes.data?.map(b => b.id) || [];
@@ -70,7 +70,8 @@ export const supabaseService = {
         const { data } = await client.from('flowtask_tasks')
           .select('*')
           .in('branch_id', branchIds)
-          .is('deleted_at', null);
+          .is('deleted_at', null)
+          .order('position', { ascending: true });
         tasksRes = data || [];
     }
 
@@ -83,7 +84,6 @@ export const supabaseService = {
     (branchesRes.data || []).forEach(b => {
       const bTasks = tasksRes
         .filter(t => t.branch_id === b.id)
-        .sort((x, y) => (x.position || 0) - (y.position || 0))
         .map(t => ({
           id: t.id, title: t.title, description: t.description, completed: t.completed,
           completedAt: t.completed_at, assigneeId: t.assignee_id, dueDate: t.due_date, pinned: t.pinned || false,
@@ -96,7 +96,7 @@ export const supabaseService = {
         startDate: b.start_date, endDate: b.end_date, dueDate: b.due_date,
         archived: b.archived, collapsed: b.collapsed, isLabel: b.is_label,
         isSprint: b.is_sprint || false, sprintCounter: b.sprint_counter || 1,
-        responsibleId: b.responsible_id, version: b.version || 1, updatedAt: b.updated_at
+        responsibleId: b.responsible_id, position: b.position || 0, version: b.version || 1, updatedAt: b.updated_at
       };
     });
 
@@ -113,19 +113,18 @@ export const supabaseService = {
     }
 
     for (const b of Object.values(project.branches)) {
-      // Fixed: correctly accessed camelCase properties on Branch object
       await this.upsertEntity(client, 'flowtask_branches', {
           id: b.id, project_id: project.id, title: b.title, description: b.description, status: b.status,
           start_date: b.startDate, end_date: b.endDate, due_date: b.dueDate, archived: b.archived,
           collapsed: b.collapsed, is_label: b.isLabel, is_sprint: b.isSprint || false,
           sprint_counter: b.sprintCounter || 1, parent_ids: b.parentIds, children_ids: b.childrenIds,
-          responsible_id: b.responsibleId, version: b.version
+          responsible_id: b.responsibleId, position: b.position || 0, version: b.version
       });
 
       for (const t of b.tasks) {
         await this.upsertEntity(client, 'flowtask_tasks', {
           id: t.id, branch_id: b.id, title: t.title, description: t.description, assignee_id: t.assigneeId,
-          due_date: t.dueDate, completed: t.completed, completed_at: t.completedAt, position: t.position, pinned: t.pinned || false, version: t.version
+          due_date: t.dueDate, completed: t.completed, completed_at: t.completedAt, position: t.position || 0, pinned: t.pinned || false, version: t.version
         });
       }
     }

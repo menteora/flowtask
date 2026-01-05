@@ -4,7 +4,7 @@ import { useProject } from '../../context/ProjectContext';
 import { useBranch } from '../../context/BranchContext';
 import { useTask } from '../../context/TaskContext';
 import { STATUS_CONFIG } from '../../constants';
-import { ChevronRight, ChevronDown, Plus, FileText, CheckSquare, Square, Archive, GitBranch, ChevronUp, Tag, Calendar, CheckCircle2, ChevronsDown, ChevronsUp, Layers, RefreshCw, Zap } from 'lucide-react';
+import { ChevronRight, ChevronDown, Plus, FileText, CheckSquare, Square, Archive, GitBranch, ChevronUp, Tag, Calendar, CheckCircle2, ChevronsDown, ChevronsUp, Layers, RefreshCw, Zap, ArrowUp, ArrowDown } from 'lucide-react';
 import Avatar from '../ui/Avatar';
 
 interface FolderNodeProps {
@@ -14,10 +14,9 @@ interface FolderNodeProps {
   siblingsCount?: number;
 }
 
-const FolderNode: React.FC<FolderNodeProps> = ({ branchId, depth = 0, index, siblingsCount }) => {
+const FolderNode: React.FC<FolderNodeProps> = ({ branchId, depth = 0, index = 0, siblingsCount = 0 }) => {
   const { state, pendingSyncIds } = useProject();
-  // Using BranchContext and TaskContext for respective actions and state
-  const { selectBranch, selectedBranchId, addBranch, updateBranch, showArchived } = useBranch();
+  const { selectBranch, selectedBranchId, addBranch, updateBranch, moveBranch, showArchived } = useBranch();
   const { updateTask, moveTask, showOnlyOpen, setEditingTask } = useTask();
   
   const branch = state.branches[branchId];
@@ -71,7 +70,7 @@ const FolderNode: React.FC<FolderNodeProps> = ({ branchId, depth = 0, index, sib
     <div className={`flex flex-col select-none ${isSyncing ? 'bg-indigo-50/20' : ''}`}>
       <div 
         className={`
-          flex items-center gap-2 py-3 px-4 border-b border-gray-100 dark:border-slate-800 transition-colors cursor-pointer relative
+          flex items-center gap-2 py-3 px-4 border-b border-gray-100 dark:border-slate-800 transition-colors cursor-pointer relative group
           ${isSelected ? 'bg-indigo-50 dark:bg-indigo-900/20' : 'bg-white dark:bg-slate-900 hover:bg-gray-50 dark:hover:bg-slate-800'}
           ${branch.archived ? 'opacity-60 grayscale-[0.5]' : ''}
         `}
@@ -113,23 +112,42 @@ const FolderNode: React.FC<FolderNodeProps> = ({ branchId, depth = 0, index, sib
              </div>
         </div>
 
-        <button 
-            onClick={(e) => {
-                e.stopPropagation();
-                updateBranch(branchId, { collapsed: false });
-                addBranch(branchId);
-            }}
-            className="p-1.5 text-slate-400 hover:text-indigo-600 hover:bg-indigo-50 dark:hover:bg-slate-700 rounded-full"
-        >
-            <Plus className="w-4 h-4" />
-        </button>
+        <div className="flex items-center opacity-0 group-hover:opacity-100 transition-opacity">
+            {branchId !== state.rootBranchId && (
+                <div className="flex flex-col mr-2">
+                    <button 
+                        onClick={(e) => { e.stopPropagation(); moveBranch(branchId, 'up'); }}
+                        disabled={index === 0}
+                        className={`p-0.5 ${index === 0 ? 'text-slate-200 dark:text-slate-800' : 'text-slate-400 hover:text-indigo-600'}`}
+                    >
+                        <ChevronUp className="w-3.5 h-3.5" />
+                    </button>
+                    <button 
+                        onClick={(e) => { e.stopPropagation(); moveBranch(branchId, 'down'); }}
+                        disabled={index === siblingsCount - 1}
+                        className={`p-0.5 ${index === siblingsCount - 1 ? 'text-slate-200 dark:text-slate-800' : 'text-slate-400 hover:text-indigo-600'}`}
+                    >
+                        <ChevronDown className="w-3.5 h-3.5" />
+                    </button>
+                </div>
+            )}
+            <button 
+                onClick={(e) => {
+                    e.stopPropagation();
+                    updateBranch(branchId, { collapsed: false });
+                    addBranch(branchId);
+                }}
+                className="p-1.5 text-slate-400 hover:text-indigo-600 hover:bg-indigo-50 dark:hover:bg-slate-700 rounded-full"
+            >
+                <Plus className="w-4 h-4" />
+            </button>
+        </div>
       </div>
 
       {isOpen && hasContent && (
         <div className="flex flex-col">
           {sortedTasks.map((task, idx) => {
              const taskSyncing = pendingSyncIds.has(task.id);
-             // Verifica se il task può essere spostato su o giù
              const canMoveUp = idx > 0 && sortedTasks[idx - 1].completed === task.completed;
              const canMoveDown = idx < sortedTasks.length - 1 && sortedTasks[idx + 1].completed === task.completed;
 
@@ -164,7 +182,6 @@ const FolderNode: React.FC<FolderNodeProps> = ({ branchId, depth = 0, index, sib
                                 <Avatar person={state.people.find(p => p.id === task.assigneeId)!} size="sm" className="w-5 h-5 text-[10px]" />
                             )}
                             
-                            {/* Pulsanti di ordinamento per mobile */}
                             {!task.completed && (
                                 <div className="flex flex-col items-center ml-1">
                                     <button 

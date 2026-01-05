@@ -24,7 +24,6 @@ export const useBranchActions = (
       let title = 'Nuovo Ramo';
       let nextParent = { ...parent };
 
-      // Logica Sprint: auto-naming e incremento contatore
       if (parent.isSprint) {
           const counter = parent.sprintCounter || 1;
           const year = new Date().getFullYear().toString().slice(-2);
@@ -42,6 +41,7 @@ export const useBranchActions = (
         tasks: [], 
         childrenIds: [], 
         parentIds: [parentId], 
+        position: parent.childrenIds.length,
         version: 1, 
         updatedAt: now 
       };
@@ -73,6 +73,34 @@ export const useBranchActions = (
     }));
   }, [activeProjectId, isOfflineMode, supabaseClient, setProjects]);
 
+  const moveBranch = useCallback((branchId: string, direction: 'prev' | 'next') => {
+    setProjects(prev => prev.map(p => {
+      if (p.id !== activeProjectId) return p;
+      const branch = p.branches[branchId];
+      if (!branch || branch.parentIds.length === 0) return p;
+      
+      const parentId = branch.parentIds[0];
+      const parent = p.branches[parentId];
+      if (!parent) return p;
+
+      const newChildrenIds = [...parent.childrenIds];
+      const idx = newChildrenIds.indexOf(branchId);
+      if (idx === -1) return p;
+
+      const targetIdx = direction === 'prev' ? idx - 1 : idx + 1;
+      if (targetIdx < 0 || targetIdx >= newChildrenIds.length) return p;
+
+      // Swap
+      [newChildrenIds[idx], newChildrenIds[targetIdx]] = [newChildrenIds[targetIdx], newChildrenIds[idx]];
+
+      const nextParent = { ...parent, childrenIds: newChildrenIds, updatedAt: new Date().toISOString() };
+      const nextState = { ...p, branches: { ...p.branches, [parentId]: nextParent } };
+      
+      persistenceService.saveBranch(p.id, nextParent, isOfflineMode, supabaseClient, nextState);
+      return nextState;
+    }));
+  }, [activeProjectId, isOfflineMode, supabaseClient, setProjects]);
+
   const deleteBranch = useCallback((branchId: string) => {
     setProjects(prev => {
       const project = prev.find(p => p.id === activeProjectId);
@@ -81,7 +109,6 @@ export const useBranchActions = (
       const target = project.branches[branchId];
       const nextBranches = { ...project.branches };
       
-      // Rimuoviamo il riferimento dai genitori
       target.parentIds.forEach(pid => {
         if (nextBranches[pid]) {
           nextBranches[pid] = { 
@@ -92,7 +119,6 @@ export const useBranchActions = (
         }
       });
 
-      // Rimuoviamo il riferimento dai figli
       target.childrenIds.forEach(cid => {
         if (nextBranches[cid]) {
           nextBranches[cid] = {
@@ -179,5 +205,5 @@ export const useBranchActions = (
     }));
   }, [activeProjectId, isOfflineMode, supabaseClient, setProjects]);
 
-  return { addBranch, updateBranch, deleteBranch, linkBranch, unlinkBranch, toggleBranchArchive };
+  return { addBranch, updateBranch, moveBranch, deleteBranch, linkBranch, unlinkBranch, toggleBranchArchive };
 };

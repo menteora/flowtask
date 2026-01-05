@@ -15,6 +15,7 @@ interface BranchContextType {
   // Actions
   addBranch: (parentId: string) => void;
   updateBranch: (branchId: string, updates: Partial<Branch>) => void;
+  moveBranch: (branchId: string, direction: 'prev' | 'next' | 'up' | 'down') => void;
   deleteBranch: (branchId: string) => void;
   linkBranch: (childId: string, parentId: string) => void;
   unlinkBranch: (childId: string, parentId: string) => void;
@@ -31,6 +32,12 @@ export const BranchProvider: React.FC<{ children: React.ReactNode }> = ({ childr
   const [showAllProjects, setShowAllProjects] = useState(false);
 
   const actions = useBranchActions(setProjects, activeProjectId, isOfflineMode, supabaseClient);
+
+  // Mappatura alias per compatibilità con FolderTree (up/down) e FlowCanvas (prev/next)
+  const moveBranchMapped = (id: string, direction: 'prev' | 'next' | 'up' | 'down') => {
+      const dir = (direction === 'up' || direction === 'prev') ? 'prev' : 'next';
+      actions.moveBranch(id, dir);
+  };
 
   const setAllBranchesCollapsed = useCallback((collapsed: boolean) => {
     setProjects(prev => prev.map(p => {
@@ -49,6 +56,7 @@ export const BranchProvider: React.FC<{ children: React.ReactNode }> = ({ childr
       showArchived, toggleShowArchived: () => setShowArchived(!showArchived),
       showAllProjects, toggleShowAllProjects: () => setShowAllProjects(!showAllProjects),
       ...actions,
+      moveBranch: moveBranchMapped,
       setAllBranchesCollapsed
     }}>
       {children}
