@@ -2,7 +2,7 @@
 import React, { useState, useRef, useEffect } from 'react';
 import { useTheme } from './context/ThemeContext';
 import { useProject } from './context/ProjectContext';
-import { Moon, Sun, GitBranch, Layers, Users, Download, Upload, Archive, Camera, Image as ImageIcon, Smartphone, Plus, X, Edit2, Calendar, ClipboardList, Settings, Cloud, Loader2, Check, AlertCircle, ChevronDown, Folder, MoreVertical, GanttChart, Globe, Eye, Target, ChevronsDown, ChevronsUp, CheckCircle2 } from 'lucide-react';
+import { Moon, Sun, GitBranch, Layers, Users, Download, Upload, Archive, Camera, Image as ImageIcon, Smartphone, Plus, X, Edit2, Calendar, ClipboardList, Settings, Cloud, Loader2, Check, AlertCircle, ChevronDown, Folder, MoreVertical, GanttChart, Globe, Eye, Target, ChevronsDown, ChevronsUp, CheckCircle2, Trash2 } from 'lucide-react';
 import FlowCanvas from './components/flow/FlowCanvas';
 import FolderTree from './components/flow/FolderTree';
 import BranchDetails from './components/panels/BranchDetails';
@@ -26,7 +26,7 @@ const App: React.FC = () => {
   const { theme, toggleTheme } = useTheme();
   const { 
     selectedBranchId, state, loadProject, showArchived, toggleShowArchived,
-    projects, activeProjectId, switchProject, createProject, closeProject, renameProject,
+    projects, activeProjectId, switchProject, createProject, closeProject, deleteProject, renameProject,
     session, loadingAuth, isInitializing, isOfflineMode, autoSaveStatus, notification,
     showAllProjects, toggleShowAllProjects, showOnlyOpen, toggleShowOnlyOpen, setAllBranchesCollapsed
   } = useProject();
@@ -281,14 +281,20 @@ const App: React.FC = () => {
                                             <Edit2 className="w-4 h-4" />
                                         </button>
                                     )}
-                                    {projects.length > 1 && (
-                                        <button 
-                                            onClick={() => closeProject(proj.id)}
-                                            className="p-2 text-slate-400 hover:text-red-500 rounded-full"
-                                        >
-                                            <X className="w-4 h-4" />
-                                        </button>
-                                    )}
+                                    <button 
+                                        onClick={(e) => { e.stopPropagation(); closeProject(proj.id); }}
+                                        className="p-2 text-slate-400 hover:text-amber-500 rounded-full"
+                                        title="Chiudi Tab"
+                                    >
+                                        <X className="w-4 h-4" />
+                                    </button>
+                                    <button 
+                                        onClick={(e) => { e.stopPropagation(); deleteProject(proj.id); }}
+                                        className="p-2 text-slate-300 hover:text-red-500 rounded-full"
+                                        title="Elimina dal DB locale"
+                                    >
+                                        <Trash2 className="w-4 h-4" />
+                                    </button>
                                 </div>
                             </div>
                         )
