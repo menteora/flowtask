@@ -384,7 +384,12 @@ const BranchDetails: React.FC = () => {
                                     )}
                                 </div>
                                 <div className="flex items-center opacity-0 group-hover:opacity-100 transition-opacity">
-                                    <input type="checkbox" checked={selectedTaskIds.includes(task.id)} onChange={(e) => e.target.checked ? setSelectedTaskIds([...selectedTaskIds, task.id]) : setSelectedTaskIds(selectedTaskIds.filter(id => id !== task.id))} className="w-4 h-4 rounded border-slate-300 bg-white dark:bg-slate-700 text-indigo-600 focus:ring-indigo-500 mr-2" />
+                                    <input 
+                                        type="checkbox" 
+                                        checked={selectedTaskIds.includes(task.id)} 
+                                        onChange={(e) => e.target.checked ? setSelectedTaskIds([...selectedTaskIds, task.id]) : setSelectedTaskIds(selectedTaskIds.filter(id => id !== task.id))} 
+                                        className="w-4 h-4 rounded border-amber-300 bg-amber-50 dark:bg-slate-700 text-amber-600 focus:ring-amber-500 mr-2 cursor-pointer shadow-sm" 
+                                    />
                                     <button onClick={() => deleteTask(branch.id, task.id)} className="p-1 text-slate-300 hover:text-red-500"><Trash2 className="w-4 h-4" /></button>
                                 </div>
                             </div>
