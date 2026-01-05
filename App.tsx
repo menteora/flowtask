@@ -123,13 +123,13 @@ const App: React.FC = () => {
         <div className="fixed inset-0 z-[100] bg-black/60 backdrop-blur-sm flex flex-col justify-end sm:justify-center sm:items-center" onClick={() => setIsProjectMenuOpen(false)}>
             <div className="bg-white dark:bg-slate-900 w-full sm:w-96 max-h-[80vh] sm:rounded-xl rounded-t-2xl shadow-2xl flex flex-col animate-in slide-in-from-bottom-10" onClick={e => e.stopPropagation()}>
                 <div className="p-4 border-b dark:border-slate-800 flex items-center justify-between">
-                    <h3 className="font-bold text-lg">I tuoi Progetti</h3>
-                    <button onClick={() => { createProject(); setIsProjectMenuOpen(false); }} className="p-2 bg-indigo-600 text-white rounded-full"><Plus className="w-5 h-5" /></button>
+                    <h3 className="font-bold text-lg">Tutti i Progetti</h3>
+                    <button onClick={() => { createProject(); setIsProjectMenuOpen(false); }} className="p-2 bg-indigo-600 text-white rounded-full transition-transform active:scale-95"><Plus className="w-5 h-5" /></button>
                 </div>
                 <div className="flex-1 overflow-y-auto p-2 space-y-1">
                     {projects.map(proj => (
                         <div key={proj.id} className={`flex items-center justify-between p-3 rounded-xl ${proj.id === activeProjectId ? 'bg-indigo-50 dark:bg-indigo-900/20 border border-indigo-200' : 'hover:bg-slate-50 dark:hover:bg-slate-800'}`}>
-                            <div className="flex-1 flex items-center gap-3 min-w-0" onClick={() => { switchProject(proj.id); setIsProjectMenuOpen(false); }}>
+                            <div className="flex-1 flex items-center gap-3 min-w-0 cursor-pointer" onClick={() => { switchProject(proj.id); setIsProjectMenuOpen(false); }}>
                                 <Folder className="w-4 h-4 shrink-0" />
                                 <div className="truncate"><p className="text-sm font-semibold truncate">{proj.name}</p></div>
                             </div>
@@ -146,26 +146,26 @@ const App: React.FC = () => {
         </div>
       )}
 
-      {/* Header */}
-      <div className="flex w-full h-14 md:h-16 bg-white dark:bg-slate-900 border-b dark:border-slate-800 items-center justify-between px-4 md:px-6 z-20 shadow-sm flex-shrink-0">
-        <div className="flex items-center gap-4 relative">
-          <button onClick={() => setIsProjectMenuOpen(true)} className="flex items-center gap-2 -ml-1 active:bg-slate-100 dark:active:bg-slate-800 p-1.5 rounded-xl transition-colors">
-             <div className="bg-indigo-600 p-1.5 rounded-lg shadow-sm"><GitBranch className="w-5 h-5 text-white" /></div>
-             <div className="flex flex-col items-start min-w-0">
-                 <span className="text-[9px] text-slate-400 font-bold uppercase">Progetto</span>
-                 <div className="flex items-center gap-1"><span className="font-bold text-sm max-w-[140px] truncate">{state.name}</span><ChevronDown className="w-3.5 h-3.5 text-slate-400" /></div>
-             </div>
-          </button>
+      {/* Header Principale */}
+      <div className="flex w-full h-14 bg-white dark:bg-slate-900 border-b dark:border-slate-800 items-center justify-between px-4 z-40 shadow-sm flex-shrink-0">
+        <div className="flex items-center gap-3 min-w-0">
+          <div className="bg-indigo-600 p-1.5 rounded-lg shadow-sm shrink-0"><GitBranch className="w-5 h-5 text-white" /></div>
+          
+          {/* Progetto Attivo (Mobile & Info) */}
+          <div className="flex flex-col leading-tight min-w-0 max-w-[150px] md:max-w-none">
+             <span className="text-[9px] text-slate-400 font-bold uppercase tracking-tighter">FlowTask</span>
+             <span className="font-bold text-sm truncate">{state.name}</span>
+          </div>
+
           {session && !isOfflineMode && (
-              <div className="hidden sm:flex items-center gap-1.5 px-2 py-1 bg-slate-50 dark:bg-slate-800 rounded text-xs transition-colors">
-                  {autoSaveStatus === 'saving' && <><Loader2 className="w-3 h-3 animate-spin text-indigo-500" /> <span className="text-indigo-500">Salvataggio...</span></>}
-                  {autoSaveStatus === 'saved' && <><Cloud className="w-3 h-3 text-green-500" /> <span className="text-green-500">Salvato</span></>}
-                  {autoSaveStatus === 'idle' && <span className="text-slate-400">Pronto</span>}
+              <div className="hidden lg:flex items-center gap-1.5 px-2 py-0.5 bg-slate-50 dark:bg-slate-800 rounded text-[10px] transition-colors ml-2 shrink-0">
+                  {autoSaveStatus === 'saving' && <><Loader2 className="w-2.5 h-2.5 animate-spin text-indigo-500" /> <span className="text-indigo-500 font-bold">SAVING</span></>}
+                  {autoSaveStatus === 'saved' && <><Cloud className="w-2.5 h-2.5 text-green-500" /> <span className="text-green-500 font-bold">SYNCED</span></>}
               </div>
           )}
         </div>
 
-        <div className="hidden md:flex items-center gap-1">
+        <div className="hidden md:flex items-center gap-0.5 mx-4">
            <NavItem view="workflow" icon={Layers} label="Workflow" />
            <NavItem view="focus" icon={Target} label="Focus" />
            <NavItem view="assignments" icon={ClipboardList} label="Task" />
@@ -174,15 +174,53 @@ const App: React.FC = () => {
            <NavItem view="team" icon={Users} label="Team" />
         </div>
 
-        <div className="flex items-center gap-1 md:gap-2">
-            <button onClick={toggleShowOnlyOpen} className={`p-2 rounded-full border ${showOnlyOpen ? 'bg-indigo-100 text-indigo-600 border-indigo-200' : 'text-slate-500 border-transparent'}`} title="Solo Task Aperti"><CheckCircle2 className="w-4 h-4" /></button>
-            <button onClick={toggleShowAllProjects} className={`p-2 rounded-full border ${showAllProjects ? 'bg-amber-100 text-amber-600 border-amber-200' : 'text-slate-500 border-transparent'}`} title="Tutti i Progetti"><Globe className="w-4 h-4" /></button>
-            <button onClick={toggleShowArchived} className={`p-2 rounded-full border ${showArchived ? 'bg-indigo-100 text-indigo-600 border-indigo-200' : 'text-slate-500 border-transparent'}`} title="Archiviati"><Archive className="w-4 h-4" /></button>
-            <button onClick={handleImageExport} className="hidden md:block p-2 text-slate-500"><Camera className="w-4 h-4" /></button>
-            <button onClick={handleExport} className="hidden md:block p-2 text-slate-500"><Download className="w-4 h-4" /></button>
-            <button onClick={() => setCurrentView('settings')} className={`p-2 rounded-full border ${currentView === 'settings' ? 'text-indigo-600 border-indigo-200 bg-indigo-50' : 'text-slate-500 border-transparent'}`}><Settings className="w-4 h-4" /></button>
-            <button onClick={toggleTheme} className="p-2 text-slate-500 border border-gray-200 dark:border-slate-700 rounded-full">{theme === 'light' ? <Moon className="w-4 h-4" /> : <Sun className="w-4 h-4" />}</button>
+        <div className="flex items-center gap-1 shrink-0">
+            <button onClick={toggleShowOnlyOpen} className={`p-2 rounded-full border transition-all ${showOnlyOpen ? 'bg-indigo-100 text-indigo-600 border-indigo-200 shadow-inner' : 'text-slate-500 border-transparent hover:bg-slate-100 dark:hover:bg-slate-800'}`} title="Solo Task Aperti"><CheckCircle2 className="w-4 h-4" /></button>
+            <button onClick={toggleShowAllProjects} className={`p-2 rounded-full border transition-all ${showAllProjects ? 'bg-amber-100 text-amber-600 border-amber-200 shadow-inner' : 'text-slate-500 border-transparent hover:bg-slate-100 dark:hover:bg-slate-800'}`} title="Tutti i Progetti"><Globe className="w-4 h-4" /></button>
+            <button onClick={toggleShowArchived} className={`p-2 rounded-full border transition-all ${showArchived ? 'bg-indigo-100 text-indigo-600 border-indigo-200 shadow-inner' : 'text-slate-500 border-transparent hover:bg-slate-100 dark:hover:bg-slate-800'}`} title="Mostra Archiviati"><Archive className="w-4 h-4" /></button>
+            
+            <div className="h-6 w-px bg-slate-200 dark:bg-slate-800 mx-1"></div>
+            
+            <button onClick={() => setCurrentView('settings')} className={`p-2 rounded-full border transition-all ${currentView === 'settings' ? 'text-indigo-600 border-indigo-200 bg-indigo-50 shadow-inner' : 'text-slate-500 border-transparent hover:bg-slate-100 dark:hover:bg-slate-800'}`} title="Impostazioni"><Settings className="w-4 h-4" /></button>
+            <button onClick={toggleTheme} className="p-2 text-slate-500 border border-slate-200 dark:border-slate-800 rounded-full hover:bg-slate-100 dark:hover:bg-slate-800 transition-colors">{theme === 'light' ? <Moon className="w-4 h-4" /> : <Sun className="w-4 h-4" />}</button>
         </div>
+      </div>
+
+      {/* Barra dei Tab Progetti (Desktop Style IDE) */}
+      <div className="hidden md:flex h-10 w-full bg-slate-100 dark:bg-slate-900/50 border-b dark:border-slate-800 items-center px-4 gap-1 z-30 flex-shrink-0 overflow-x-auto no-scrollbar">
+         {projects.map(proj => (
+              <div 
+                key={proj.id}
+                onClick={() => switchProject(proj.id)}
+                className={`
+                  group flex items-center gap-2 px-4 h-8 rounded-t-lg transition-all cursor-pointer relative min-w-[100px] max-w-[200px] text-xs font-bold border-t border-x
+                  ${proj.id === activeProjectId 
+                    ? 'bg-white dark:bg-slate-950 border-slate-200 dark:border-slate-800 text-indigo-600 dark:text-indigo-400 z-10' 
+                    : 'bg-transparent border-transparent text-slate-400 hover:bg-white/50 dark:hover:bg-slate-800'}
+                `}
+              >
+                <Folder className={`w-3 h-3 shrink-0 ${proj.id === activeProjectId ? 'text-indigo-500' : 'text-slate-400'}`} />
+                <span className="truncate flex-1">{proj.name}</span>
+                {projects.length > 1 && (
+                  <button 
+                    onClick={(e) => { e.stopPropagation(); closeProject(proj.id); }}
+                    className={`p-0.5 rounded hover:bg-slate-200 dark:hover:bg-slate-700 transition-opacity ${proj.id === activeProjectId ? 'opacity-100' : 'opacity-0 group-hover:opacity-100'}`}
+                  >
+                    <X className="w-2.5 h-2.5" />
+                  </button>
+                )}
+                {proj.id === activeProjectId && (
+                  <div className="absolute -bottom-[1px] left-0 right-0 h-[2px] bg-white dark:bg-slate-950 z-20"></div>
+                )}
+              </div>
+            ))}
+            <button 
+              onClick={() => setIsProjectMenuOpen(true)}
+              className="p-1.5 text-slate-400 hover:text-indigo-600 hover:bg-white dark:hover:bg-slate-800 rounded-md transition-colors ml-2"
+              title="Apri o crea progetto"
+            >
+              <Plus className="w-4 h-4" />
+            </button>
       </div>
 
       <div className="flex-1 flex flex-col relative h-full overflow-hidden">
@@ -192,8 +230,8 @@ const App: React.FC = () => {
                 <div className="block md:hidden w-full h-full"><FolderTree /></div>
                 <div className="hidden md:flex absolute bottom-10 right-10 flex-col gap-2 z-30 pointer-events-none">
                     <div className="flex flex-col gap-2 pointer-events-auto bg-white dark:bg-slate-900 p-2 rounded-2xl shadow-xl border dark:border-slate-800">
-                        <button onClick={() => setAllBranchesCollapsed(false)} className="p-3 bg-indigo-50 text-indigo-600 rounded-xl" title="Espandi"><ChevronsDown className="w-5 h-5" /></button>
-                        <button onClick={() => setAllBranchesCollapsed(true)} className="p-3 bg-slate-50 text-slate-600 rounded-xl" title="Comprimi"><ChevronsUp className="w-5 h-5" /></button>
+                        <button onClick={() => setAllBranchesCollapsed(false)} className="p-3 bg-indigo-50 text-indigo-600 rounded-xl hover:bg-indigo-100 transition-colors" title="Espandi"><ChevronsDown className="w-5 h-5" /></button>
+                        <button onClick={() => setAllBranchesCollapsed(true)} className="p-3 bg-slate-50 text-slate-600 rounded-xl hover:bg-slate-100 transition-colors" title="Comprimi"><ChevronsUp className="w-5 h-5" /></button>
                     </div>
                 </div>
                 {selectedBranchId && <BranchDetails />}
@@ -207,12 +245,12 @@ const App: React.FC = () => {
         }
       </div>
 
-      <div className="md:hidden flex-shrink-0 bg-white dark:bg-slate-900 border-t dark:border-slate-800 flex justify-around items-center p-2 z-30 pb-safe">
-        <button onClick={() => setCurrentView('workflow')} className={`flex flex-col items-center p-2 ${currentView === 'workflow' ? 'text-indigo-600' : 'text-slate-500'}`}><Layers className="w-6 h-6" /><span className="text-[10px] mt-1 font-medium">Flow</span></button>
-        <button onClick={() => setCurrentView('focus')} className={`flex flex-col items-center p-2 ${currentView === 'focus' ? 'text-indigo-600' : 'text-slate-500'}`}><Target className="w-6 h-6" /><span className="text-[10px] mt-1 font-medium">Focus</span></button>
-        <button onClick={() => setCurrentView('assignments')} className={`flex flex-col items-center p-2 ${currentView === 'assignments' ? 'text-indigo-600' : 'text-slate-500'}`}><ClipboardList className="w-6 h-6" /><span className="text-[10px] mt-1 font-medium">Task</span></button>
-        <button onClick={() => setCurrentView('calendar')} className={`flex flex-col items-center p-2 ${currentView === 'calendar' ? 'text-indigo-600' : 'text-slate-500'}`}><Calendar className="w-6 h-6" /><span className="text-[10px] mt-1 font-medium">Scadenze</span></button>
-        <button onClick={() => setCurrentView('team')} className={`flex flex-col items-center p-2 ${currentView === 'team' ? 'text-indigo-600' : 'text-slate-500'}`}><Users className="w-6 h-6" /><span className="text-[10px] mt-1 font-medium">Team</span></button>
+      <div className="md:hidden flex-shrink-0 bg-white dark:bg-slate-900 border-t dark:border-slate-800 flex justify-around items-center p-2 z-30 pb-safe shadow-[0_-2px_10px_rgba(0,0,0,0.05)]">
+        <button onClick={() => setCurrentView('workflow')} className={`flex flex-col items-center p-2 ${currentView === 'workflow' ? 'text-indigo-600' : 'text-slate-500'}`}><Layers className="w-6 h-6" /><span className="text-[10px] mt-1 font-black uppercase">Flow</span></button>
+        <button onClick={() => setCurrentView('focus')} className={`flex flex-col items-center p-2 ${currentView === 'focus' ? 'text-indigo-600' : 'text-slate-500'}`}><Target className="w-6 h-6" /><span className="text-[10px] mt-1 font-black uppercase">Focus</span></button>
+        <button onClick={() => setCurrentView('assignments')} className={`flex flex-col items-center p-2 ${currentView === 'assignments' ? 'text-indigo-600' : 'text-slate-500'}`}><ClipboardList className="w-6 h-6" /><span className="text-[10px] mt-1 font-black uppercase">Task</span></button>
+        <button onClick={() => setCurrentView('calendar')} className={`flex flex-col items-center p-2 ${currentView === 'calendar' ? 'text-indigo-600' : 'text-slate-500'}`}><Calendar className="w-6 h-6" /><span className="text-[10px] mt-1 font-black uppercase">Date</span></button>
+        <button onClick={() => setCurrentView('team')} className={`flex flex-col items-center p-2 ${currentView === 'team' ? 'text-indigo-600' : 'text-slate-500'}`}><Users className="w-6 h-6" /><span className="text-[10px] mt-1 font-black uppercase">Team</span></button>
       </div>
     </div>
   );
