@@ -3,6 +3,8 @@ import React, { useState, useEffect, useMemo, useCallback } from 'react';
 import { Branch, BranchStatus, Person } from '../../types';
 import { STATUS_CONFIG } from '../../constants';
 import { useProject } from '../../context/ProjectContext';
+import { useBranch } from '../../context/BranchContext';
+import { useTask } from '../../context/TaskContext';
 import { Plus, Calendar, Archive, FileText, ChevronDown, ChevronUp, GitMerge, Tag, Eye, CheckCircle2, Zap, RefreshCw } from 'lucide-react';
 import Avatar from '../ui/Avatar';
 
@@ -11,7 +13,11 @@ interface BranchNodeProps {
 }
 
 const BranchNode: React.FC<BranchNodeProps> = ({ branchId }) => {
-  const { state, addBranch, selectBranch, selectedBranchId, setReadingDescriptionId, updateBranch, showOnlyOpen, pendingSyncIds } = useProject();
+  const { state, pendingSyncIds } = useProject();
+  // Using BranchContext and TaskContext for respective actions and state
+  const { addBranch, selectBranch, selectedBranchId, updateBranch } = useBranch();
+  const { setReadingDescriptionId, showOnlyOpen } = useTask();
+  
   const [isTasksExpanded, setIsTasksExpanded] = useState(false);
   const branch = state.branches[branchId];
   

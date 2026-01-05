@@ -1,5 +1,8 @@
+
 import React, { useMemo } from 'react';
 import { useProject } from '../../context/ProjectContext';
+import { useBranch } from '../../context/BranchContext';
+import { useTask } from '../../context/TaskContext';
 import { STATUS_CONFIG } from '../../constants';
 import { ChevronRight, ChevronDown, Plus, FileText, CheckSquare, Square, Archive, GitBranch, ChevronUp, Tag, Calendar, CheckCircle2, ChevronsDown, ChevronsUp, Layers, RefreshCw, Zap } from 'lucide-react';
 import Avatar from '../ui/Avatar';
@@ -12,7 +15,11 @@ interface FolderNodeProps {
 }
 
 const FolderNode: React.FC<FolderNodeProps> = ({ branchId, depth = 0, index, siblingsCount }) => {
-  const { state, selectBranch, selectedBranchId, addBranch, updateTask, updateBranch, moveTask, moveBranch, showArchived, showOnlyOpen, setEditingTask, setReadingTask, pendingSyncIds } = useProject();
+  const { state, pendingSyncIds } = useProject();
+  // Using BranchContext and TaskContext for respective actions and state
+  const { selectBranch, selectedBranchId, addBranch, updateBranch, showArchived } = useBranch();
+  const { updateTask, moveTask, showOnlyOpen, setEditingTask } = useTask();
+  
   const branch = state.branches[branchId];
   
   if (!branch) return null;
@@ -198,7 +205,8 @@ const FolderNode: React.FC<FolderNodeProps> = ({ branchId, depth = 0, index, sib
 };
 
 const FolderTree: React.FC = () => {
-    const { state, setAllBranchesCollapsed } = useProject();
+    const { state } = useProject();
+    const { setAllBranchesCollapsed } = useBranch();
     const branchesCount = Object.keys(state.branches).length - 1;
 
     return (

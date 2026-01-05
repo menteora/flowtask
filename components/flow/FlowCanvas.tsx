@@ -1,5 +1,7 @@
+
 import React, { useRef, useState, useMemo } from 'react';
 import { useProject } from '../../context/ProjectContext';
+import { useBranch } from '../../context/BranchContext';
 import BranchNode from './BranchNode';
 import { Archive } from 'lucide-react';
 import { Branch } from '../../types';
@@ -39,7 +41,8 @@ const SkippedNodeIndicator: React.FC<{ title: string }> = ({ title }) => (
 );
 
 const TreeLevel: React.FC<TreeLevelProps> = ({ branchId }) => {
-  const { state, showArchived } = useProject();
+  const { state } = useProject();
+  const { showArchived } = useBranch();
   const branch = state.branches[branchId];
   
   if (!branch) return null;
@@ -102,7 +105,8 @@ const TreeLevel: React.FC<TreeLevelProps> = ({ branchId }) => {
 };
 
 const FlowCanvas: React.FC = () => {
-  const { state, selectBranch } = useProject();
+  const { state } = useProject();
+  const { selectBranch } = useBranch();
   const containerRef = useRef<HTMLDivElement>(null);
   const [isDragging, setIsDragging] = useState(false);
   const [startPos, setStartPos] = useState({ x: 0, y: 0, scrollLeft: 0, scrollTop: 0 });

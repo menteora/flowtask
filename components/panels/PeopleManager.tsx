@@ -1,11 +1,15 @@
+
 import React, { useState } from 'react';
 import { useProject } from '../../context/ProjectContext';
+import { useTask } from '../../context/TaskContext';
 import { Plus, Trash2, Users, Mail, Edit2, X, Save, Phone, Smartphone } from 'lucide-react';
 import Avatar from '../ui/Avatar';
 import { Person } from '../../types';
 
 const PeopleManager: React.FC = () => {
-  const { state, addPerson, updatePerson, removePerson } = useProject();
+  const { state } = useProject();
+  // Using TaskContext for people management actions
+  const { addPerson, updatePerson, removePerson } = useTask();
   const [newName, setNewName] = useState('');
   const [newEmail, setNewEmail] = useState('');
   const [newPhone, setNewPhone] = useState('');

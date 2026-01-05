@@ -2,7 +2,9 @@
 import React, { useState, useRef, useEffect } from 'react';
 import { useTheme } from './context/ThemeContext';
 import { useProject } from './context/ProjectContext';
-import { Moon, Sun, GitBranch, Layers, Users, Download, Upload, Archive, Camera, Image as ImageIcon, Smartphone, Plus, X, Edit2, Calendar, ClipboardList, Settings, Cloud, Loader2, Check, AlertCircle, ChevronDown, Folder, MoreVertical, GanttChart, Globe, Eye, Target, ChevronsDown, ChevronsUp, CheckCircle2, Trash2 } from 'lucide-react';
+import { useBranch } from './context/BranchContext';
+import { useTask } from './context/TaskContext';
+import { Moon, Sun, GitBranch, Layers, Users, Download, Upload, Archive, Camera, Plus, X, Edit2, Calendar, ClipboardList, Settings, Cloud, Loader2, Check, AlertCircle, ChevronDown, Folder, GanttChart, Globe, Target, ChevronsDown, ChevronsUp, CheckCircle2, Trash2 } from 'lucide-react';
 import FlowCanvas from './components/flow/FlowCanvas';
 import FolderTree from './components/flow/FolderTree';
 import BranchDetails from './components/panels/BranchDetails';
@@ -25,12 +27,13 @@ type View = 'workflow' | 'team' | 'calendar' | 'assignments' | 'settings' | 'tim
 const App: React.FC = () => {
   const { theme, toggleTheme } = useTheme();
   const { 
-    selectedBranchId, state, loadProject, showArchived, toggleShowArchived,
-    projects, activeProjectId, switchProject, createProject, closeProject, deleteProject, renameProject,
-    session, loadingAuth, isInitializing, isOfflineMode, autoSaveStatus, notification,
-    showAllProjects, toggleShowAllProjects, showOnlyOpen, toggleShowOnlyOpen, setAllBranchesCollapsed
+    state, projects, activeProjectId, switchProject, createProject, closeProject, deleteProject, renameProject,
+    session, loadingAuth, isInitializing, isOfflineMode, autoSaveStatus, notification, loadProject
   } = useProject();
   
+  const { selectedBranchId, showArchived, toggleShowArchived, showAllProjects, toggleShowAllProjects, setAllBranchesCollapsed } = useBranch();
+  const { showOnlyOpen, toggleShowOnlyOpen } = useTask();
+
   const [currentView, setCurrentView] = useState<View>(() => {
       const saved = localStorageService.getView('workflow');
       const validViews: View[] = ['workflow', 'team', 'calendar', 'assignments', 'settings', 'timeline', 'focus'];
@@ -46,9 +49,7 @@ const App: React.FC = () => {
   const [editingNameId, setEditingNameId] = useState<string | null>(null);
   const [tempProjectName, setTempProjectName] = useState('');
 
-  const showSpinner = isInitializing || (!isOfflineMode && loadingAuth);
-
-  if (showSpinner) {
+  if (isInitializing || (!isOfflineMode && loadingAuth)) {
       return (
           <div className="flex h-[100dvh] w-screen items-center justify-center bg-slate-50 dark:bg-slate-950">
               <div className="flex flex-col items-center gap-4">
@@ -61,9 +62,7 @@ const App: React.FC = () => {
       );
   }
 
-  if (!isOfflineMode && !session) {
-      return <LoginScreen />;
-  }
+  if (!isOfflineMode && !session) return <LoginScreen />;
 
   const handleExport = () => {
     const timestamp = new Date().toISOString().replace(/[:.]/g, '-').slice(0, 16);
@@ -80,293 +79,88 @@ const App: React.FC = () => {
     const isMobile = window.innerWidth < 768;
     const type = isMobile ? 'tree' : 'canvas';
     const elementId = isMobile ? 'export-tree-content' : 'export-canvas-content';
-    
     const node = document.getElementById(elementId);
-    
-    if (!node) {
-        alert("Passa alla vista 'Workflow' per esportare l'immagine del progetto.");
-        return;
-    }
+    if (!node) { alert("Passa alla vista 'Workflow' per esportare l'immagine."); return; }
 
     try {
         const bgColor = theme === 'dark' ? '#020617' : '#f8fafc'; 
-
-        const style: React.CSSProperties = {
-            backgroundColor: bgColor,
-            display: 'block', 
-            overflow: 'visible',
-        };
-        
-        if (type === 'canvas') {
-             style.width = `${node.scrollWidth}px`;
-             style.height = `${node.scrollHeight}px`;
-        }
-
-        const dataUrl = await toPng(node, {
-            cacheBust: true,
-            backgroundColor: bgColor,
-            style: style as any,
-            width: type === 'canvas' ? node.scrollWidth : undefined,
-            height: type === 'canvas' ? node.scrollHeight : undefined 
-        });
-
+        const style: React.CSSProperties = { backgroundColor: bgColor, display: 'block', overflow: 'visible' };
+        if (type === 'canvas') { style.width = `${node.scrollWidth}px`; style.height = `${node.scrollHeight}px`; }
+        const dataUrl = await toPng(node, { cacheBust: true, backgroundColor: bgColor, style: style as any });
         const link = document.createElement('a');
-        const timestamp = new Date().toISOString().replace(/[:.]/g, '-').slice(0, 16);
-        link.download = `flowtask_${state.name.replace(/\s+/g, '_')}_${type}_${timestamp}.png`;
-        link.href = dataUrl;
-        link.click();
-
-    } catch (err) {
-        console.error("Export failed", err);
-        alert("Errore durante l'esportazione dell'immagine.");
-    }
+        link.download = `flowtask_${state.name.replace(/\s+/g, '_')}_${type}.png`;
+        link.href = dataUrl; link.click();
+    } catch (err) { console.error(err); }
   };
 
-  const handleImportClick = () => {
-    fileInputRef.current?.click();
-  };
-
-  const handleFileChange = (e: React.ChangeEvent<HTMLInputElement>) => {
-    const file = e.target.files?.[0];
-    if (!file) return;
-
-    const reader = new FileReader();
-    reader.onload = (event) => {
-      try {
-        const json = JSON.parse(event.target?.result as string);
-        loadProject(json);
-      } catch (err) {
-        alert("Errore durante il caricamento del file JSON.");
-        console.error(err);
-      }
-    };
-    reader.readAsText(file);
-    e.target.value = '';
-  };
-
-  const startEditingProject = (proj: any) => {
-      setEditingNameId(proj.id);
-      setTempProjectName(proj.name);
-  };
-
-  const saveProjectRename = () => {
-      if (editingNameId && tempProjectName.trim()) {
-          renameProject(tempProjectName.trim());
-          setEditingNameId(null);
-      }
-  };
+  const startEditingProject = (proj: any) => { setEditingNameId(proj.id); setTempProjectName(proj.name); };
+  const saveProjectRename = () => { if (editingNameId && tempProjectName.trim()) { renameProject(tempProjectName.trim()); setEditingNameId(null); } };
 
   const NavItem = ({ view, icon: Icon, label }: { view: View; icon: any; label: string }) => (
-    <button
-      onClick={() => setCurrentView(view)}
-      className={`
-        flex items-center gap-2 px-3 py-2 rounded-md text-sm font-medium transition-colors
-        ${currentView === view 
-          ? 'bg-indigo-50 dark:bg-indigo-900/20 text-indigo-700 dark:text-indigo-300' 
-          : 'text-slate-600 dark:text-slate-400 hover:bg-slate-100 dark:hover:bg-slate-800'}
-      `}
-    >
-      <Icon className="w-4 h-4" />
-      <span className="hidden lg:inline">{label}</span>
+    <button onClick={() => setCurrentView(view)} className={`flex items-center gap-2 px-3 py-2 rounded-md text-sm font-medium transition-colors ${currentView === view ? 'bg-indigo-50 dark:bg-indigo-900/20 text-indigo-700 dark:text-indigo-300' : 'text-slate-600 dark:text-slate-400 hover:bg-slate-100 dark:hover:bg-slate-800'}`}>
+      <Icon className="w-4 h-4" /> <span className="hidden lg:inline">{label}</span>
     </button>
   );
 
   return (
     <div className="flex flex-col h-[100dvh] w-screen overflow-hidden bg-slate-50 dark:bg-slate-950 text-slate-900 dark:text-slate-100 font-sans relative">
-      
       {notification && (
-        <div className={`fixed top-4 left-1/2 -translate-x-1/2 z-[200] w-[90%] max-w-md px-4 py-3 rounded-lg shadow-xl flex items-center gap-3 transition-all transform animate-in fade-in slide-in-from-top-4 ${
-            notification.type === 'success' ? 'bg-emerald-600 text-white' : 'bg-red-600 text-white'
-        }`}>
+        <div className={`fixed top-4 left-1/2 -translate-x-1/2 z-[200] w-[90%] max-w-md px-4 py-3 rounded-lg shadow-xl flex items-center gap-3 transition-all transform animate-in fade-in slide-in-from-top-4 ${notification.type === 'success' ? 'bg-emerald-600 text-white' : 'bg-red-600 text-white'}`}>
             {notification.type === 'success' ? <Check className="w-5 h-5 flex-shrink-0" /> : <AlertCircle className="w-5 h-5 flex-shrink-0" />}
             <span className="font-medium text-sm flex-1 break-words">{notification.message}</span>
         </div>
       )}
 
-      <input 
-        type="file" 
-        ref={fileInputRef} 
-        onChange={handleFileChange} 
-        accept=".json" 
-        className="hidden" 
-      />
+      <input type="file" ref={fileInputRef} onChange={(e) => {
+          const file = e.target.files?.[0]; if (!file) return;
+          const reader = new FileReader(); reader.onload = (ev) => { try { loadProject(JSON.parse(ev.target?.result as string)); } catch (err) {} };
+          reader.readAsText(file); e.target.value = '';
+      }} accept=".json" className="hidden" />
       
-      <DescriptionReader />
-      <TaskDescriptionReader />
-      <TaskEditorModal />
-      <MessageComposer />
+      <DescriptionReader /> <TaskDescriptionReader /> <TaskEditorModal /> <MessageComposer />
 
       {isProjectMenuOpen && (
-        <div 
-            className="fixed inset-0 z-[100] bg-black/60 backdrop-blur-sm flex flex-col justify-end sm:justify-center sm:items-center"
-            onClick={() => setIsProjectMenuOpen(false)}
-        >
-            <div 
-                className="bg-white dark:bg-slate-900 w-full sm:w-96 max-h-[80vh] sm:rounded-xl rounded-t-2xl shadow-2xl flex flex-col animate-in slide-in-from-bottom-10 duration-200"
-                onClick={e => e.stopPropagation()}
-            >
-                <div className="p-4 border-b border-slate-100 dark:border-slate-800 flex items-center justify-between">
-                    <h3 className="font-bold text-lg text-slate-800 dark:text-white">I tuoi Progetti</h3>
-                    <button 
-                        onClick={() => {
-                            createProject();
-                            setIsProjectMenuOpen(false);
-                        }}
-                        className="p-2 bg-indigo-600 hover:bg-indigo-700 text-white rounded-full transition-colors"
-                        title="Nuovo Progetto"
-                    >
-                        <Plus className="w-5 h-5" />
-                    </button>
+        <div className="fixed inset-0 z-[100] bg-black/60 backdrop-blur-sm flex flex-col justify-end sm:justify-center sm:items-center" onClick={() => setIsProjectMenuOpen(false)}>
+            <div className="bg-white dark:bg-slate-900 w-full sm:w-96 max-h-[80vh] sm:rounded-xl rounded-t-2xl shadow-2xl flex flex-col animate-in slide-in-from-bottom-10" onClick={e => e.stopPropagation()}>
+                <div className="p-4 border-b dark:border-slate-800 flex items-center justify-between">
+                    <h3 className="font-bold text-lg">I tuoi Progetti</h3>
+                    <button onClick={() => { createProject(); setIsProjectMenuOpen(false); }} className="p-2 bg-indigo-600 text-white rounded-full"><Plus className="w-5 h-5" /></button>
                 </div>
-                
                 <div className="flex-1 overflow-y-auto p-2 space-y-1">
-                    {projects.map(proj => {
-                        const isActive = proj.id === activeProjectId;
-                        const isEditing = editingNameId === proj.id;
-                        
-                        return (
-                            <div key={proj.id} className={`flex items-center justify-between p-3 rounded-xl transition-colors ${isActive ? 'bg-indigo-50 dark:bg-indigo-900/20 border border-indigo-200 dark:border-indigo-800' : 'hover:bg-slate-50 dark:hover:bg-slate-800'}`}>
-                                <div 
-                                    className="flex-1 flex items-center gap-3 min-w-0"
-                                    onClick={() => {
-                                        if(!isEditing) {
-                                            switchProject(proj.id);
-                                            setIsProjectMenuOpen(false);
-                                        }
-                                    }}
-                                >
-                                    <div className={`w-8 h-8 rounded-full flex items-center justify-center shrink-0 ${isActive ? 'bg-indigo-100 text-indigo-600 dark:bg-indigo-900 dark:text-indigo-400' : 'bg-slate-100 text-slate-500 dark:bg-slate-800 dark:text-slate-400'}`}>
-                                        <Folder className="w-4 h-4" />
-                                    </div>
-                                    
-                                    {isEditing ? (
-                                        <div className="flex-1 flex items-center gap-2">
-                                            <input 
-                                                autoFocus
-                                                type="text"
-                                                value={tempProjectName}
-                                                onChange={(e) => setTempProjectName(e.target.value)}
-                                                onKeyDown={(e) => {
-                                                    if(e.key === 'Enter') saveProjectRename();
-                                                    if(e.key === 'Escape') setEditingNameId(null);
-                                                }}
-                                                className="bg-transparent border-b border-indigo-500 outline-none w-full text-sm p-1"
-                                                onClick={(e) => e.stopPropagation()}
-                                            />
-                                            <button 
-                                                onClick={(e) => { e.stopPropagation(); saveProjectRename(); }}
-                                                className="p-1 bg-green-600 text-white rounded-md"
-                                            >
-                                                <Check className="w-3.5 h-3.5" />
-                                            </button>
-                                        </div>
-                                    ) : (
-                                        <div className="flex-1 min-w-0">
-                                            <p className={`text-sm font-semibold truncate ${isActive ? 'text-indigo-900 dark:text-indigo-100' : 'text-slate-700 dark:text-slate-200'}`}>
-                                                {proj.name}
-                                            </p>
-                                            <p className="text-[10px] text-slate-400">
-                                                {Object.keys(proj.branches).length} rami • {proj.people.length} persone
-                                            </p>
-                                        </div>
-                                    )}
-                                </div>
-
-                                <div className="flex items-center gap-1">
-                                    {isActive && !isEditing && (
-                                        <button 
-                                            onClick={() => startEditingProject(proj)}
-                                            className="p-2 text-slate-400 hover:text-indigo-500 rounded-full"
-                                        >
-                                            <Edit2 className="w-4 h-4" />
-                                        </button>
-                                    )}
-                                    <button 
-                                        onClick={(e) => { e.stopPropagation(); closeProject(proj.id); }}
-                                        className="p-2 text-slate-400 hover:text-amber-500 rounded-full"
-                                        title="Chiudi Tab"
-                                    >
-                                        <X className="w-4 h-4" />
-                                    </button>
-                                    <button 
-                                        onClick={(e) => { e.stopPropagation(); deleteProject(proj.id); }}
-                                        className="p-2 text-slate-300 hover:text-red-500 rounded-full"
-                                        title="Elimina dal DB locale"
-                                    >
-                                        <Trash2 className="w-4 h-4" />
-                                    </button>
-                                </div>
+                    {projects.map(proj => (
+                        <div key={proj.id} className={`flex items-center justify-between p-3 rounded-xl ${proj.id === activeProjectId ? 'bg-indigo-50 dark:bg-indigo-900/20 border border-indigo-200' : 'hover:bg-slate-50 dark:hover:bg-slate-800'}`}>
+                            <div className="flex-1 flex items-center gap-3 min-w-0" onClick={() => { switchProject(proj.id); setIsProjectMenuOpen(false); }}>
+                                <Folder className="w-4 h-4 shrink-0" />
+                                <div className="truncate"><p className="text-sm font-semibold truncate">{proj.name}</p></div>
                             </div>
-                        )
-                    })}
+                            <div className="flex items-center gap-1">
+                                <button onClick={(e) => { e.stopPropagation(); startEditingProject(proj); }} className="p-2 text-slate-400 hover:text-indigo-500"><Edit2 className="w-4 h-4" /></button>
+                                <button onClick={(e) => { e.stopPropagation(); closeProject(proj.id); }} className="p-2 text-slate-400 hover:text-amber-500"><X className="w-4 h-4" /></button>
+                                <button onClick={(e) => { e.stopPropagation(); deleteProject(proj.id); }} className="p-2 text-slate-300 hover:text-red-500"><Trash2 className="w-4 h-4" /></button>
+                            </div>
+                        </div>
+                    ))}
                 </div>
-                
-                <div className="p-4 border-t border-slate-100 dark:border-slate-800 bg-slate-50 dark:bg-slate-900 rounded-b-2xl">
-                    <button 
-                        onClick={() => setIsProjectMenuOpen(false)}
-                        className="w-full py-3 bg-white dark:bg-slate-800 border border-slate-200 dark:border-slate-700 rounded-xl font-medium text-slate-600 dark:text-slate-300 shadow-sm"
-                    >
-                        Chiudi Menu
-                    </button>
-                </div>
+                <div className="p-4 bg-slate-50 dark:bg-slate-900 rounded-b-2xl"><button onClick={() => setIsProjectMenuOpen(false)} className="w-full py-3 bg-white dark:bg-slate-800 border dark:border-slate-700 rounded-xl font-medium">Chiudi Menu</button></div>
             </div>
         </div>
       )}
 
       {/* Header */}
-      <div className="flex w-full h-14 md:h-16 bg-white dark:bg-slate-900 border-b border-slate-200 dark:border-slate-800 items-center justify-between px-4 md:px-6 z-20 shadow-sm flex-shrink-0">
-        
+      <div className="flex w-full h-14 md:h-16 bg-white dark:bg-slate-900 border-b dark:border-slate-800 items-center justify-between px-4 md:px-6 z-20 shadow-sm flex-shrink-0">
         <div className="flex items-center gap-4 relative">
-          <div className="hidden md:flex items-center">
-            <div className="bg-indigo-600 p-1.5 rounded-lg mr-2 md:mr-3">
-              <GitBranch className="w-5 h-5 text-white" />
-            </div>
-            <h1 className="text-lg md:text-xl font-bold bg-gradient-to-r from-indigo-600 to-violet-600 bg-clip-text text-transparent">
-              FlowTask
-            </h1>
-          </div>
-
-          <button 
-            onClick={() => setIsProjectMenuOpen(true)}
-            className="md:hidden flex items-center gap-2 -ml-1 active:bg-slate-100 dark:active:bg-slate-800 p-1.5 rounded-xl transition-colors"
-          >
-             <div className="bg-indigo-600 p-1.5 rounded-lg shadow-sm">
-                <GitBranch className="w-5 h-5 text-white" />
-             </div>
+          <button onClick={() => setIsProjectMenuOpen(true)} className="flex items-center gap-2 -ml-1 active:bg-slate-100 dark:active:bg-slate-800 p-1.5 rounded-xl transition-colors">
+             <div className="bg-indigo-600 p-1.5 rounded-lg shadow-sm"><GitBranch className="w-5 h-5 text-white" /></div>
              <div className="flex flex-col items-start min-w-0">
-                 <span className="text-[9px] text-slate-400 font-bold uppercase tracking-wider leading-none mb-0.5">Progetto</span>
-                 <div className="flex items-center gap-1">
-                     <span className="font-bold text-slate-800 dark:text-white text-sm max-w-[140px] truncate leading-none">
-                         {state.name}
-                     </span>
-                     <ChevronDown className="w-3.5 h-3.5 text-slate-400" />
-                 </div>
+                 <span className="text-[9px] text-slate-400 font-bold uppercase">Progetto</span>
+                 <div className="flex items-center gap-1"><span className="font-bold text-sm max-w-[140px] truncate">{state.name}</span><ChevronDown className="w-3.5 h-3.5 text-slate-400" /></div>
              </div>
           </button>
-
           {session && !isOfflineMode && (
-              <div className="hidden sm:flex items-center gap-1.5 px-2 py-1 bg-slate-50 dark:bg-slate-800 rounded text-xs transition-colors ml-2 md:ml-0 md:absolute md:left-full md:top-1/2 md:-translate-y-1/2 md:ml-6 w-max">
-                  {autoSaveStatus === 'saving' && (
-                      <>
-                        <Loader2 className="w-3 h-3 animate-spin text-indigo-500" />
-                        <span className="text-indigo-500 hidden sm:inline">Salvataggio...</span>
-                      </>
-                  )}
-                  {autoSaveStatus === 'saved' && (
-                      <>
-                        <Cloud className="w-3 h-3 text-green-500" />
-                        <span className="text-green-500 hidden sm:inline">Salvato</span>
-                      </>
-                  )}
-                  {autoSaveStatus === 'error' && (
-                      <>
-                        <AlertCircle className="w-3 h-3 text-red-500" />
-                        <span className="text-red-500 hidden sm:inline">Errore Sync</span>
-                      </>
-                  )}
-                  {autoSaveStatus === 'idle' && (
-                      <span className="text-slate-400 hidden sm:inline">Pronto</span>
-                  )}
+              <div className="hidden sm:flex items-center gap-1.5 px-2 py-1 bg-slate-50 dark:bg-slate-800 rounded text-xs transition-colors">
+                  {autoSaveStatus === 'saving' && <><Loader2 className="w-3 h-3 animate-spin text-indigo-500" /> <span className="text-indigo-500">Salvataggio...</span></>}
+                  {autoSaveStatus === 'saved' && <><Cloud className="w-3 h-3 text-green-500" /> <span className="text-green-500">Salvato</span></>}
+                  {autoSaveStatus === 'idle' && <span className="text-slate-400">Pronto</span>}
               </div>
           )}
         </div>
@@ -381,248 +175,44 @@ const App: React.FC = () => {
         </div>
 
         <div className="flex items-center gap-1 md:gap-2">
-            {(currentView === 'calendar' || currentView === 'assignments' || currentView === 'timeline' || currentView === 'focus' || currentView === 'workflow') && (
-                <>
-                    <button 
-                      onClick={toggleShowOnlyOpen}
-                      className={`p-2 rounded-full transition-colors border ${showOnlyOpen ? 'bg-indigo-100 dark:bg-indigo-900/40 text-indigo-600 border-indigo-200' : 'hover:bg-slate-100 dark:hover:bg-slate-800 text-slate-500 dark:text-slate-400 border-transparent'}`}
-                      title={showOnlyOpen ? "Mostra tutto" : "Mostra solo task aperti"}
-                    >
-                      <CheckCircle2 className="w-4 h-4" />
-                    </button>
-                    <button 
-                      onClick={toggleShowAllProjects}
-                      className={`p-2 rounded-full transition-colors border ${showAllProjects ? 'bg-amber-100 dark:bg-amber-900/40 text-amber-600 border-amber-200' : 'hover:bg-slate-100 dark:hover:bg-slate-800 text-slate-500 dark:text-slate-400 border-transparent'}`}
-                      title={showAllProjects ? "Mostra solo progetto corrente" : "Mostra tutti i progetti aperti"}
-                    >
-                      <Globe className="w-4 h-4" />
-                    </button>
-                </>
-            )}
-
-            <button 
-              onClick={toggleShowArchived}
-              className={`p-2 rounded-full transition-colors border ${showArchived ? 'bg-indigo-100 dark:bg-indigo-900/40 text-indigo-600 border-indigo-200' : 'hover:bg-slate-100 dark:hover:bg-slate-800 text-slate-500 dark:text-slate-400 border-transparent'}`}
-              title={showArchived ? "Nascondi archiviati" : "Mostra archiviati"}
-            >
-              <Archive className="w-4 h-4" />
-            </button>
-            
-            <div className="hidden md:block h-4 w-px bg-slate-200 dark:bg-slate-700 mx-2"></div>
-
-            <button 
-                onClick={handleImageExport}
-                className="hidden md:block p-2 rounded-full hover:bg-slate-100 dark:hover:bg-slate-800 text-slate-500 dark:text-slate-400 transition-colors"
-                title="Esporta Immagine"
-            >
-                <Camera className="w-4 h-4" />
-            </button>
-
-            <button 
-              onClick={handleExport}
-              className="hidden md:block p-2 rounded-full hover:bg-slate-100 dark:hover:bg-slate-800 text-slate-500 dark:text-slate-400 transition-colors"
-              title="Esporta JSON"
-            >
-              <Download className="w-4 h-4" />
-            </button>
-            <button 
-              onClick={handleImportClick}
-              className="hidden md:block p-2 rounded-full hover:bg-slate-100 dark:hover:bg-slate-800 text-slate-500 dark:text-slate-400 transition-colors"
-              title="Importa JSON (Nuova Tab)"
-            >
-              <Upload className="w-4 h-4" />
-            </button>
-
-            <div className="hidden md:block h-4 w-px bg-slate-200 dark:bg-slate-700 mx-2"></div>
-            
-             <button 
-              onClick={() => setCurrentView('settings')}
-              className={`p-2 rounded-full hover:bg-slate-100 dark:hover:bg-slate-800 transition-colors border ${currentView === 'settings' ? 'text-indigo-600 border-indigo-200 bg-indigo-50 dark:bg-indigo-900/20' : 'text-slate-500 dark:text-slate-400 border-transparent'}`}
-              title="Impostazioni"
-            >
-              <Settings className="w-4 h-4" />
-            </button>
-
-            <button 
-              onClick={toggleTheme}
-              className="p-2 rounded-full hover:bg-slate-100 dark:hover:bg-slate-800 text-slate-500 dark:text-slate-400 transition-colors border border-gray-200 dark:border-slate-700"
-              title="Cambia tema"
-            >
-              {theme === 'light' ? <Moon className="w-4 h-4" /> : <Sun className="w-4 h-4" />}
-            </button>
+            <button onClick={toggleShowOnlyOpen} className={`p-2 rounded-full border ${showOnlyOpen ? 'bg-indigo-100 text-indigo-600 border-indigo-200' : 'text-slate-500 border-transparent'}`} title="Solo Task Aperti"><CheckCircle2 className="w-4 h-4" /></button>
+            <button onClick={toggleShowAllProjects} className={`p-2 rounded-full border ${showAllProjects ? 'bg-amber-100 text-amber-600 border-amber-200' : 'text-slate-500 border-transparent'}`} title="Tutti i Progetti"><Globe className="w-4 h-4" /></button>
+            <button onClick={toggleShowArchived} className={`p-2 rounded-full border ${showArchived ? 'bg-indigo-100 text-indigo-600 border-indigo-200' : 'text-slate-500 border-transparent'}`} title="Archiviati"><Archive className="w-4 h-4" /></button>
+            <button onClick={handleImageExport} className="hidden md:block p-2 text-slate-500"><Camera className="w-4 h-4" /></button>
+            <button onClick={handleExport} className="hidden md:block p-2 text-slate-500"><Download className="w-4 h-4" /></button>
+            <button onClick={() => setCurrentView('settings')} className={`p-2 rounded-full border ${currentView === 'settings' ? 'text-indigo-600 border-indigo-200 bg-indigo-50' : 'text-slate-500 border-transparent'}`}><Settings className="w-4 h-4" /></button>
+            <button onClick={toggleTheme} className="p-2 text-slate-500 border border-gray-200 dark:border-slate-700 rounded-full">{theme === 'light' ? <Moon className="w-4 h-4" /> : <Sun className="w-4 h-4" />}</button>
         </div>
-      </div>
-
-      <div className="hidden md:flex items-center w-full bg-slate-100 dark:bg-slate-950 border-b border-slate-200 dark:border-slate-800 overflow-x-auto hide-scrollbar px-2 pt-2 gap-1 flex-shrink-0">
-          {projects.map(proj => {
-              const isActive = proj.id === activeProjectId;
-              const isEditing = editingNameId === proj.id;
-
-              return (
-                  <div 
-                    key={proj.id}
-                    onClick={() => { if(!isEditing) switchProject(proj.id); }}
-                    className={`
-                        group flex items-center gap-2 px-3 py-2 text-sm font-medium rounded-t-lg border-t border-x cursor-pointer min-w-[150px] max-w-[250px]
-                        ${isActive 
-                            ? 'bg-white dark:bg-slate-900 border-slate-200 dark:border-slate-800 text-indigo-600 dark:text-indigo-400 -mb-px pb-2.5 z-10' 
-                            : 'bg-slate-200 dark:bg-slate-900/50 border-transparent text-slate-500 dark:text-slate-500 hover:bg-slate-300 dark:hover:bg-slate-800'}
-                    `}
-                  >
-                      {isEditing ? (
-                          <div className="flex-1 flex items-center gap-1.5 overflow-hidden">
-                              <input 
-                                autoFocus
-                                type="text"
-                                value={tempProjectName}
-                                onChange={(e) => setTempProjectName(e.target.value)}
-                                onKeyDown={(e) => {
-                                    if(e.key === 'Enter') saveProjectRename();
-                                    if(e.key === 'Escape') setEditingNameId(null);
-                                }}
-                                className="bg-transparent border-b border-indigo-500 outline-none w-full text-xs"
-                                onClick={(e) => e.stopPropagation()}
-                              />
-                              <button onClick={(e) => { e.stopPropagation(); saveProjectRename(); }} className="text-green-600 shrink-0">
-                                  <Check className="w-3.5 h-3.5" />
-                              </button>
-                          </div>
-                      ) : (
-                          <span className="truncate flex-1" onDoubleClick={() => startEditingProject(proj)}>
-                              {proj.name}
-                          </span>
-                      )}
-
-                      {isActive && !isEditing && (
-                          <button 
-                             onClick={(e) => {
-                                 e.stopPropagation();
-                                 startEditingProject(proj);
-                             }}
-                             className="opacity-0 group-hover:opacity-100 text-slate-400 hover:text-indigo-500 p-0.5"
-                          >
-                              <Edit2 className="w-3 h-3" />
-                          </button>
-                      )}
-                      
-                      <button 
-                        onClick={(e) => {
-                            e.stopPropagation();
-                            closeProject(proj.id);
-                        }}
-                        className={`p-0.5 rounded-full hover:bg-slate-300 dark:hover:bg-slate-700 ${projects.length === 1 ? 'opacity-30 cursor-not-allowed' : 'opacity-60 hover:opacity-100'}`}
-                        disabled={projects.length === 1}
-                      >
-                          <X className="w-3.5 h-3.5" />
-                      </button>
-                  </div>
-              );
-          })}
-          
-          <button 
-            onClick={createProject}
-            className="ml-1 p-1.5 rounded-md hover:bg-indigo-100 dark:hover:bg-indigo-900/30 text-indigo-600 dark:text-indigo-400 transition-colors mb-1"
-            title="Nuovo Progetto"
-          >
-              <Plus className="w-5 h-5" />
-          </button>
       </div>
 
       <div className="flex-1 flex flex-col relative h-full overflow-hidden">
         {currentView === 'workflow' ? (
             <>
-                <div className="hidden md:block w-full h-full relative">
-                    <FlowCanvas />
-                </div>
-
-                <div className="block md:hidden w-full h-full">
-                    <FolderTree />
-                </div>
-
-                <div className="hidden md:flex absolute bottom-6 right-6 md:bottom-10 md:right-10 flex-col gap-2 z-30 pointer-events-none">
-                    <div className="flex flex-col gap-2 pointer-events-auto bg-white dark:bg-slate-900 p-2 rounded-2xl shadow-xl border border-slate-200 dark:border-slate-800 animate-in slide-in-from-right-4">
-                        <button 
-                            onClick={() => setAllBranchesCollapsed(false)}
-                            className="p-3 bg-indigo-50 dark:bg-indigo-900/20 text-indigo-600 dark:text-indigo-400 rounded-xl hover:bg-indigo-100 dark:hover:bg-indigo-900/40 transition-colors"
-                            title="Espandi tutto"
-                        >
-                            <ChevronsDown className="w-5 h-5" />
-                        </button>
-                        <button 
-                            onClick={() => setAllBranchesCollapsed(true)}
-                            className="p-3 bg-slate-50 dark:bg-slate-800 text-slate-600 dark:text-slate-400 rounded-xl hover:bg-slate-200 dark:hover:bg-slate-700 transition-colors"
-                            title="Comprimi tutto"
-                        >
-                            <ChevronsUp className="w-5 h-5" />
-                        </button>
+                <div className="hidden md:block w-full h-full relative"><FlowCanvas /></div>
+                <div className="block md:hidden w-full h-full"><FolderTree /></div>
+                <div className="hidden md:flex absolute bottom-10 right-10 flex-col gap-2 z-30 pointer-events-none">
+                    <div className="flex flex-col gap-2 pointer-events-auto bg-white dark:bg-slate-900 p-2 rounded-2xl shadow-xl border dark:border-slate-800">
+                        <button onClick={() => setAllBranchesCollapsed(false)} className="p-3 bg-indigo-50 text-indigo-600 rounded-xl" title="Espandi"><ChevronsDown className="w-5 h-5" /></button>
+                        <button onClick={() => setAllBranchesCollapsed(true)} className="p-3 bg-slate-50 text-slate-600 rounded-xl" title="Comprimi"><ChevronsUp className="w-5 h-5" /></button>
                     </div>
                 </div>
-
                 {selectedBranchId && <BranchDetails />}
             </>
-        ) : currentView === 'timeline' ? (
-            <>
-                <TimelinePanel />
-                {selectedBranchId && <BranchDetails />}
-            </>
-        ) : currentView === 'focus' ? (
-            <FocusPanel />
-        ) : currentView === 'calendar' ? (
-            <CalendarPanel />
-        ) : currentView === 'assignments' ? (
-            <UserTasksPanel />
-        ) : currentView === 'settings' ? (
-            <SettingsPanel />
-        ) : (
-            <div className="flex-1 p-4 md:p-8 overflow-auto">
-                <PeopleManager />
-            </div>
-        )}
+        ) : currentView === 'timeline' ? (<><TimelinePanel />{selectedBranchId && <BranchDetails />}</>) 
+          : currentView === 'focus' ? <FocusPanel />
+          : currentView === 'calendar' ? <CalendarPanel />
+          : currentView === 'assignments' ? <UserTasksPanel />
+          : currentView === 'settings' ? <SettingsPanel />
+          : <div className="flex-1 p-4 md:p-8 overflow-auto"><PeopleManager /></div>
+        }
       </div>
 
-      <div className="md:hidden flex-shrink-0 bg-white dark:bg-slate-900 border-t border-slate-200 dark:border-slate-800 flex justify-around items-center p-2 z-30 pb-safe">
-        <button 
-            onClick={() => setCurrentView('workflow')}
-            className={`flex flex-col items-center p-2 rounded-md ${currentView === 'workflow' ? 'text-indigo-600 dark:text-indigo-400' : 'text-slate-500'}`}
-        >
-            <Layers className="w-6 h-6" />
-            <span className="text-[10px] mt-1 font-medium">Flow</span>
-        </button>
-        <button 
-            onClick={() => setCurrentView('focus')}
-            className={`flex flex-col items-center p-2 rounded-md ${currentView === 'focus' ? 'text-indigo-600 dark:text-indigo-400' : 'text-slate-500'}`}
-        >
-            <Target className="w-6 h-6" />
-            <span className="text-[10px] mt-1 font-medium">Focus</span>
-        </button>
-        <button 
-            onClick={() => setCurrentView('assignments')}
-            className={`flex flex-col items-center p-2 rounded-md ${currentView === 'assignments' ? 'text-indigo-600 dark:text-indigo-400' : 'text-slate-500'}`}
-        >
-            <ClipboardList className="w-6 h-6" />
-            <span className="text-[10px] mt-1 font-medium">Task</span>
-        </button>
-        <button 
-            onClick={() => setCurrentView('calendar')}
-            className={`flex flex-col items-center p-2 rounded-md ${currentView === 'calendar' ? 'text-indigo-600 dark:text-indigo-400' : 'text-slate-500'}`}
-        >
-            <Calendar className="w-6 h-6" />
-            <span className="text-[10px] mt-1 font-medium">Scadenze</span>
-        </button>
-        <button 
-            onClick={() => setCurrentView('timeline')}
-            className={`flex flex-col items-center p-2 rounded-md ${currentView === 'timeline' ? 'text-indigo-600 dark:text-indigo-400' : 'text-slate-500'}`}
-        >
-            <GanttChart className="w-6 h-6" />
-            <span className="text-[10px] mt-1 font-medium">Time</span>
-        </button>
-        <button 
-            onClick={() => setCurrentView('team')}
-            className={`flex flex-col items-center p-2 rounded-md ${currentView === 'team' ? 'text-indigo-600 dark:text-indigo-400' : 'text-slate-500'}`}
-        >
-            <Users className="w-6 h-6" />
-            <span className="text-[10px] mt-1 font-medium">Team</span>
-        </button>
+      <div className="md:hidden flex-shrink-0 bg-white dark:bg-slate-900 border-t dark:border-slate-800 flex justify-around items-center p-2 z-30 pb-safe">
+        <button onClick={() => setCurrentView('workflow')} className={`flex flex-col items-center p-2 ${currentView === 'workflow' ? 'text-indigo-600' : 'text-slate-500'}`}><Layers className="w-6 h-6" /><span className="text-[10px] mt-1 font-medium">Flow</span></button>
+        <button onClick={() => setCurrentView('focus')} className={`flex flex-col items-center p-2 ${currentView === 'focus' ? 'text-indigo-600' : 'text-slate-500'}`}><Target className="w-6 h-6" /><span className="text-[10px] mt-1 font-medium">Focus</span></button>
+        <button onClick={() => setCurrentView('assignments')} className={`flex flex-col items-center p-2 ${currentView === 'assignments' ? 'text-indigo-600' : 'text-slate-500'}`}><ClipboardList className="w-6 h-6" /><span className="text-[10px] mt-1 font-medium">Task</span></button>
+        <button onClick={() => setCurrentView('calendar')} className={`flex flex-col items-center p-2 ${currentView === 'calendar' ? 'text-indigo-600' : 'text-slate-500'}`}><Calendar className="w-6 h-6" /><span className="text-[10px] mt-1 font-medium">Scadenze</span></button>
+        <button onClick={() => setCurrentView('team')} className={`flex flex-col items-center p-2 ${currentView === 'team' ? 'text-indigo-600' : 'text-slate-500'}`}><Users className="w-6 h-6" /><span className="text-[10px] mt-1 font-medium">Team</span></button>
       </div>
     </div>
   );

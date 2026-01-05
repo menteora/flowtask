@@ -1,6 +1,8 @@
 
 import React, { useMemo, useState } from 'react';
 import { useProject } from '../../context/ProjectContext';
+import { useBranch } from '../../context/BranchContext';
+import { useTask } from '../../context/TaskContext';
 import { Branch, Person } from '../../types';
 import { CheckSquare, Square, ClipboardList, HelpCircle, ArrowRight, Calendar, Mail, MessageCircle, FileText, Folder, Pin, X, User, CheckCircle2 } from 'lucide-react';
 import Avatar from '../ui/Avatar';
@@ -33,7 +35,10 @@ interface AggregatedUserGroup {
 }
 
 const UserTasksPanel: React.FC = () => {
-  const { state, projects, showAllProjects, updateTask, selectBranch, showArchived, showOnlyOpen, setEditingTask, setRemindingUserId, setReadingTask, switchProject } = useProject();
+  const { state, projects, switchProject } = useProject();
+  // Using BranchContext and TaskContext for specific states and actions
+  const { showAllProjects, selectBranch, showArchived } = useBranch();
+  const { updateTask, showOnlyOpen, setEditingTask, setRemindingUserId, setReadingTask } = useTask();
   
   // State for resolving contact conflicts (same name, different emails/phones)
   const [conflictGroup, setConflictGroup] = useState<AggregatedUserGroup | null>(null);
